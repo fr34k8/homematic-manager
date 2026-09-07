@@ -131,9 +131,18 @@ describe('names', () => {
         expect(() => normaliseName('   ')).toThrow(expect.objectContaining({code: 'invalid-name'}));
     });
 
-    it('refuses a line break inside the name', () => {
+    // openccu-lite B-38: the rule is "no control characters", not "no line breaks". A NUL used to
+    // go straight through and be stored - and a name travels into meta.json, through the change
+    // stream into every consumer, and into the HM-Script export as a Tcl string, where a NUL
+    // truncates at the far end and an ESC is interpreted. docs/meta-format.md is normative and the
+    // conformance corpus both implementations run grew three cases for it.
+    it('refuses a control character inside the name', () => {
         expect(() => normaliseName('Bad\nOben')).toThrow(expect.objectContaining({code: 'invalid-name'}));
         expect(() => normaliseName('Bad\rOben')).toThrow(expect.objectContaining({code: 'invalid-name'}));
+        expect(() => normaliseName('Bad\u0000Oben')).toThrow(expect.objectContaining({code: 'invalid-name'}));
+        expect(() => normaliseName('Bad\u001bOben')).toThrow(expect.objectContaining({code: 'invalid-name'}));
+        expect(() => normaliseName('Bad\u007fOben')).toThrow(expect.objectContaining({code: 'invalid-name'}));
+        expect(() => normaliseName('Bad\tOben')).toThrow(expect.objectContaining({code: 'invalid-name'}));
     });
 
     it('measures the limit in bytes of UTF-8, not in characters', () => {

@@ -84,6 +84,36 @@
     },
     {
       "op": "object.set",
+      "ref": "BidCos-RF.X:1",
+      "body": {
+        "name": "a\u0000b"
+      },
+      "expect": {
+        "error": "invalid-name"
+      }
+    },
+    {
+      "op": "object.set",
+      "ref": "BidCos-RF.X:1",
+      "body": {
+        "name": "a\tb"
+      },
+      "expect": {
+        "error": "invalid-name"
+      }
+    },
+    {
+      "op": "object.set",
+      "ref": "BidCos-RF.X:1",
+      "body": {
+        "name": "a\u001bb"
+      },
+      "expect": {
+        "error": "invalid-name"
+      }
+    },
+    {
+      "op": "object.set",
       "ref": "noseparator",
       "body": {
         "name": "x"

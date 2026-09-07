@@ -87,8 +87,9 @@ export function normaliseName(name: unknown): string {
     if (trimmed === '') {
         throw new MetaError('invalid-name', 'a name may not be empty');
     }
-    if (/[\r\n]/.test(trimmed)) {
-        throw new MetaError('invalid-name', 'a name may not contain line breaks');
+    // eslint-disable-next-line no-control-regex -- that is exactly what this rejects
+    if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
+        throw new MetaError('invalid-name', 'a name may not contain control characters');
     }
     if (byteLength(trimmed) > MAX_NAME_BYTES) {
         throw new MetaError('invalid-name', `a name may not be longer than ${String(MAX_NAME_BYTES)} bytes`);
