@@ -45,8 +45,10 @@ export interface ConnectionConfig {
      * and keeps everything in this profile; `occulite` insists on the box and says so when it is
      * not there, which is what a user behind a proxy that swallows the probe needs.
      *
-     * There is deliberately no `rega` value here. ReGa supplies *names* and is switched on with
-     * `rega` above, exactly as before; a box either has ReGa or the metadata API, never both.
+     * `rega` (task 27) is the CCU's own rooms and functions through ReGaHSS: `auto` picks it when
+     * there is no box and ReGa (switched on with `rega` above) answered, so a CCU gets the same
+     * editing UI the box has, on ReGa's own objects. A box either has ReGa or the metadata API,
+     * never both.
      */
     metaProvider?: MetaProviderChoice;
     /**
@@ -223,11 +225,11 @@ export interface RegaState {
 /** Friendly names: address -> name (devices and channels), from ReGa or the local store. */
 export type NameMap = Record<string, string>;
 
-/** D-40: which metadata provider a profile asks for. */
-export type MetaProviderChoice = 'auto' | 'local' | 'occulite';
+/** D-40: which metadata provider a profile asks for; `rega` since task 27. */
+export type MetaProviderChoice = 'auto' | 'local' | 'occulite' | 'rega';
 
-/** The three values of {@link MetaProviderChoice} as a runtime list, for validation and a select. */
-export const META_PROVIDERS: readonly MetaProviderChoice[] = Object.freeze(['auto', 'local', 'occulite']);
+/** The values of {@link MetaProviderChoice} as a runtime list, for validation and a select. */
+export const META_PROVIDERS: readonly MetaProviderChoice[] = Object.freeze(['auto', 'local', 'occulite', 'rega']);
 
 /**
  * D-40: which store the names, rooms and functions come from, and whether it can be written.
@@ -237,9 +239,12 @@ export const META_PROVIDERS: readonly MetaProviderChoice[] = Object.freeze(['aut
  * other application.
  */
 export interface MetaState {
-    /** `local` is this profile's own store, `occulite` an openccu-lite box. */
-    provider: 'local' | 'occulite';
-    /** For `occulite`: the box answered. Always true for `local`. */
+    /**
+     * `local` is this profile's own store, `occulite` an openccu-lite box, `rega` the CCU's own
+     * rooms and functions through ReGaHSS (task 27).
+     */
+    provider: 'local' | 'occulite' | 'rega';
+    /** For `occulite` and `rega`: the other side answered. Always true for `local`. */
     reachable: boolean;
     /**
      * Writes are accepted.
@@ -595,6 +600,12 @@ export interface ApiMethods {
     };
     'meta.node.update': {params: [path: string, patch: MetaNodePatch]; result: null};
     'meta.node.delete': {params: [path: string, detach?: boolean]; result: null};
+    /**
+     * Reads the store again and answers with its state. The box has a change stream and never
+     * needs this; ReGa has none, so a room made in the WebUI shows up here only after a refresh -
+     * on connect, after every write of our own, and when the user asks (task 27).
+     */
+    'meta.refresh': {params: []; result: MetaState};
     /** The whole document, for a backup or a move between installations. */
     'meta.export': {params: []; result: MetaDocument};
     'meta.import': {params: [document: unknown, mode?: MetaImportMode]; result: null};

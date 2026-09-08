@@ -9,10 +9,17 @@ import {describe, expect, it} from 'vitest';
 import {
     acknowledgeAlarmScript,
     CONFIRM_INBOX_SCRIPT,
+    createEnumNodeScript,
+    deleteEnumNodeScript,
     escapeRegaString,
     isPlainRegaName,
+    membershipScript,
+    META_READ_SCRIPT,
     parseConfirmedDevices,
+    parseCreatedId,
+    parseMetaSnapshot,
     renameObjectsScript,
+    unescapeRegaUrl,
 } from './scripts.js';
 
 describe('escapeRegaString', () => {
@@ -78,5 +85,89 @@ describe('the acknowledge script (#94)', () => {
         expect(isPlainRegaName('CUX2801001:1')).toBe(true);
         expect(isPlainRegaName('LOWBAT')).toBe(true);
         expect(isPlainRegaName('a b')).toBe(false);
+    });
+});
+
+describe('the rooms and functions scripts (task 27)', () => {
+    it('reads devices, channels, rooms and functions in one round trip, with the interface per device', () => {
+        // the idioms of homematic-rega's channels.rega, rooms.rega and functions.rega, in one script
+        expect(META_READ_SCRIPT).toContain('root.Devices().EnumUsedIDs()');
+        expect(META_READ_SCRIPT).toContain('dom.GetObject(ID_ROOMS).EnumUsedIDs()');
+        expect(META_READ_SCRIPT).toContain('dom.GetObject(ID_FUNCTIONS).EnumUsedIDs()');
+        expect(META_READ_SCRIPT).toContain('oRoom.EnumUsedIDs()');
+        // the ref of the metadata store needs the interface, which the address alone does not carry
+        expect(META_READ_SCRIPT).toContain('dom.GetObject(oDevice.Interface())');
+        // names go out URL-encoded, as every homematic-rega script writes them
+        expect(META_READ_SCRIPT).toContain('WriteURL(oChannel.Name())');
+        // every variable is declared once, at the top: ReGa has no block scope
+        expect(META_READ_SCRIPT.startsWith('string sDevId;')).toBe(true);
+    });
+
+    it('decodes WriteURL output as ISO-8859-1 bytes, which decodeURIComponent would refuse', () => {
+        expect(unescapeRegaUrl('K%FCche')).toBe('Küche');
+        expect(unescapeRegaUrl('Licht%20Flur')).toBe('Licht Flur');
+        expect(unescapeRegaUrl('%u20AC')).toBe('€');
+        expect(unescapeRegaUrl('plain')).toBe('plain');
+    });
+
+    it('parses what the read script wrote and drops what does not fit', () => {
+        const snapshot = parseMetaSnapshot(
+            JSON.stringify({
+                objects: [
+                    {id: 1, address: 'ABC1', interface: 'BidCos-RF', name: 'Lampe'},
+                    {id: 2, address: 'ABC1:1', interface: 'BidCos-RF', name: 'Lampe%3A1'},
+                    {id: 'x', address: 'no'},
+                    {id: 3, address: '', interface: 'BidCos-RF', name: 'x'},
+                    null,
+                ],
+                rooms: [{id: 10, name: 'K%FCche', channels: [2, 'x']}, {name: 'no id'}],
+                functions: [{id: 20, name: 'Licht'}],
+            }),
+        );
+        expect(snapshot.objects).toEqual([
+            {id: 1, address: 'ABC1', interfaceName: 'BidCos-RF', name: 'Lampe'},
+            {id: 2, address: 'ABC1:1', interfaceName: 'BidCos-RF', name: 'Lampe:1'},
+        ]);
+        expect(snapshot.rooms).toEqual([{id: 10, name: 'Küche', channels: [2]}]);
+        expect(snapshot.functions).toEqual([{id: 20, name: 'Licht', channels: []}]);
+    });
+
+    it('refuses an answer that is not the document', () => {
+        expect(() => parseMetaSnapshot('null')).toThrow('no document');
+        expect(() => parseMetaSnapshot('{"rooms":[],"functions":[]}')).toThrow('object list');
+        expect(() => parseMetaSnapshot('{"objects":[],"functions":[]}')).toThrow('rooms');
+        expect(() => parseMetaSnapshot('{"objects":[],"rooms":[]}')).toThrow('functions');
+        expect(() => parseMetaSnapshot('<html>')).toThrow();
+    });
+
+    it('creates an enum object, names it, lists it and writes its id', () => {
+        expect(createEnumNodeScript('room', 'Bad "oben"')).toBe(
+            'object oNew = dom.CreateObject(OT_ENUM);\n' +
+                'oNew.Name("Bad \\"oben\\"");\n' +
+                'dom.GetObject(ID_ROOMS).Add(oNew.ID());\n' +
+                'Write(oNew.ID());\n',
+        );
+        expect(createEnumNodeScript('function', 'Licht')).toContain('dom.GetObject(ID_FUNCTIONS).Add(oNew.ID());');
+        expect(parseCreatedId('4711\n')).toBe(4711);
+        expect(parseCreatedId('')).toBeUndefined();
+        expect(parseCreatedId('Error')).toBeUndefined();
+    });
+
+    it('removes a node from its list and deletes the object, guarded against one that is gone', () => {
+        expect(deleteEnumNodeScript('room', 4711)).toBe(
+            'object oGone = dom.GetObject(4711);\n' +
+                'if (oGone) { dom.GetObject(ID_ROOMS).Remove(4711); dom.DeleteObject(4711); }\n',
+        );
+        expect(deleteEnumNodeScript('function', 5)).toContain('dom.GetObject(ID_FUNCTIONS).Remove(5)');
+    });
+
+    it('adds and removes channel ids on the enum, one statement each, nothing for no change', () => {
+        expect(
+            membershipScript([
+                {enumId: 10, channelId: 2, on: true},
+                {enumId: 20, channelId: 2, on: false},
+            ]),
+        ).toBe('dom.GetObject(10).Add(2);\ndom.GetObject(20).Remove(2);\n');
+        expect(membershipScript([])).toBeUndefined();
     });
 });

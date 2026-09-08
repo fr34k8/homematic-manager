@@ -448,6 +448,10 @@ export class MockTransport implements Transport {
             changed();
             return null;
         });
+        this.respond('meta.refresh', () => {
+            changed();
+            return state();
+        });
         this.respond('meta.export', () => store.document());
         this.respond('meta.import', (document, mode) => {
             store.import(document, mode ?? 'replace');

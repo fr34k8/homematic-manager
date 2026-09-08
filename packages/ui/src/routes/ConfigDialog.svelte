@@ -159,6 +159,7 @@
         auto: () => t('Automatic'),
         local: () => t('This profile'),
         occulite: () => 'openccu-lite',
+        rega: () => 'ReGa',
     };
     const metaState = $derived(stores.taxonomy.state);
     const metaStateLine = $derived.by(() => {
@@ -166,7 +167,7 @@
             return t('No store connected');
         }
         const parts = [
-            metaProviderLabels[metaState.provider === 'occulite' ? 'occulite' : 'local'](),
+            metaProviderLabels[metaState.provider](),
             metaState.reachable ? t('Reachable') : t('Unreachable'),
             metaState.reachable ? (metaState.writable ? t('Writable') : t('Read-only')) : undefined,
             t('revision {revision}, {count} objects', {revision: metaState.revision, count: metaState.objects}),

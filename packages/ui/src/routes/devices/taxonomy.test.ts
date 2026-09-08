@@ -349,6 +349,12 @@ describe('the tree dialog', () => {
         await waitFor(() => expect(transport.lastCall('meta.node.delete')).toEqual(['function/rollladen', false]));
     });
 
+    it('reads the store again from the refresh button (task 27: ReGa has no change stream)', async () => {
+        await openDialog();
+        await fireEvent.click(screen.getByTestId('taxonomy-refresh'));
+        await waitFor(() => expect(transport.countOf('meta.refresh')).toBe(1));
+    });
+
     it('hides "add below" and "move" and says why when the store is flat (ReGa)', async () => {
         await openDialog();
         transport.emit('meta.changed', {
@@ -416,6 +422,17 @@ describe('the store indicator and the settings section', () => {
         });
         await waitFor(() => expect(indicator.dataset['mark']).toBe('bad'));
         expect(indicator.title).toContain('box off');
+
+        transport.emit('meta.changed', {
+            provider: 'rega',
+            reachable: true,
+            writable: true,
+            revision: 2,
+            objects: 40,
+            flat: true,
+        });
+        await waitFor(() => expect(indicator.textContent.trim()).toBe('ReGa'));
+        expect(indicator.dataset['mark']).toBe('ok');
     });
 
     it('is not drawn at all without a store', async () => {
@@ -432,6 +449,12 @@ describe('the store indicator and the settings section', () => {
 
         const provider = screen.getByTestId<HTMLSelectElement>('config-meta-provider');
         expect(provider.value).toBe('auto');
+        expect([...provider.options].map((option) => option.textContent)).toEqual([
+            'Automatisch',
+            'Dieses Profil',
+            'openccu-lite',
+            'ReGa',
+        ]);
         await fireEvent.change(provider, {target: {value: 'occulite'}});
         await fireEvent.input(screen.getByTestId('config-meta-token'), {target: {value: 'olt_secret'}});
         await fireEvent.click(screen.getByTestId('config-save'));

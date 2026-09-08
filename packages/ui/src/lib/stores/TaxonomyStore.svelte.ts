@@ -119,6 +119,20 @@ export class TaxonomyStore {
     }
 
     /**
+     * Reads the store again. A box has a change stream and never needs it; ReGa has none (task
+     * 27), so a room made in the WebUI shows up here only when somebody asks.
+     */
+    async refresh(): Promise<boolean> {
+        try {
+            this.state = await this.#transport.request('meta.refresh');
+            return true;
+        } catch (error) {
+            this.#notices.fromError(error, 'meta.refresh');
+            return false;
+        }
+    }
+
+    /**
      * The interaction of the whole feature: the selected rows into (or out of) a node. One request
      * for the whole selection, which the backend turns into one revision.
      */

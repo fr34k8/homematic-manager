@@ -445,6 +445,11 @@ export class Backend {
             case 'meta.node.delete':
                 await (await this.#requireMeta()).deleteNode(p[0], p[1] === true);
                 return null;
+            case 'meta.refresh': {
+                const meta = await this.#requireMeta();
+                await meta.refresh();
+                return meta.state();
+            }
             case 'meta.export':
                 return (await this.#requireMeta()).document();
             case 'meta.import':
@@ -662,6 +667,15 @@ export class Backend {
                 cacheDir: this.#config.cacheDir,
                 names: this.#caches.names,
                 interfaceOf: (address) => this.#interfaceOf(address),
+                // task 27: ReGa as the store of rooms and functions on a CCU. Read through the
+                // service that is current at call time - a reconnect replaces it.
+                rega:
+                    this.#rega === undefined || !connection.rega
+                        ? undefined
+                        : {
+                              available: this.#rega.available,
+                              exec: (script) => this.#requireRega().exec(script),
+                          },
                 onChanged: () => {
                     this.#onMetaChanged();
                 },
@@ -687,6 +701,13 @@ export class Backend {
             // the application
             this.#notice('warn', `the metadata store could not be opened: ${errorMessage(error)}`);
         }
+    }
+
+    #requireRega(): RegaService {
+        if (!this.#rega) {
+            throw configError('ReGa is not connected');
+        }
+        return this.#rega;
     }
 
     /** The store changed - locally, or on the box because somebody else edited it. */
@@ -1027,7 +1048,11 @@ export class Backend {
     async #setNames(entries: readonly {address: string; name: string}[]): Promise<NameMap> {
         const written = this.#caches.names.set(entries);
         this.#caches.saveNames();
-        await this.#rega?.rename(written);
+        // task 27: with ReGa as the metadata store the provider writes the rename itself, and a
+        // second `Name()` through the name service would be the same script twice
+        if (this.#meta?.kind !== 'rega') {
+            await this.#rega?.rename(written);
+        }
         // D-40: and into the metadata store, which on an openccu-lite box is the box's own. The
         // local cache is written first either way, so a store that refuses the write still leaves
         // the name where the user typed it - and the refusal is reported rather than swallowed.
@@ -1045,7 +1070,11 @@ export class Backend {
     #metaState(): MetaState {
         return (
             this.#meta?.state() ?? {
-                provider: this.#config.connection.metaProvider === 'occulite' ? 'occulite' : 'local',
+                provider:
+                    this.#config.connection.metaProvider === 'occulite' ||
+                    this.#config.connection.metaProvider === 'rega'
+                        ? this.#config.connection.metaProvider
+                        : 'local',
                 reachable: false,
                 writable: false,
                 revision: 0,
@@ -1525,6 +1554,7 @@ export const API_METHOD_NAMES: readonly ApiMethodName[] = [
     'meta.node.create',
     'meta.node.update',
     'meta.node.delete',
+    'meta.refresh',
     'meta.export',
     'meta.import',
     'paramset.get',

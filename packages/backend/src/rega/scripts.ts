@@ -135,6 +135,227 @@ export function isPlainRegaName(value: string): boolean {
     return /^[A-Za-z0-9_.:-]+$/.test(value);
 }
 
+/*
+ * Task 27: rooms and functions through ReGa's own objects.
+ *
+ * ReGa keeps rooms and functions as enum objects under `ID_ROOMS` and `ID_FUNCTIONS`, each holding
+ * the ids of the channels in it (`EnumUsedIDs()`), and a channel is put in or taken out with
+ * `Add(id)` / `Remove(id)` on the enum - which is what the WebUI does when a room is edited. The
+ * read script is `homematic-rega`'s `channels.rega`, `rooms.rega` and `functions.rega` in one
+ * round trip, plus the interface name of every device, because the metadata store keys objects by
+ * `<interface>.<address>` and the address alone is not a ref.
+ */
+
+/** Everything the ReGa metadata provider reads, in one script and one JSON document. */
+export const META_READ_SCRIPT = `string sDevId;
+string sChnId;
+string sEnumId;
+string sMember;
+string sIface;
+object oIface;
+boolean bFirst = true;
+boolean bFirstMember = true;
+Write('{"objects":[');
+foreach (sDevId, root.Devices().EnumUsedIDs()) {
+    object oDevice = dom.GetObject(sDevId);
+    if (oDevice.ReadyConfig()) {
+        sIface = "";
+        oIface = dom.GetObject(oDevice.Interface());
+        if (oIface) { sIface = oIface.Name(); }
+        if (bFirst) { bFirst = false; } else { Write(','); }
+        Write('{"id":' # sDevId # ',"address":"' # oDevice.Address() # '","interface":"' # sIface # '","name":"');
+        WriteURL(oDevice.Name());
+        Write('"}');
+        foreach (sChnId, oDevice.Channels()) {
+            object oChannel = dom.GetObject(sChnId);
+            Write(',{"id":' # sChnId # ',"address":"' # oChannel.Address() # '","interface":"' # sIface # '","name":"');
+            WriteURL(oChannel.Name());
+            Write('"}');
+        }
+    }
+}
+Write('],"rooms":[');
+bFirst = true;
+foreach (sEnumId, dom.GetObject(ID_ROOMS).EnumUsedIDs()) {
+    object oRoom = dom.GetObject(sEnumId);
+    if (bFirst) { bFirst = false; } else { Write(','); }
+    Write('{"id":' # sEnumId # ',"name":"');
+    WriteURL(oRoom.Name());
+    Write('","channels":[');
+    bFirstMember = true;
+    foreach (sMember, oRoom.EnumUsedIDs()) {
+        if (bFirstMember) { bFirstMember = false; } else { Write(','); }
+        Write(sMember);
+    }
+    Write(']}');
+}
+Write('],"functions":[');
+bFirst = true;
+foreach (sEnumId, dom.GetObject(ID_FUNCTIONS).EnumUsedIDs()) {
+    object oFunction = dom.GetObject(sEnumId);
+    if (bFirst) { bFirst = false; } else { Write(','); }
+    Write('{"id":' # sEnumId # ',"name":"');
+    WriteURL(oFunction.Name());
+    Write('","channels":[');
+    bFirstMember = true;
+    foreach (sMember, oFunction.EnumUsedIDs()) {
+        if (bFirstMember) { bFirstMember = false; } else { Write(','); }
+        Write(sMember);
+    }
+    Write(']}');
+}
+Write(']}');
+`;
+
+/** One device or channel as ReGa lists it. */
+export interface RegaMetaObject {
+    readonly id: number;
+    readonly address: string;
+    /** `BidCos-RF`, `HmIP-RF`, … - empty when ReGa does not name the interface. */
+    readonly interfaceName: string;
+    readonly name: string;
+}
+
+/** One room or one function: its ReGa id, its name and the channel ids in it. */
+export interface RegaMetaEnum {
+    readonly id: number;
+    readonly name: string;
+    readonly channels: readonly number[];
+}
+
+export interface RegaMetaSnapshot {
+    readonly objects: readonly RegaMetaObject[];
+    readonly rooms: readonly RegaMetaEnum[];
+    readonly functions: readonly RegaMetaEnum[];
+}
+
+/**
+ * Decodes what ReGa's `WriteURL()` produces: `%XX` and `%uXXXX` escapes whose bytes are ISO-8859-1
+ * characters, not UTF-8 sequences - which is why `decodeURIComponent` would throw on `K%FCche`.
+ * The same rule `homematic-rega` applies to its own scripts' output.
+ */
+export function unescapeRegaUrl(value: string): string {
+    return value.replace(
+        /%u([0-9a-f]{4})|%([0-9a-f]{2})/gi,
+        (_match, long: string | undefined, short: string | undefined) =>
+            String.fromCharCode(Number.parseInt(long ?? short ?? '0', 16)),
+    );
+}
+
+/** Reads what {@link META_READ_SCRIPT} wrote. Throws on anything that is not the expected shape. */
+export function parseMetaSnapshot(output: string): RegaMetaSnapshot {
+    const parsed: unknown = JSON.parse(output);
+    if (typeof parsed !== 'object' || parsed === null) {
+        throw new Error('the ReGa metadata script answered with no document');
+    }
+    const raw = parsed as {objects?: unknown; rooms?: unknown; functions?: unknown};
+    return {
+        objects: parseObjects(raw.objects),
+        rooms: parseEnums(raw.rooms, 'rooms'),
+        functions: parseEnums(raw.functions, 'functions'),
+    };
+}
+
+function parseObjects(value: unknown): RegaMetaObject[] {
+    if (!Array.isArray(value)) {
+        throw new Error('the ReGa metadata script answered without an object list');
+    }
+    const objects: RegaMetaObject[] = [];
+    for (const item of value as unknown[]) {
+        if (typeof item !== 'object' || item === null) {
+            continue;
+        }
+        const entry = item as {id?: unknown; address?: unknown; interface?: unknown; name?: unknown};
+        if (typeof entry.id !== 'number' || typeof entry.address !== 'string' || entry.address === '') {
+            continue;
+        }
+        objects.push({
+            id: entry.id,
+            address: entry.address,
+            interfaceName: typeof entry.interface === 'string' ? entry.interface : '',
+            name: typeof entry.name === 'string' ? unescapeRegaUrl(entry.name) : '',
+        });
+    }
+    return objects;
+}
+
+function parseEnums(value: unknown, what: string): RegaMetaEnum[] {
+    if (!Array.isArray(value)) {
+        throw new Error(`the ReGa metadata script answered without the ${what}`);
+    }
+    const enums: RegaMetaEnum[] = [];
+    for (const item of value as unknown[]) {
+        if (typeof item !== 'object' || item === null) {
+            continue;
+        }
+        const entry = item as {id?: unknown; name?: unknown; channels?: unknown};
+        if (typeof entry.id !== 'number') {
+            continue;
+        }
+        const channels = Array.isArray(entry.channels)
+            ? (entry.channels as unknown[]).filter((id): id is number => typeof id === 'number')
+            : [];
+        enums.push({id: entry.id, name: typeof entry.name === 'string' ? unescapeRegaUrl(entry.name) : '', channels});
+    }
+    return enums;
+}
+
+/** Which of ReGa's two lists a node belongs to. */
+export type RegaEnumKind = 'room' | 'function';
+
+const ENUM_ROOT: Readonly<Record<RegaEnumKind, string>> = {room: 'ID_ROOMS', function: 'ID_FUNCTIONS'};
+
+/**
+ * A new room or function: an enum object, named, and put into ReGa's list of them. The script
+ * writes the new id, which is the only thing the caller needs to address it from then on.
+ */
+export function createEnumNodeScript(kind: RegaEnumKind, name: string): string {
+    return [
+        'object oNew = dom.CreateObject(OT_ENUM);',
+        `oNew.Name("${escapeRegaString(name)}");`,
+        `dom.GetObject(${ENUM_ROOT[kind]}).Add(oNew.ID());`,
+        'Write(oNew.ID());',
+        '',
+    ].join('\n');
+}
+
+/** Reads the id {@link createEnumNodeScript} wrote, or `undefined` when ReGa wrote something else. */
+export function parseCreatedId(output: string): number | undefined {
+    const trimmed = output.trim();
+    return /^\d+$/.test(trimmed) ? Number(trimmed) : undefined;
+}
+
+/**
+ * Removes a room or function: out of ReGa's list first, then the object itself. The memberships go
+ * with it, which is what the caller has already confirmed with the user (`has-members`).
+ */
+export function deleteEnumNodeScript(kind: RegaEnumKind, id: number): string {
+    return [
+        `object oGone = dom.GetObject(${String(id)});`,
+        `if (oGone) { dom.GetObject(${ENUM_ROOT[kind]}).Remove(${String(id)}); dom.DeleteObject(${String(id)}); }`,
+        '',
+    ].join('\n');
+}
+
+/** One membership change: a channel into or out of one room or function. */
+export interface RegaMembershipChange {
+    readonly enumId: number;
+    readonly channelId: number;
+    readonly on: boolean;
+}
+
+/** `Add` / `Remove` on the enum, one statement per change; `undefined` when there is none. */
+export function membershipScript(changes: readonly RegaMembershipChange[]): string | undefined {
+    if (changes.length === 0) {
+        return undefined;
+    }
+    const lines = changes.map(
+        (change) =>
+            `dom.GetObject(${String(change.enumId)}).${change.on ? 'Add' : 'Remove'}(${String(change.channelId)});`,
+    );
+    return `${lines.join('\n')}\n`;
+}
+
 /**
  * D-32: does this user exist, and what is their level?
  *

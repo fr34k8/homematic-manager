@@ -6,10 +6,11 @@
  * openccu-lite box, follows its change stream and **writes back**, because on that box this
  * application is the editor of the store: there is no ReGaHSS and no WebUI to do it instead.
  *
- * The ReGa path is untouched by all of this (their invariant 1, our D-2): ReGa still supplies names
- * on a CCU, still writes a rename back through its script, and a box that has ReGa never has a
- * metadata API. What the provider adds is the taxonomy ReGa's rooms and functions were, for the
- * systems that have no ReGa at all.
+ * `rega` (task 27) is the third: on a CCU with ReGaHSS the rooms and functions are ReGa's own enum
+ * objects, read and written through the script transport the names already use, so that one
+ * editing UI serves a CCU and a box. A box that has ReGa never has a metadata API, so the three
+ * never compete: the box's API wins when it answers, ReGa when it is on and answered, and `local`
+ * is what every other system - Homegear, a bare rfd, the desktop without a CCU - gets.
  */
 
 import type {MetaDocument, MetaEnum, MetaImportMode, MetaNodePatch, MetaState} from '@homematic-manager/core';
@@ -39,7 +40,7 @@ export interface MetaProviderEvents {
  * box on the network; every read is synchronous because both keep the document in memory.
  */
 export interface MetadataProvider {
-    readonly kind: 'local' | 'occulite';
+    readonly kind: 'local' | 'occulite' | 'rega';
     state(): MetaState;
     /** Loads the document (a file, or the box's snapshot) and starts following changes. */
     start(): Promise<void>;

@@ -18,7 +18,8 @@ import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import type {ConnectionConfig, MetaState} from '@homematic-manager/core';
 
 import {NameStore} from '../cache/names.js';
-import {MetaService, metaBaseUrl} from './service.js';
+import {META_READ_SCRIPT} from '../rega/scripts.js';
+import {MetaService, metaBaseUrl, type MetaRegaLink} from './service.js';
 
 let dataDir: string;
 let cacheDir: string;
@@ -111,6 +112,7 @@ async function service(
     overrides: Partial<ConnectionConfig>,
     fetchImpl?: typeof globalThis.fetch,
     interfaceOf: (address: string) => string | undefined = () => 'BidCos-RF',
+    rega?: MetaRegaLink,
 ): Promise<MetaService> {
     return MetaService.create({
         connection: connection(overrides),
@@ -123,7 +125,30 @@ async function service(
         onNotice: (level, message) => notices.push(`${level}: ${message}`),
         localTokenFile: path.join(dataDir, 'no-local-token'),
         ...(fetchImpl === undefined ? {} : {fetch: fetchImpl}),
+        ...(rega === undefined ? {} : {rega}),
     });
+}
+
+/** A ReGa made of a function: the read script answers with one channel in one room. */
+function fakeRega(available = true): MetaRegaLink & {scripts: string[]} {
+    const scripts: string[] = [];
+    return {
+        available,
+        scripts,
+        exec: (script) => {
+            scripts.push(script);
+            return Promise.resolve({
+                output:
+                    script === META_READ_SCRIPT
+                        ? JSON.stringify({
+                              objects: [{id: 1, address: 'ABC0000001:1', interface: 'BidCos-RF', name: 'Deckenlampe'}],
+                              rooms: [{id: 10, name: 'Erdgeschoss', channels: [1]}],
+                              functions: [],
+                          })
+                        : '',
+            });
+        },
+    };
 }
 
 beforeEach(async () => {
@@ -306,5 +331,67 @@ describe('the taxonomy', () => {
         const revision = meta.state().revision;
         await meta.assign(['BidCos-RF.A:1'], 'room/wohnzimmer', true);
         expect(meta.state().revision).toBe(revision);
+    });
+});
+
+describe('ReGa as the store (task 27)', () => {
+    it('is what auto picks when there is no box and ReGa answered', async () => {
+        const box = fakeBox({status: 404});
+        const rega = fakeRega();
+        const meta = await service({metaUrl: 'http://ccu', rega: true}, box.fetch, undefined, rega);
+        expect(meta.kind).toBe('rega');
+        expect(meta.onBox).toBe(false);
+        expect(notices.join('\n')).toContain('rooms and functions come from ReGa');
+
+        await meta.start();
+        expect(rega.scripts).toEqual([META_READ_SCRIPT]);
+        expect(meta.state()).toMatchObject({provider: 'rega', reachable: true, writable: true, flat: true});
+        expect(meta.objects()['BidCos-RF.ABC0000001:1']?.rooms).toEqual(['Erdgeschoss']);
+        // the names ReGa holds are the names the application shows
+        expect(names.get('ABC0000001:1')).toBe('Deckenlampe');
+        await meta.refresh();
+        expect(rega.scripts).toHaveLength(2);
+    });
+
+    it('stays local when ReGa is on but has not answered', async () => {
+        const box = fakeBox({status: 404});
+        const meta = await service({metaUrl: 'http://ccu', rega: true}, box.fetch, undefined, fakeRega(false));
+        expect(meta.kind).toBe('local');
+    });
+
+    it('lets the box win over ReGa', async () => {
+        const box = fakeBox();
+        const meta = await service({metaUrl: 'http://box', rega: true}, box.fetch, undefined, fakeRega());
+        expect(meta.kind).toBe('occulite');
+    });
+
+    it('insists on ReGa when the profile says so, even before it answered, and never probes', async () => {
+        const box = fakeBox();
+        const rega = fakeRega(false);
+        const meta = await service({metaUrl: 'http://box', metaProvider: 'rega'}, box.fetch, undefined, rega);
+        expect(meta.kind).toBe('rega');
+        expect(box.calls).toEqual([]);
+    });
+
+    it('says so when the profile asks for ReGa and ReGa is switched off', async () => {
+        const box = fakeBox({status: 404});
+        const meta = await service({metaUrl: 'http://ccu', metaProvider: 'rega'}, box.fetch);
+        expect(meta.kind).toBe('local');
+        expect(notices.join('\n')).toContain('ReGa is switched off');
+    });
+
+    it('does not take ReGa when the profile says local', async () => {
+        const meta = await service({metaProvider: 'local'}, undefined, undefined, fakeRega());
+        expect(meta.kind).toBe('local');
+    });
+
+    it('turns "assign these rows" into Add/Remove statements on ReGa', async () => {
+        const box = fakeBox({status: 404});
+        const rega = fakeRega();
+        const meta = await service({metaUrl: 'http://ccu', rega: true}, box.fetch, undefined, rega);
+        await meta.start();
+        await meta.assign(['BidCos-RF.ABC0000001:1'], 'room/r10', false);
+        expect(rega.scripts.at(-1)).toBe('dom.GetObject(10).Remove(1);\n');
+        expect(meta.objects()['BidCos-RF.ABC0000001:1']?.rooms).toEqual([]);
     });
 });

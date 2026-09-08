@@ -141,6 +141,20 @@ export class RegaService {
     }
 
     /**
+     * Runs one script and answers with what it wrote.
+     *
+     * Task 27: the ReGa metadata provider's transport. Unlike everything else here it *throws* -
+     * the provider turns the failure into its own state, and a write the user asked for has to be
+     * reported as refused rather than quietly lost. Rejects at once when ReGa is off (D-2).
+     */
+    exec(script: string): Promise<{output: string; objects: Record<string, string>}> {
+        if (!this.#client) {
+            return Promise.reject(new Error('ReGa is switched off'));
+        }
+        return this.#client.exec(script);
+    }
+
+    /**
      * Renames on the CCU. The local store has already been updated by the caller, so a failure here
      * only means that the CCU still shows the old name - reported, never thrown.
      */

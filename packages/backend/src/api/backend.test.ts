@@ -7,6 +7,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {ApiEventName, DeviceDescription, RpcValue} from '@homematic-manager/core';
 
 import {BackendError} from '../errors.js';
+import {META_READ_SCRIPT} from '../rega/scripts.js';
 import type {RpcClient, RpcClientOptions, RpcOutValue} from '../rpc/client.js';
 import type {CallbackHandler, CallbackServerSet} from '../rpc/server.js';
 import {Backend, type BackendOptions} from './backend.js';
@@ -128,7 +129,23 @@ async function harness(
         getChannels: vi.fn(() =>
             Promise.resolve(options.regaChannels ?? [{id: 4711, address: 'ABC1:1', name: 'Lamp'}]),
         ),
-        exec: vi.fn((script: string) => Promise.resolve({output: script, objects: {}})),
+        // task 27: the rooms-and-functions script answers with the same channel in one room, so
+        // that ReGa is the metadata store of every harness; every other script is echoed back
+        exec: vi.fn((script: string) =>
+            Promise.resolve({
+                output:
+                    script === META_READ_SCRIPT
+                        ? JSON.stringify({
+                              objects: (options.regaChannels ?? [{id: 4711, address: 'ABC1:1', name: 'Lamp'}]).map(
+                                  (channel) => ({...channel, interface: 'HmIP-RF'}),
+                              ),
+                              rooms: [{id: 9000, name: 'Flur', channels: [4711]}],
+                              functions: [],
+                          })
+                        : script,
+                objects: {},
+            }),
+        ),
     };
 
     const backend = await Backend.open({
@@ -607,6 +624,70 @@ describe('interfaces and rega', () => {
         const backend = await Backend.open({dataDir: dir, importLegacy: false});
         expect(await backend.request('rega.state')).toEqual({enabled: true, reachable: false, names: 0});
         await backend.stop();
+    });
+});
+
+describe('rooms and functions through ReGa (task 27)', () => {
+    /**
+     * A CCU: no metadata API, and the detection answered at once rather than by a timeout. The
+     * detection is not awaited by the connect (D-40), so every test first asks for something that
+     * waits for it - `meta.objects` does - before it looks at the state.
+     */
+    /** The scripts ReGa was sent since the last `mockClear()`. */
+    function scriptsOf(h: Harness): string[] {
+        return (h.rega.exec.mock.calls as unknown as [string][]).map(([script]) => script);
+    }
+
+    async function regaHarness(connection: Record<string, unknown> = {}): Promise<Harness> {
+        const h = await harness({
+            connection,
+            backend: {metaOptions: {fetch: () => Promise.resolve(new Response('not found', {status: 404}))}},
+        });
+        await h.backend.request('meta.objects');
+        return h;
+    }
+
+    it('makes ReGa the metadata store of a CCU, flat, with its rooms as the taxonomy', async () => {
+        const h = await regaHarness();
+        expect(await h.backend.request('meta.state')).toMatchObject({provider: 'rega', reachable: true, flat: true});
+        const snapshot = await h.backend.request('meta.get');
+        expect(snapshot.enums['room']?.tree).toEqual([{id: 'r9000', name: 'Flur'}]);
+        expect(snapshot.objects['HmIP-RF.ABC1:1']?.rooms).toEqual(['Flur']);
+        await h.backend.stop();
+    });
+
+    it('renames through the provider once, not through the name service as well', async () => {
+        const h = await regaHarness();
+        h.rega.exec.mockClear();
+        await h.backend.request('names.set', [{address: 'ABC1:1', name: 'Lampe'}]);
+        const renames = scriptsOf(h).filter((script) => script.includes('Name('));
+        expect(renames).toEqual(['dom.GetObject(4711).Name("Lampe");\n']);
+        expect(await h.backend.request('names.get')).toEqual({'ABC1:1': 'Lampe'});
+        await h.backend.stop();
+    });
+
+    it('assigns through Add/Remove, refreshes on request, and refuses a floor', async () => {
+        const h = await regaHarness();
+        h.rega.exec.mockClear();
+        await h.backend.request('meta.assign', ['HmIP-RF.ABC1:1'], 'room/r9000', false);
+        expect(scriptsOf(h)).toEqual(['dom.GetObject(9000).Remove(4711);\n']);
+        expect((await h.backend.request('meta.objects'))['HmIP-RF.ABC1:1']?.rooms).toEqual([]);
+
+        h.rega.exec.mockClear();
+        const state = await h.backend.request('meta.refresh');
+        expect(scriptsOf(h)).toEqual([META_READ_SCRIPT]);
+        expect(state.provider).toBe('rega');
+        // the read script's answer still has the channel in the room: ReGa's word wins
+        expect((await h.backend.request('meta.objects'))['HmIP-RF.ABC1:1']?.rooms).toEqual(['Flur']);
+
+        await expect(h.backend.request('meta.node.create', 'room', 'room/r9000', 'Unten')).rejects.toThrow('flat list');
+        await h.backend.stop();
+    });
+
+    it('keeps the profile store when ReGa is switched off', async () => {
+        const h = await regaHarness({rega: false});
+        expect(await h.backend.request('meta.state')).toMatchObject({provider: 'local', reachable: true});
+        await h.backend.stop();
     });
 });
 

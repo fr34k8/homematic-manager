@@ -6,6 +6,9 @@
  * answers 404 or HTML and everything stays as it was. No `/VERSION` sniffing, no host names, no
  * ports - a user who moves a profile between a CCU and a box must not have to edit anything
  * (their invariant 2). `metaProvider: 'local'` skips the probe, `'occulite'` insists on the box.
+ * Task 27 adds the third answer: with no box, a ReGa that is on and answered
+ * (`options.rega.available`) becomes the store - its rooms and functions are the CCU's own - and
+ * `'rega'` insists on that.
  *
  * The service is also where the store's identity meets this application's. The store keys objects
  * by **ref** (`<interface>.<address>`); the grids, the caches and the whole existing API key names
@@ -38,6 +41,14 @@ import {normaliseSid, readLocalToken} from './credentials.js';
 import {LocalMetaProvider} from './localProvider.js';
 import {OcculiteProvider} from './occuliteProvider.js';
 import type {MetadataProvider, MetaMembershipEntry} from './provider.js';
+import {RegaMetaProvider, type RegaScriptRunner} from './regaProvider.js';
+
+/** What the service needs to know about ReGa to offer it as a provider (task 27). */
+export interface MetaRegaLink {
+    /** ReGa is on and has answered at least once - the `auto` choice takes it only then. */
+    readonly available: boolean;
+    readonly exec: RegaScriptRunner;
+}
 
 /** One name to set, as the rest of the backend spells it: by address. */
 export interface MetaNameChange {
@@ -55,6 +66,11 @@ export interface MetaServiceOptions {
     readonly names: NameStore;
     /** Which interface a device or channel address belongs to, from the device caches. */
     readonly interfaceOf: (address: string) => string | undefined;
+    /**
+     * The ReGa of this connection, when it is switched on; absent otherwise. `auto` picks it when
+     * there is no box and it answered, `rega` insists on it.
+     */
+    readonly rega?: MetaRegaLink | undefined;
     /** The document changed: names, enums or objects. */
     readonly onChanged: () => void;
     readonly onStateChanged: (state: MetaState) => void;
@@ -118,6 +134,19 @@ export class MetaService {
             service.#provider = service.#buildLocal();
             return service;
         }
+        if (choice === 'rega') {
+            if (options.rega === undefined) {
+                options.onNotice(
+                    'warn',
+                    'the profile asks for ReGa as the store of rooms and functions, but ReGa is switched off: ' +
+                        'names and rooms stay in this profile',
+                );
+                service.#provider = service.#buildLocal();
+                return service;
+            }
+            service.#provider = service.#buildRega(options.rega);
+            return service;
+        }
         const baseUrl = metaBaseUrl(options.connection);
         const version =
             baseUrl === ''
@@ -130,6 +159,11 @@ export class MetaService {
                     `no openccu-lite metadata API at ${baseUrl || 'the configured host'}: the profile asks for it, ` +
                         'so names and rooms stay in this profile until the box answers',
                 );
+            }
+            if (options.rega?.available === true) {
+                options.onNotice('info', 'rooms and functions come from ReGa');
+                service.#provider = service.#buildRega(options.rega);
+                return service;
             }
             service.#provider = service.#buildLocal();
             return service;
@@ -144,7 +178,7 @@ export class MetaService {
         return service;
     }
 
-    get kind(): 'local' | 'occulite' {
+    get kind(): 'local' | 'occulite' | 'rega' {
         return this.#provider.kind;
     }
 
@@ -189,6 +223,11 @@ export class MetaService {
 
     async stop(): Promise<void> {
         await this.#provider.stop();
+    }
+
+    /** Reads the store again - what `meta.refresh` is, and what a ReGa without a change stream needs. */
+    async refresh(): Promise<void> {
+        await this.#provider.refresh();
     }
 
     /**
@@ -370,6 +409,19 @@ export class MetaService {
     #buildLocal(): MetadataProvider {
         return new LocalMetaProvider({
             file: path.join(this.#options.dataDir, 'meta.json'),
+            onChanged: () => {
+                this.applyNames();
+                this.#options.onChanged();
+            },
+            onStateChanged: this.#options.onStateChanged,
+            onNotice: this.#options.onNotice,
+        });
+    }
+
+    #buildRega(rega: MetaRegaLink): MetadataProvider {
+        return new RegaMetaProvider({
+            exec: rega.exec,
+            interfaceOf: this.#options.interfaceOf,
             onChanged: () => {
                 this.applyNames();
                 this.#options.onChanged();

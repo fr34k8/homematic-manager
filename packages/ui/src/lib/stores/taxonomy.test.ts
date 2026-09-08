@@ -131,6 +131,18 @@ describe('TaxonomyStore', () => {
         expect(store.options('room').map((option) => option.path)).not.toContain('room/werkstatt');
     });
 
+    it('reads the store again on request - ReGa has no change stream (task 27)', async () => {
+        const transport = new MockTransport({demo: true});
+        const {store, notices} = build(transport);
+        await store.load();
+        await expect(store.refresh()).resolves.toBe(true);
+        expect(transport.countOf('meta.refresh')).toBe(1);
+        expect(store.state?.provider).toBe('local');
+        transport.fail('meta.refresh', 'ReGa is not answering');
+        await expect(store.refresh()).resolves.toBe(false);
+        expect(notices.items.at(-1)?.message).toBe('meta.refresh: ReGa is not answering');
+    });
+
     it('turns a refused write into a notice and answers false', async () => {
         const transport = new MockTransport({demo: true});
         const {store, notices} = build(transport);

@@ -8,4 +8,5 @@ export * from './credentials.js';
 export * from './provider.js';
 export * from './localProvider.js';
 export * from './occuliteProvider.js';
+export * from './regaProvider.js';
 export * from './service.js';

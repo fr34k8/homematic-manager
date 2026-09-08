@@ -218,7 +218,7 @@ describe('the metadata store in the profile (D-40)', () => {
     });
 
     it('drops a provider that does not exist rather than carrying it into the backend', () => {
-        expect(normaliseConnection({host: 'ccu', metaProvider: 'rega'}).metaProvider).toBeUndefined();
+        expect(normaliseConnection({host: 'ccu', metaProvider: 'cloud'}).metaProvider).toBeUndefined();
         expect(normaliseConnection({host: 'ccu', metaProvider: 7}).metaProvider).toBeUndefined();
         expect(normaliseConnection({host: 'ccu', metaToken: 42}).metaToken).toBeUndefined();
     });

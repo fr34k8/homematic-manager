@@ -2,6 +2,7 @@
     import {parseRef} from '@homematic-manager/core';
 
     import Dialog from '../../lib/components/Dialog.svelte';
+    import ToolbarButton from '../../lib/components/ToolbarButton.svelte';
     import {getStores} from '../../lib/stores/context.js';
     import {canMoveUnder, TAXONOMY_IDS, type TaxonomyId} from '../../lib/util/taxonomy.js';
 
@@ -111,6 +112,12 @@
         }
     }
 
+    async function refresh(): Promise<void> {
+        busy = true;
+        await stores.taxonomy.refresh();
+        busy = false;
+    }
+
     function onKey(event: KeyboardEvent): void {
         if (event.key === 'Enter') {
             void apply();
@@ -126,18 +133,28 @@
 -->
 <Dialog bind:open title={t('Rooms and functions')} width="600px" height="560px" testId="taxonomy-dialog">
     <div class="hmm-tax">
-        <div class="hmm-tax-tabs" role="tablist" aria-label={t('Rooms and functions')}>
-            {#each TAXONOMY_IDS as id (id)}
-                <button
-                    type="button"
-                    class="hmm-button hmm-tax-tab"
-                    class:hmm-tax-tab-active={current === id}
-                    role="tab"
-                    aria-selected={current === id}
-                    data-testid={`taxonomy-tab-${id}`}
-                    onclick={() => switchTo(id)}>{id === 'room' ? t('Rooms') : t('Functions')}</button
-                >
-            {/each}
+        <div class="hmm-tax-tabs">
+            <div class="hmm-tax-tablist" role="tablist" aria-label={t('Rooms and functions')}>
+                {#each TAXONOMY_IDS as id (id)}
+                    <button
+                        type="button"
+                        class="hmm-button hmm-tax-tab"
+                        class:hmm-tax-tab-active={current === id}
+                        role="tab"
+                        aria-selected={current === id}
+                        data-testid={`taxonomy-tab-${id}`}
+                        onclick={() => switchTo(id)}>{id === 'room' ? t('Rooms') : t('Functions')}</button
+                    >
+                {/each}
+            </div>
+            <!-- task 27: ReGa has no change stream, so a room made in the WebUI arrives on request -->
+            <ToolbarButton
+                title={t('Refresh')}
+                icon="⟳"
+                disabled={busy || !stores.taxonomy.available}
+                testId="taxonomy-refresh"
+                onclick={() => void refresh()}
+            />
         </div>
 
         {#if current === 'room'}
@@ -307,6 +324,12 @@
     }
 
     .hmm-tax-tabs {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .hmm-tax-tablist {
         display: flex;
         gap: 4px;
     }
