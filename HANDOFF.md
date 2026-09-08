@@ -17,6 +17,14 @@ about every half hour while the agent works; the timestamp above is the last ref
 
 ## State of the branch
 
+- **2026-09-08: `3.0.0-beta.5`**, tagged `v3.0.0-beta.5` by the agent on the maintainer's explicit
+  instruction ("tag and push, i want a 3.0.0-beta.5 now"), after lint, typecheck, the unit
+  suites, the build with e2e and the addon container test were green. What it carries over
+  beta.4: the HmIP service-message suppression section and the ROUTING_TABLE graph in the
+  paramset dialog (task 26, neither tried against real HmIP hardware yet), `127.0.0.1` as a
+  callback candidate (task 27), the control-character rule for names. Tasks 25 and 27's ReGa
+  half are still open; the release draft is the maintainer's to publish.
+
 - Branch `master` since the beta (D-38, 2026-09-06): the full history, no squashing; `3.0-dev` is
   left behind at the same commits. Push `master` from WSL after each archived task or feature
   batch; nothing on it is secret. The public release `v3.0.0-beta.0` exists; the version on

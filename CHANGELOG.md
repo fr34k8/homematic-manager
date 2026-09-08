@@ -6,6 +6,29 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [3.0.0-beta.5] — 2026-09-08
+
+The first beta that talks to the HmIP addendum, and a smaller change for a box.
+
+- **HmIP service messages can be suppressed.** The VALUES dialog of a channel on an HmIP
+  interface shows a *Service messages* section: one checkbox per service datapoint (`UNREACH`,
+  `LOWBAT`, the `ERROR*` family…), *Suppress all* / *Unsuppress all*, backed by eQ-3's
+  `getSuppressedServiceMessages` and `suppressServiceMessages`. A suppressed message is one
+  whose parameter reports a value that raises none — the CCU shows it as inactive. An interface
+  that does not offer the methods (BidCos, Homegear) shows nothing. Not yet tried against a
+  real HmIP server; the demo transport has no such method.
+- **An HmIP router's routing table, as a graph.** Opening `ROUTING_TABLE` on a device with the
+  router module enabled draws the router in the middle, its neighbours and next hops on a ring,
+  what is routed through them outside, hops and RSSI on the edges, static routes dashed, with the
+  full table underneath. Read once when the dialog opens: every read goes to the device over the
+  air. Not yet seen with a real router.
+- **`127.0.0.1` is offered as a callback address.** On an openccu-lite box the interface
+  processes bind the loopback only, so for the Homematic Manager running on the box it is the
+  one address they can call back; it was never in the list. Appended last, so nothing that took
+  the first candidate changes.
+- **Fixed:** a name written to a metadata store may no longer contain control characters
+  (openccu-lite refuses them; the store now says so before the box does).
+
 ## [3.0.0-beta.4] — 2026-09-06
 
 - **Fixed:** stopping the backend did not wait for the metadata detection, so a store that
