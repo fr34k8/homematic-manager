@@ -777,8 +777,16 @@ all* / *Unsuppress all* — fed by `getSuppressedServiceMessages` and written wi
 `suppressServiceMessages` through the generic `rpc.call`
 (`ParamsetStore.suppressedServiceMessages` / `.suppressServiceMessages`). An interface without
 the method answers nothing and the section stays away, with no notice. Not yet seen against a
-real HmIP server: the demo transport has no such method. Open: the console's signature hint,
-and the routing-table graph.
+real HmIP server: the demo transport has no such method.
+
+**Done 2026-09-08, the second part**: opening a router's `ROUTING_TABLE` paramset (the button
+comes from the device's `PARAMSETS`) draws the table as a graph — the router in the middle,
+neighbours and next hops on a ring, everything routed through them outside, hops and RSSI on
+the router's edges, static routes dashed — with the full table underneath
+(`lib/util/routingTable.ts`: `parseRoutingTable`, `routingGraph`; `RoutingTable.svelte`). The
+raw numbered rows stay in the dialog, folded away. Read once when the dialog opens, as the
+addendum's duty-cycle warning asks. Not yet seen with a real router. Open: the console's
+signature hint.
 
 ## 27. Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener
 

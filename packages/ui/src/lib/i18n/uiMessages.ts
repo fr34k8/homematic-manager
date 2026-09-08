@@ -227,6 +227,27 @@ export const UI_MESSAGES: MessageCatalogue = {
     // Task 26: HmIP service-message suppression in the VALUES dialog of channel 0.
     'Suppress {parameter}': {de: '{parameter} unterdrücken', en: 'Suppress {parameter}'},
     'Suppress all': {de: 'Alle unterdrücken', en: 'Suppress all'},
+    // Task 26: the ROUTING_TABLE paramset of an HmIP router, as a graph and a table.
+    'Routing table': {de: 'Routing-Tabelle', en: 'Routing table'},
+    'Read from the device itself; every read costs duty cycle, so it is read once when this opens.': {
+        de: 'Direkt vom Gerät gelesen; jedes Lesen kostet Duty Cycle, deshalb einmal beim Öffnen.',
+        en: 'Read from the device itself; every read costs duty cycle, so it is read once when this opens.',
+    },
+    'No routes: the device reported an empty table.': {
+        de: 'Keine Routen: das Gerät hat eine leere Tabelle gemeldet.',
+        en: 'No routes: the device reported an empty table.',
+    },
+    Destination: {de: 'Ziel', en: 'Destination'},
+    'Next hop': {de: 'Nächster Hop', en: 'Next hop'},
+    Hops: {de: 'Hops', en: 'Hops'},
+    hops: {de: {one: 'Hop', other: 'Hops'}, en: {one: 'hop', other: 'hops'}},
+    Neighbour: {de: 'Nachbar', en: 'Neighbour'},
+    Static: {de: 'Statisch', en: 'Static'},
+    Router: {de: 'Router', en: 'Router'},
+    'Access controller': {de: 'Access Controller', en: 'Access controller'},
+    Portable: {de: 'Tragbar', en: 'Portable'},
+    'Listener mode': {de: 'Empfangsmodus', en: 'Listener mode'},
+    Valid: {de: 'Gültig', en: 'Valid'},
     'Unsuppress all': {de: 'Keine unterdrücken', en: 'Unsuppress all'},
     'A suppressed one reports a value that raises no message; the CCU shows it as inactive.': {
         de: 'Eine unterdrückte meldet einen Wert, der keine Meldung auslöst; die CCU zeigt sie als inaktiv.',

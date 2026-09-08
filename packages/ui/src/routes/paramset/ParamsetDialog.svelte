@@ -18,6 +18,7 @@
 
     import DeviceEditors from './editors/DeviceEditors.svelte';
     import ParameterRow from './ParameterRow.svelte';
+    import RoutingTable from './RoutingTable.svelte';
     import WritePreviewDialog from './WritePreviewDialog.svelte';
 
     interface Props {
@@ -435,7 +436,11 @@
 
         <DeviceEditors specs={editors} values={merged()} {channelType} onchange={changeMany} />
 
-        <div class="hmm-paramset-list">
+        {#if paramset === 'ROUTING_TABLE'}
+            <!-- task 26: an HmIP router's table is read-only and numbered; a graph says more than rows -->
+            <RoutingTable values={original} self={address.split(':')[0] ?? address} />
+        {/if}
+        <div class="hmm-paramset-list" class:hmm-paramset-raw={paramset === 'ROUTING_TABLE'}>
             {#each shownFields as field (field.name)}
                 <ParameterRow
                     {field}
@@ -514,6 +519,10 @@
         display: flex;
         gap: 8px;
         margin-top: 4px;
+    }
+    /* task 26: under the routing graph the raw numbered rows stay reachable, but folded away */
+    .hmm-paramset-raw {
+        display: none;
     }
     .hmm-paramset-option {
         display: flex;
