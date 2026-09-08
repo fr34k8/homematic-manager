@@ -1,4 +1,4 @@
-# Handoff — 2026-09-06
+# Handoff — 2026-09-09
 
 Where the 3.0 rebuild stands, so that a new session (after a usage-limit pause, on another
 machine, with no conversation history) can continue without re-deriving anything. Refreshed
@@ -16,6 +16,19 @@ about every half hour while the agent works; the timestamp above is the last ref
    which BidCos-RF devices sit where.
 
 ## State of the branch
+
+- **2026-09-09: tasks 25 and 27 done, three local commits on `master`, unpushed** (`920580a`
+  taxonomy UI, `33d530e` ReGa provider, `4b24b53` docs and archive). The grids have rooms /
+  functions columns, multi-select assign, room and function filters (a floor matches what is
+  below it), `TaxonomyDialog` (tree for rooms, list for functions, add/rename/move/delete with
+  members listed first), `MetaIndicator` plus a *Names and rooms* settings section. The `rega`
+  provider (`packages/backend/src/meta/regaProvider.ts`) reads and writes rooms, functions and
+  names through ReGa scripts behind the same `MetadataProvider` interface; flat (no floors), no
+  change stream (⟳ / `meta.refresh`). **Not run against a CCU** — hm-simulator's ReGa mock knows
+  only `Name()`, so the `OT_ENUM`/`DeleteObject`/`Interface()` idioms are from the script
+  reference; the first lab pass on the CCU3 (create, rename, assign, delete one room, compare
+  with the WebUI) is the gate before a release carries it. Verified by the main session:
+  lint, typecheck, `npm test` 2446 passed / 10 skipped (148 files). Push is the maintainer's.
 
 - **2026-09-08: `3.0.0-beta.5`**, tagged `v3.0.0-beta.5` by the agent on the maintainer's explicit
   instruction ("tag and push, i want a 3.0.0-beta.5 now"), after lint, typecheck, the unit
