@@ -11,8 +11,8 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 The first beta that talks to the HmIP addendum, and a smaller change for a box.
 
 - **HmIP service messages can be suppressed.** The VALUES dialog of a channel on an HmIP
-  interface shows a *Service messages* section: one checkbox per service datapoint (`UNREACH`,
-  `LOWBAT`, the `ERROR*` family…), *Suppress all* / *Unsuppress all*, backed by eQ-3's
+  interface shows a _Service messages_ section: one checkbox per service datapoint (`UNREACH`,
+  `LOWBAT`, the `ERROR*` family…), _Suppress all_ / _Unsuppress all_, backed by eQ-3's
   `getSuppressedServiceMessages` and `suppressServiceMessages`. A suppressed message is one
   whose parameter reports a value that raises none — the CCU shows it as inactive. An interface
   that does not offer the methods (BidCos, Homegear) shows nothing. Not yet tried against a
