@@ -1,4 +1,4 @@
-# Handoff — 2026-09-09
+# Handoff — 2026-09-08 (evening)
 
 Where the 3.0 rebuild stands, so that a new session (after a usage-limit pause, on another
 machine, with no conversation history) can continue without re-deriving anything. Refreshed
@@ -6,10 +6,11 @@ about every half hour while the agent works; the timestamp above is the last ref
 
 ## Read first
 
-1. `AGENTS.md` — the rules (WSL only, LF, D-18 versioning, never tag/release/publish/push to
-   `master`; pushing `3.0-dev` is allowed for the main session, D-21).
-2. `ROADMAP.md` — decisions D-1..D-27, tasks 2–17, effort, open questions OQ-12..OQ-14, lab notes.
-   Done tasks are ticked in the Contents; each has a report in `roadmap-archive/task-N.md`.
+1. `AGENTS.md` — the rules (WSL only, LF, D-18 versioning, never tag/release/publish without the
+   maintainer's word; pushing `master` for CI is the main session's, D-21/D-38).
+2. `ROADMAP.md` — decisions D-1..D-41, tasks 2–27 (all closed), open questions (OQ-12 is the
+   recurring toolchain check, the rest are answered), lab notes. Done tasks are ticked in the
+   Contents; each has a report in `roadmap-archive/task-N.md`.
 3. `docs/analysis-2026-09.md` — the analysis the roadmap is built on (only when a decision needs
    its background).
 4. The private lab note `~/repos/redmatic-lab.md` (never in the repo) — lab boxes, credentials,
@@ -17,18 +18,31 @@ about every half hour while the agent works; the timestamp above is the last ref
 
 ## State of the branch
 
-- **2026-09-09: tasks 25 and 27 done, three local commits on `master`, unpushed** (`920580a`
+- **2026-09-08 evening: `3.0.0-beta.6`, on the maintainer's instruction of 2026-09-09 ("finish
+  every open task, then release beta.6").** What it carries over beta.5: the rooms and functions UI
+  (task 25), ReGa as the store of rooms and functions on a CCU (task 27, **lab-passed on the CCU3
+  on 2026-09-08** - create, rename, assign, read back, remove, delete, all agreeing with ReGa's own
+  objects, the box left as found; the stock rooms' translation keys are shown translated since
+  then), the reworked suppression of task 26 (archived), D-41 (OQ-15: the Docker cookie default
+  stays, the host warns at start on a non-loopback bind), and the docs: task 18's lab check is
+  recorded as done for the admin user, OQ-12 re-checked (still blocked by all three peers,
+  2026-09-08). The release checklist's e2e run found two defects of tasks 25/27 that the unit
+  suites had not (a ReGa that answers no script left `auto` on an unreachable store and lost the
+  rename; the PARAMSETS column squeezed under the new columns) - both fixed before the tag. Release details - tag, workflow results - are in the section below and in the
+  report the agent gave; the draft release is the maintainer's to publish (checklist step 4).
+- **2026-09-08: tasks 25 and 27 done, three local commits on `master`** (`920580a`
   taxonomy UI, `33d530e` ReGa provider, `4b24b53` docs and archive). The grids have rooms /
   functions columns, multi-select assign, room and function filters (a floor matches what is
   below it), `TaxonomyDialog` (tree for rooms, list for functions, add/rename/move/delete with
-  members listed first), `MetaIndicator` plus a *Names and rooms* settings section. The `rega`
+  members listed first), `MetaIndicator` plus a _Names and rooms_ settings section. The `rega`
   provider (`packages/backend/src/meta/regaProvider.ts`) reads and writes rooms, functions and
   names through ReGa scripts behind the same `MetadataProvider` interface; flat (no floors), no
   change stream (⟳ / `meta.refresh`). **Not run against a CCU** — hm-simulator's ReGa mock knows
   only `Name()`, so the `OT_ENUM`/`DeleteObject`/`Interface()` idioms are from the script
   reference; the first lab pass on the CCU3 (create, rename, assign, delete one room, compare
   with the WebUI) is the gate before a release carries it. Verified by the main session:
-  lint, typecheck, `npm test` 2446 passed / 10 skipped (148 files). Push is the maintainer's.
+  lint, typecheck, `npm test` 2446 passed / 10 skipped (148 files). **Superseded the same evening:
+  the lab pass happened (see above).**
 
 - **2026-09-08: `3.0.0-beta.5`**, tagged `v3.0.0-beta.5` by the agent on the maintainer's explicit
   instruction ("tag and push, i want a 3.0.0-beta.5 now"), after lint, typecheck, the unit
@@ -110,18 +124,25 @@ openccu-lite's cmd/occulited>` runs the integration suite in `packages/backend/t
 
 ## Next steps, in order
 
-1. When a task finishes: verify (`npm run lint && npm run typecheck && npm test` in WSL,
-   with the simulator installed), write `roadmap-archive/task-{6,11,12}.md`, tick them in the
-   ROADMAP Contents, update the status line at the top of ROADMAP.md, commit, push `master`
-   (task 11 is archived and pushed already: `69cab48`).
-2. The beta itself: follow `docs/release-checklist.md` once the maintainer has enabled Actions
-   and decided OQ-15; the agent side of task 17 is done. hm-simulator 1.0.1 release on
-   request. Was: tasks 15 (backlog features), 16 (docs), 17 (beta). The first Electron
-   click-through and the first dev bump (`npm run version:dev`, D-18) happen as soon as the
-   maintainer enables Actions and a `build.yml` run has produced the Windows artifact.
-3. Task 13 is done; task 14 (test infra, Playwright in
-   CI, browser mode default) after 8/11/12; then 10, 15, 16, 17.
-4. Bump `npm run version:dev` when a dev build is cut for the maintainer (D-18).
+1. **The maintainer publishes `v3.0.0-beta.6`** (release checklist, step 4): check the assets and
+   their `.cdx.json`, `gh attestation verify`, tick "pre-release", publish the draft, post the
+   announcement (`docs/announcement-3.0-beta.md`, placeholders at the top). The agent never
+   publishes.
+2. **Hardware that is still owed** (all in `docs/hardware-checklist.md` "not done" lists): the
+   task 25 tree dialog clicked through against the CCU3 with the current addon build; task 26's
+   channel-0 dialog on an HmIP channel (suppress `UNREACH` through the preview, look at the WebUI's
+   service messages, unsuppress) and a `ROUTING_TABLE` from a radio router - none of the lab's
+   HmIPW devices is one; task 18 with a CCU user below level 8 (needs a second user made in the
+   WebUI). The lab CCU3 runs an old addon build in `token` mode; updating it is a maintainer's
+   call (the CCU3 firmware installs addons at boot).
+3. **The install-from-published-artefacts round of D-25** once beta.6 is public: the three addon
+   packages on the lab boxes, `docker run` on the image (the new warning line should be the first
+   thing in its log), the npm package with `--install` in a fresh LXC, the three Electron apps.
+4. **Recurring**: OQ-12 with the next Electron bump (last check 2026-09-08: typescript-eslint
+   `<6.1.0`, svelte-check `^5||^6`, electron-vite `vite ^5||^6||^7` - no TypeScript 7, no vite 8).
+5. Nothing on the roadmap is open below task 27; new work comes from the maintainer as task 28+
+   (numbers are never reused). The "Known issues" of the beta.6 changelog section is what a
+   tester will hit first.
 
 ## Environment (short form; details in the memory note and AGENTS.md)
 

@@ -8,6 +8,13 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [3.0.0-beta.6] — 2026-09-08
+
+Rooms and functions - in the grids, in a dialog, and on a CCU straight from ReGa - plus the
+reworked HmIP service-message suppression, and the Docker cookie question answered.
+
 - **Rooms and functions can be edited** (task 25, D-40). The device and channel grids gain a
   _Rooms_ and a _Functions_ column; select rows and use _Assign to room_ / _Assign to function_
   (toolbar or context menu) to put them into, or take them out of, a node - one write for the
@@ -44,6 +51,26 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 - **Removed: the "quiet mode" of the service-messages tab** (#102's bell button). It only muted
   the toast for a new message and was stored in the browser; Homematic has no such state for a
   service message, and the suppression above is what the interface really offers.
+
+- **Fixed (found by the e2e suite before the tag):** with ReGa switched on but not answering the
+  rooms-and-functions script - hm-simulator's ReGa, or a ReGa that runs no script - the automatic
+  choice took ReGa as the store anyway, showed it as unreachable, and a rename never reached the
+  CCU. `auto` now falls back to the profile's store after a failed first read (`metaProvider:
+rega` still insists), and a rename goes through the name service for every object the ReGa store
+  does not hold. And the _PARAMSETS_ column no longer shrinks with the window: the new _Rooms_ and
+  _Functions_ columns had squeezed it until the VALUES button sat under the next cell.
+
+### Known issues
+
+- **Not seen on hardware yet:** the suppression checkboxes and the per-row action (task 26) have
+  only met the demo transport - no real HmIP server has answered `getSuppressedServiceMessages`
+  here - and `ROUTING_TABLE` has not been read from a real router. The rooms and functions dialog
+  (task 25) was not clicked through against a CCU; the ReGa provider behind it was.
+- **ReGa behind the CCU's firewall:** a desktop or Docker install reaches ReGa's port 8181 only
+  from a network the CCU's firewall lists (`restricted` is the CCU's default for that port). The
+  header's indicator then says ReGa did not answer, and rooms and functions stay in the profile.
+- A `°` from `rfd` or CUxD over **BIN-RPC** still arrives as U+FFFD (`binrpc@4.2` decodes strings
+  as UTF-8); addon and CUxD paths only.
 
 ## [3.0.0-beta.5] — 2026-09-08
 
@@ -373,6 +400,8 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
-[unreleased]: https://github.com/hobbyquaker/homematic-manager/compare/v3.0.0-beta.2...master
+[unreleased]: https://github.com/hobbyquaker/homematic-manager/compare/v3.0.0-beta.6...master
+[3.0.0-beta.6]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.6
+[3.0.0-beta.5]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.5
 [3.0.0-beta.2]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.2
 [3.0.0-beta.0]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.0
