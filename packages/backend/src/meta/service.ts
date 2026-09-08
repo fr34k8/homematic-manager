@@ -107,6 +107,8 @@ export function metaBaseUrl(connection: ConnectionConfig): string {
 export class MetaService {
     readonly #options: MetaServiceOptions;
     #provider: MetadataProvider;
+    /** `auto` chose ReGa: the first read decides whether it stays (found by the e2e suite). */
+    #autoRega = false;
     #version: MetaVersion | undefined;
     /** The session of the person looking at the page; writes go out as this one. */
     #sessionCredential: string | undefined;
@@ -163,6 +165,7 @@ export class MetaService {
             if (options.rega?.available === true) {
                 options.onNotice('info', 'rooms and functions come from ReGa');
                 service.#provider = service.#buildRega(options.rega);
+                service.#autoRega = true;
                 return service;
             }
             service.#provider = service.#buildLocal();
@@ -218,6 +221,20 @@ export class MetaService {
 
     async start(): Promise<void> {
         await this.#provider.start();
+        if (this.#autoRega && !this.#provider.state().reachable) {
+            // ReGa answered `getChannels` but not the rooms-and-functions script - hm-simulator's
+            // mock, or a ReGa that runs no script at all. `auto` promised a store that works, so
+            // this is the profile's; a profile that says `rega` insists and stays unreachable.
+            this.#autoRega = false;
+            await this.#provider.stop();
+            this.#options.onNotice(
+                'warn',
+                'rooms and functions stay in this profile: ReGa did not answer the script that reads them',
+            );
+            this.#provider = this.#buildLocal();
+            await this.#provider.start();
+            this.#options.onStateChanged(this.#provider.state());
+        }
         this.applyNames();
     }
 

@@ -236,6 +236,10 @@
             key: 'PARAMSETS',
             label: 'PARAMSETS',
             width: 150,
+            // the buttons in this cell do not shrink with the window: a column that is squeezed
+            // below them puts the VALUES button under the next cell, where a click never lands
+            // (found by the e2e suite when the rooms and functions columns arrived, task 25)
+            fixed: true,
             sortable: false,
             value: (device) => (device.PARAMSETS ?? []).join(' '),
         },
@@ -269,6 +273,7 @@
             key: 'PARAMSETS',
             label: 'PARAMSETS',
             width: 140,
+            fixed: true,
             sortable: false,
             value: (channel) => (channel.PARAMSETS ?? []).join(' '),
         },

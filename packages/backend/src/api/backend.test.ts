@@ -82,6 +82,8 @@ async function harness(
         connection?: Record<string, unknown>;
         backend?: Partial<BackendOptions>;
         regaChannels?: {id: number; address: string; name: string}[];
+        /** What the rooms-and-functions script answers instead of the document built from the channels. */
+        regaMeta?: string;
     } = {},
 ): Promise<Harness> {
     const calls: Harness['calls'] = [];
@@ -134,15 +136,17 @@ async function harness(
         exec: vi.fn((script: string) =>
             Promise.resolve({
                 output:
-                    script === META_READ_SCRIPT
-                        ? JSON.stringify({
-                              objects: (options.regaChannels ?? [{id: 4711, address: 'ABC1:1', name: 'Lamp'}]).map(
-                                  (channel) => ({...channel, interface: 'HmIP-RF'}),
-                              ),
-                              rooms: [{id: 9000, name: 'Flur', channels: [4711]}],
-                              functions: [],
-                          })
-                        : script,
+                    script === META_READ_SCRIPT && options.regaMeta !== undefined
+                        ? options.regaMeta
+                        : script === META_READ_SCRIPT
+                          ? JSON.stringify({
+                                objects: (options.regaChannels ?? [{id: 4711, address: 'ABC1:1', name: 'Lamp'}]).map(
+                                    (channel) => ({...channel, interface: 'HmIP-RF'}),
+                                ),
+                                rooms: [{id: 9000, name: 'Flur', channels: [4711]}],
+                                functions: [],
+                            })
+                          : script,
                 objects: {},
             }),
         ),
@@ -638,9 +642,10 @@ describe('rooms and functions through ReGa (task 27)', () => {
         return (h.rega.exec.mock.calls as unknown as [string][]).map(([script]) => script);
     }
 
-    async function regaHarness(connection: Record<string, unknown> = {}): Promise<Harness> {
+    async function regaHarness(connection: Record<string, unknown> = {}, regaMeta?: string): Promise<Harness> {
         const h = await harness({
             connection,
+            ...(regaMeta === undefined ? {} : {regaMeta}),
             backend: {metaOptions: {fetch: () => Promise.resolve(new Response('not found', {status: 404}))}},
         });
         await h.backend.request('meta.objects');
@@ -681,6 +686,32 @@ describe('rooms and functions through ReGa (task 27)', () => {
         expect((await h.backend.request('meta.objects'))['HmIP-RF.ABC1:1']?.rooms).toEqual(['Flur']);
 
         await expect(h.backend.request('meta.node.create', 'room', 'room/r9000', 'Unten')).rejects.toThrow('flat list');
+        await h.backend.stop();
+    });
+
+    it('falls back to the profile store when ReGa answers getChannels but not the script, and still renames on the CCU', async () => {
+        // hm-simulator's ReGa mock, or a ReGa that runs no script: `auto` promised a store that works
+        const h = await regaHarness({}, 'not the document');
+        expect(await h.backend.request('meta.state')).toMatchObject({provider: 'local', reachable: true});
+        const notices = h.events
+            .filter((event) => event.name === 'notice')
+            .map((event) => JSON.stringify(event.payload));
+        expect(notices.some((notice) => notice.includes('stay in this profile'))).toBe(true);
+        h.rega.exec.mockClear();
+        await h.backend.request('names.set', [{address: 'ABC1:1', name: 'Lampe'}]);
+        expect(scriptsOf(h)).toEqual(['dom.GetObject(4711).Name("Lampe");\n']);
+        await h.backend.stop();
+    });
+
+    it("renames through the name service for an object ReGa's list does not hold", async () => {
+        const h = await regaHarness({}, JSON.stringify({objects: [], rooms: [], functions: []}));
+        expect(await h.backend.request('meta.state')).toMatchObject({provider: 'rega', reachable: true, objects: 0});
+        h.rega.exec.mockClear();
+        await h.backend.request('names.set', [{address: 'ABC1:1', name: 'Lampe'}]);
+        // once, through the name service; the provider had nothing to write
+        expect(scriptsOf(h).filter((script) => script.includes('Name('))).toEqual([
+            'dom.GetObject(4711).Name("Lampe");\n',
+        ]);
         await h.backend.stop();
     });
 

@@ -78,3 +78,13 @@ where the tab's status goes; the settings section is in the left column so the d
 
 Nothing of the list. Not seen against a real openccu-lite box or a CCU: the component tests run
 against the demo transport, which runs core's own `MetaStore` for `meta.*`.
+
+## Found by the e2e suite before the beta.6 tag (2026-09-08)
+
+Three e2e specs that click a channel's VALUES button timed out with "gridcell intercepts pointer
+events": the two new columns had taken 230 px of weight out of the proportional template, and at
+the e2e viewport the PARAMSETS track shrank below its two buttons, so the VALUES button sat under
+the FLAGS cell (`.hmm-td` clips, the hit goes to the neighbour). The column is `fixed` now on both
+depths - its buttons never shrink with the window, which is what `fixed` is for. The main session
+had run the unit suites only for this task; the e2e suite is part of the release checklist and
+found it there.

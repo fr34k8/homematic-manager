@@ -1049,9 +1049,21 @@ export class Backend {
         const written = this.#caches.names.set(entries);
         this.#caches.saveNames();
         // task 27: with ReGa as the metadata store the provider writes the rename itself, and a
-        // second `Name()` through the name service would be the same script twice
-        if (this.#meta?.kind !== 'rega') {
-            await this.#rega?.rename(written);
+        // second `Name()` through the name service would be the same script twice - but only for
+        // the objects the provider holds, and only while ReGa answers it; anything else still goes
+        // the way it always did (found by the e2e suite: a rename lost for good is worse than one
+        // script twice)
+        const meta = this.#meta;
+        const held = meta?.kind === 'rega' && meta.state().reachable ? meta.document().objects : undefined;
+        const throughNames =
+            held === undefined
+                ? written
+                : written.filter((entry) => {
+                      const ref = meta?.refFor(entry.address);
+                      return ref === undefined || !(ref in held);
+                  });
+        if (throughNames.length > 0) {
+            await this.#rega?.rename(throughNames);
         }
         // D-40: and into the metadata store, which on an openccu-lite box is the box's own. The
         // local cache is written first either way, so a store that refuses the write still leaves

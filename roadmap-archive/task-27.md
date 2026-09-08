@@ -78,6 +78,16 @@ is. Three tests in `regaProvider.test.ts`.
 written at 06:45 and 18:45 that day, not by the pass - so a room made here (or in the WebUI) lives
 in memory until ReGa's next save, as everything ReGa holds does.
 
+**Found by the e2e suite, before the beta.6 tag** (the main session had run the unit suites only):
+against hm-simulator's ReGa - `getChannels` answered, the read script not - `auto` took ReGa as the
+store and left it unreachable, and `#setNames` skipped the name service because the store's kind was
+`rega`, so `rename.spec.ts` no longer saw its `Name()` script. Two fixes in one commit: `auto`
+falls back to the profile's store when the first read fails (`MetaService.start`, `#autoRega`;
+`metaProvider: rega` still insists and stays unreachable), and the backend sends a rename through
+the name service for every address the ReGa store does not hold or while it does not answer -
+one script twice was never the risk, a rename lost was. Tests in `service.test.ts` and
+`backend.test.ts`.
+
 Known limits, unchanged: no ordering of rooms (ReGa has none; the list is sorted by name), `icon`
 and `position` are accepted and ignored, and a name ReGa refuses is reported as the script's error.
 Not done: the tree dialog was not clicked through against the CCU - the pass drove the provider,

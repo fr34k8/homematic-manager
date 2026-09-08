@@ -130,7 +130,7 @@ async function service(
 }
 
 /** A ReGa made of a function: the read script answers with one channel in one room. */
-function fakeRega(available = true): MetaRegaLink & {scripts: string[]} {
+function fakeRega(available = true, meta?: string): MetaRegaLink & {scripts: string[]} {
     const scripts: string[] = [];
     return {
         available,
@@ -139,13 +139,17 @@ function fakeRega(available = true): MetaRegaLink & {scripts: string[]} {
             scripts.push(script);
             return Promise.resolve({
                 output:
-                    script === META_READ_SCRIPT
-                        ? JSON.stringify({
-                              objects: [{id: 1, address: 'ABC0000001:1', interface: 'BidCos-RF', name: 'Deckenlampe'}],
-                              rooms: [{id: 10, name: 'Erdgeschoss', channels: [1]}],
-                              functions: [],
-                          })
-                        : '',
+                    script === META_READ_SCRIPT && meta !== undefined
+                        ? meta
+                        : script === META_READ_SCRIPT
+                          ? JSON.stringify({
+                                objects: [
+                                    {id: 1, address: 'ABC0000001:1', interface: 'BidCos-RF', name: 'Deckenlampe'},
+                                ],
+                                rooms: [{id: 10, name: 'Erdgeschoss', channels: [1]}],
+                                functions: [],
+                            })
+                          : '',
             });
         },
     };
@@ -351,6 +355,35 @@ describe('ReGa as the store (task 27)', () => {
         expect(names.get('ABC0000001:1')).toBe('Deckenlampe');
         await meta.refresh();
         expect(rega.scripts).toHaveLength(2);
+    });
+
+    it('goes back to the profile store when auto took ReGa and the first read fails', async () => {
+        const box = fakeBox({status: 404});
+        const rega = fakeRega(true, 'not the document');
+        const meta = await service({metaUrl: 'http://ccu', rega: true}, box.fetch, undefined, rega);
+        expect(meta.kind).toBe('rega');
+        await meta.start();
+        expect(meta.kind).toBe('local');
+        expect(meta.state()).toMatchObject({provider: 'local', reachable: true, writable: true});
+        expect(states.at(-1)).toMatchObject({provider: 'local', reachable: true});
+        expect(notices.join('\n')).toContain('stay in this profile');
+        // and the profile's own file is what a write goes to from now on
+        await meta.createNode('room', null, 'Küche');
+        expect(meta.enums()['room']?.tree.map((node) => node.name)).toEqual(['Küche']);
+        expect(rega.scripts).toEqual([META_READ_SCRIPT]);
+    });
+
+    it('insists on ReGa when the profile says so, even when the script fails', async () => {
+        const box = fakeBox({status: 404});
+        const meta = await service(
+            {metaUrl: 'http://ccu', rega: true, metaProvider: 'rega'},
+            box.fetch,
+            undefined,
+            fakeRega(true, 'not the document'),
+        );
+        await meta.start();
+        expect(meta.kind).toBe('rega');
+        expect(meta.state()).toMatchObject({provider: 'rega', reachable: false});
     });
 
     it('stays local when ReGa is on but has not answered', async () => {
