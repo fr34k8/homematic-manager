@@ -20,7 +20,10 @@ the generated data is committed under `data/dist/`. Last release 2.7.1 (2023-01-
 Task 24 (2026-09-06) adds the metadata store of D-40: rooms, functions and floors as data in the
 profile, and on [openccu-lite](https://github.com/hobbyquaker/openccu-lite) - the CCU firmware
 without ReGaHSS - names and taxonomy from the box, written back to it, with the addon's login
-taking the session that box's shell hands over.
+taking the session that box's shell hands over. Status 2026-09-08: tasks 25, 26 and 27 are done
+and archived, the ReGa provider of task 27 has had its first lab pass on the CCU3, OQ-15 is
+decided (D-41), and `3.0.0-beta.6` is the release that carries all of it. Every task from 2 to 27
+is closed; what is open is in the open questions and in the lab section.
 
 ## Decisions
 
@@ -88,7 +91,7 @@ taking the session that box's shell hands over.
 - [15. Backlog features from the triage](#15-backlog-features-from-the-triage) ✅
 - [16. Documentation](#16-documentation) ✅
 - [17. Beta cycle and 3.0 release](#17-beta-cycle-and-30-release) ✅ agent side (release waits on the maintainer)
-- [18. Addon login against ReGa](#18-addon-login-against-rega) ✅ (lab check pending)
+- [18. Addon login against ReGa](#18-addon-login-against-rega) ✅ [archived](roadmap-archive/task-18.md) (lab check done 2026-09-05 on the CCU3 firmware and OpenCCU x86_64 with the admin user; a lower-level CCU user is still untested)
 - [19. UI polish after the first look](#19-ui-polish-after-the-first-look) ✅
 - [20. UI second look](#20-ui-second-look) ✅
 - [21. Interface popup](#21-interface-popup) ✅
@@ -96,6 +99,7 @@ taking the session that box's shell hands over.
 - [23. Settings dialog and the help menu](#23-settings-dialog-and-the-help-menu) ✅
 - [24. The metadata store: rooms, functions and openccu-lite](#24-the-metadata-store-rooms-functions-and-openccu-lite) ✅ [archived](roadmap-archive/task-24.md)
 - [25. The editing UI for rooms and functions](#25-the-editing-ui-for-rooms-and-functions) ✅ [archived](roadmap-archive/task-25.md)
+- [26. HmIP service-message suppression, and the routing tables](#26-hmip-service-message-suppression-and-the-routing-tables) ✅ [archived](roadmap-archive/task-26.md)
 - [27. Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener](#27-taxonomy-for-rega-as-well-and-127001-as-a-callback-listener) ✅ [archived](roadmap-archive/task-27.md)
 - [Open questions](#open-questions)
 - [Lab and hardware](#lab-and-hardware)
@@ -574,7 +578,12 @@ agent never touches one.
 ## 18. Addon login against ReGa
 
 Implemented 2026-09-05, report in `roadmap-archive/task-18.md`; the hardware pass (eight steps in
-`apps/ccu-addon/README.md`) is part of task 17's lab run.
+`apps/ccu-addon/README.md`) was run on 2026-09-05 as part of task 17's lab run, on the OpenCCU
+x86_64 box (all eight steps) and on the CCU3 firmware (the Tcl part plus one login round), with
+the lab's admin user - see `docs/hardware-checklist.md`, section (e). What is still untested is a
+user below level 8: that needs a second CCU user made in the WebUI's user administration and the
+current addon build installed on the box, both the maintainer's to do; the lab CCU3 runs an old
+addon build in `token` mode and neither was changed for the beta.6 pass (2026-09-08).
 
 D-32. In `apps/web`: `--auth-mode token|rega` (`HMM_AUTH_MODE`), default `token`, the current
 behaviour. With `rega`, a request without a valid session gets a small login page (German/English,
@@ -734,77 +743,14 @@ pass); the dialog itself has not been clicked through against a box or a CCU yet
 
 ## 26. HmIP service-message suppression, and the routing tables
 
-**From the maintainer, 2026-09-08 (openccu-lite task 28.9).** eQ-3's *Homematic IP Legacy API
-(XML-RPC) Addendum* documents, on the HmIP interface (port 2010) only:
-
-- `void suppressServiceMessages(String channelAddress, String parameter, bool suppress)` —
-  `parameter` is one with the *Service* flag in its description, or `""` for every service
-  parameter of the channel; suppression works by reporting a value that raises no message
-  (`UNREACH` → always `false`).
-- `String[] getSuppressedServiceMessages(String channelAddress)` — the parameters currently
-  suppressed for the channel.
-- Devices with `ROUTER_MODULE_ENABLED=true` (the DeviceDescription says which) expose the
-  paramset type **`ROUTING_TABLE`**, the same for every channel of the device, up to 400
-  numbered entries `DYNAMIC_ROUTE_IP_DESTINATION_ADDRESS_n`, `…NEXT_HOP_ADDRESS_n`,
-  `…OM_ACCESS_CONTROLLER_n`, `…OM_ROUTER_n`, `…OM_PORTABLE_DEVICE_n`, `…OM_LISTENER_MODE_n`,
-  `…OM_VALID_n`, `…DISTANCE_n` (hops), `…IS_STATIC_ROUTE_n`, `…IS_NEIGHBOUR_n`,
-  `…IS_MAC_SEQUENCE_NUMBER_VALID_n`, `…RSSI_n`. Every read goes to the device over the air
-  (duty cycle): on demand only, never on a timer.
-
-Wanted: the suppression status in the channel-0 paramset dialog with a suppress/unsuppress
-control per service parameter (and "all"); both methods in the RPC console — they appear
-there through `system.listMethods` once the interface offers them, what is missing is a
-signature hint; and a visualisation of the routing tables — a graph of routers and their
-next hops, distance and RSSI on the edges, read when the user asks.
-
-**Done 2026-09-08, the first part**: the VALUES dialog of a channel on an HmIP interface shows
-a *Service messages* section — one checkbox per service datapoint of the channel, *Suppress
-all* / *Unsuppress all* — fed by `getSuppressedServiceMessages` and written with
-`suppressServiceMessages` through the generic `rpc.call`
-(`ParamsetStore.suppressedServiceMessages` / `.suppressServiceMessages`). An interface without
-the method answers nothing and the section stays away, with no notice. Not yet seen against a
-real HmIP server: the demo transport has no such method.
-
-**Done 2026-09-08, the second part**: opening a router's `ROUTING_TABLE` paramset (the button
-comes from the device's `PARAMSETS`) draws the table as a graph — the router in the middle,
-neighbours and next hops on a ring, everything routed through them outside, hops and RSSI on
-the router's edges, static routes dashed — with the full table underneath
-(`lib/util/routingTable.ts`: `parseRoutingTable`, `routingGraph`; `RoutingTable.svelte`). The
-raw numbered rows stay in the dialog, folded away. Read once when the dialog opens, as the
-addendum's duty-cycle warning asks. Not yet seen with a real router.
-
-**Reworked 2026-09-08 after the maintainer's look at beta.5** (four points, done as given):
-
-1. The *Service messages* box on top of the dialog is gone. The suppression checkboxes sit
-   inside the parameter table of the channel-0 dialog on an HmIP interface: in the **MASTER**
-   dialog as rows of their own at the end of the table (`SuppressRow.svelte`, same three
-   columns as `ParameterRow`; the names come from the channel's VALUES description, because
-   `UNREACH`, `LOWBAT`, `CONFIG_PENDING`, `SABOTAGE`, `ERROR*`… are VALUES datapoints - core's
-   `isServiceMessageDatapoint`, `DUTY_CYCLE` only where boolean, `serviceMessageParameters` in
-   `lib/util/paramsetForm.ts`), in the **VALUES** dialog as a *suppressed* checkbox at the right
-   of the datapoints' own rows (`ParameterRow`'s `onsuppress`). Fed by
-   `getSuppressedServiceMessages`; channel 0 only, HmIP only.
-2. A checkbox sends nothing. *Suppress all* / *Unsuppress all* only tick the boxes; **Apply**
-   under the table builds `buildSuppressPreview` - the `WritePreview` shape with a `calls` list -
-   and opens the existing `WritePreviewDialog`, which prints the exact
-   `suppressServiceMessages(<address>, "<parameter>", true|false)` lines, one per changed
-   checkbox, with the from/to table underneath. Confirmation sends them one by one through
-   `ParamsetStore.suppressServiceMessages`, then `getSuppressedServiceMessages` is read again.
-3. The RPC console: the form comes from the core catalogue (`rpcMethod`), and the two addendum
-   methods were not in the 2.x file, so the console drew no inputs. `HMIP_ADDENDUM_METHODS` in
-   `packages/core/src/rpc/methods.ts` adds their signatures (channel address with the address
-   datalist, `parameter` as a `value_key`, `suppress` as a boolean) with German and English help;
-   `rpcMethod` consults it, `RPC_METHOD_NAMES` stays the 51 of the 2.x file, and the methods are
-   still offered only where `system.listMethods` names them.
-4. The service-messages tab has a *Suppress* / *Unsuppress* action per row on HmIP
-   (`ServiceMessagesStore.suppress`, `loadSuppressed` reads each channel of the list once), hidden
-   on BidCos. The **"quiet mode" is removed**: it was the bell button of #102, a UI-only flag in
-   `localStorage` (`hmm.serviceMessages.quiet`) that muted the toast for a new service message and
-   nothing else - no backend or core part. Button, store state, string, component test and e2e
-   test are gone; `ServiceMessagesStore` no longer takes a storage.
-
-Still not seen against a real HmIP server: the demo transport answers the two methods with a
-stub, and the component tests mock them.
+Done 2026-09-08, archived in [roadmap-archive/task-26.md](roadmap-archive/task-26.md): eQ-3's
+HmIP addendum in the paramset dialog - a *suppressed* checkbox per service parameter of channel 0
+on an HmIP interface, written through a preview of the exact `suppressServiceMessages` calls, the
+same action per row of the service-messages tab, the two addendum methods with a signature and help
+in the RPC console (`HMIP_ADDENDUM_METHODS`), and a router's `ROUTING_TABLE` as a graph with the
+table underneath, read once when the dialog opens. The "quiet mode" bell of #102 is gone. Not yet
+seen against a real HmIP server or a real router: the lab's HmIPW devices sit on a wired DRAP, and
+the pass that opens the channel-0 dialog on the CCU3 is still to do.
 
 ## 27. Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener
 
@@ -829,7 +775,7 @@ as a fallback).
 
 | | Question | Recommendation |
 | --- | --- | --- |
-| OQ-12 | When to move to TypeScript 7 (native) and vite 8? Blocked today by typescript-eslint 8, svelte-check 4 and electron-vite 5 peer ranges. | Recurring "toolchain bump" check next to the quarterly Electron bump of task 11; bump when all three peers allow it. |
+| OQ-12 | When to move to TypeScript 7 (native) and vite 8? Blocked today by typescript-eslint 8, svelte-check 4 and electron-vite 5 peer ranges. | Recurring "toolchain bump" check next to the quarterly Electron bump of task 11; bump when all three peers allow it. **Checked 2026-09-08, still blocked by all three**: typescript-eslint 8.70.0 wants `typescript >=4.8.4 <6.1.0`, svelte-check 4.7.6 `^5.0.0 \|\| ^6.0.0` (TypeScript `latest` is 7.0.2), electron-vite 5.0.0 wants `vite ^5 \|\| ^6 \|\| ^7` (vite `latest` is 8.2.2). The workspace stays on TypeScript 5.9 and vite 7.3; next check with the next Electron bump. |
 | OQ-15 **answered 2026-09-09** | The Docker image sets `HMM_ISSUE_COOKIE=true` because a container never binds loopback and the UI's socket would otherwise be refused on every load; the consequence is that whoever reaches the published port is in. Keep that default (UI works out of the box, `docs/install-docker.md` names three ways to lock it down), or ship an image whose UI refuses until the user has read the page? | **Kept, as recommended: D-41.** The host prints one warning line at start when the cookie is issued on a non-loopback bind (`apps/web/src/cli.ts`, since 3.0.0-beta.6), `docs/install-docker.md` says so, and the image is unchanged. |
 | OQ-16 **answered 2026-09-05** | The HmIP switching programme's `NN_WP_WEEKDAY` bit mask: nothing in the descriptions or `data/dist` says which bit is which weekday. Task 10 took bit 0 = Sunday from the documented HmIP weekday enums (BidCos enums start at Saturday) and always prints the raw mask beside the checkboxes. | **Bit 0 is Sunday; the editor was right.** Measured in task 17's lab pass against the CCU's own weekly-programme dialog, which is byte-identical on both firmwares and gives every weekday checkbox its bit value: Sun 1, Mon 2, Tue 4, Wed 8, Thu 16, Fri 32, Sat 64, all seven 127. Recorded as **A-17** in `packages/core/ASSUMPTIONS.md`, in the editor's comment and in a test; the run is in `docs/hardware-checklist.md`. No device was written to. |
 

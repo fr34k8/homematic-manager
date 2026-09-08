@@ -1,4 +1,11 @@
-# Task 18: Addon login against ReGa (implemented 2026-09-05, lab check pending)
+# Task 18: Addon login against ReGa (implemented 2026-09-05, lab check 2026-09-05)
+
+**Lab check (added 2026-09-08):** the eight steps were run on 2026-09-05 in task 17's hardware pass,
+on the OpenCCU x86_64 box in full and on the CCU3 firmware for the Tcl part plus one login round,
+with the lab's admin user (level 8); both boxes were left in `token` mode. The table is in
+`docs/hardware-checklist.md`, section (e). Still untested: a user below level 8 - that needs a
+second CCU user made in the WebUI and a current addon build on the box, both the maintainer's. The
+lab CCU3 was not touched for this in the beta.6 pass (it runs an old addon build in `token` mode).
 
 Six commits on `3.0-dev` from `6fe734c` (credential check) to `8a099f7` (container replay), no
 package.json touched, no new runtime dependency.
