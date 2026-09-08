@@ -740,6 +740,12 @@ build is the user interface for it, which is a UI task and not a protocol one. W
 
 Nothing here needs a backend change: every method and every event it uses exists and is tested.
 
+**Clarified by the maintainer, 2026-09-08**: "taxonomy" here means exactly the management of the
+store's enums — rooms, functions, and floors. There is no separate floor enum: rooms are a
+**tree**, so a floor is a parent node with rooms beneath it, and the tree dialog above is where a
+floor is made, renamed, or emptied. The grid's room column shows the leaf; the filter may pick a
+parent and match everything under it.
+
 ## Open questions
 
 OQ-1 to OQ-11 were answered on 2026-09-05 and are recorded as D-7 to D-17 in the Decisions
