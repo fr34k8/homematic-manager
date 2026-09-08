@@ -1,4 +1,4 @@
-# Handoff — 2026-09-08 (evening)
+# Handoff — 2026-09-08 (night, after the beta.6 release)
 
 Where the 3.0 rebuild stands, so that a new session (after a usage-limit pause, on another
 machine, with no conversation history) can continue without re-deriving anything. Refreshed
@@ -28,7 +28,16 @@ about every half hour while the agent works; the timestamp above is the last ref
   recorded as done for the admin user, OQ-12 re-checked (still blocked by all three peers,
   2026-09-08). The release checklist's e2e run found two defects of tasks 25/27 that the unit
   suites had not (a ReGa that answers no script left `auto` on an unreachable store and lost the
-  rename; the PARAMSETS column squeezed under the new columns) - both fixed before the tag. Release details - tag, workflow results - are in the section below and in the
+  rename; the PARAMSETS column squeezed under the new columns) - both fixed before the tag.
+  **Released**: `master` at `50ff475` pushed, tag `v3.0.0-beta.6` pushed; the three push
+  workflows (CI, Build, CCU addon) and the four release workflows (addon x86_64/armv7l/aarch64,
+  npm, Docker, Electron macOS/Windows/Linux) all green - CI on `master` failed once on a
+  5-second `waitFor` in `test/simulator/connection.test.ts` (Node 24 job only, a runner timing
+  flake, green on the re-run and on the tag's own CI run). The draft release `3.0.0-beta.6` has
+  every asset with its `.cdx.json`; npm has `3.0.0-beta.6` as `latest` (D-39), the `next` alias
+  could not be moved by the trusted-publishing token (the known E401; the workflow warns), so
+  `npm dist-tag add homematic-manager@3.0.0-beta.6 next` is the maintainer's. The draft is
+  the maintainer's to publish. Release details - tag, workflow results - are in the section below and in the
   report the agent gave; the draft release is the maintainer's to publish (checklist step 4).
 - **2026-09-08: tasks 25 and 27 done, three local commits on `master`** (`920580a`
   taxonomy UI, `33d530e` ReGa provider, `4b24b53` docs and archive). The grids have rooms /

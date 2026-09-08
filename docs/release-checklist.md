@@ -121,11 +121,13 @@ gh run list --limit 8
 gh run watch <run-id>
 ```
 
-- [ ] **npm dist-tag.** Nothing to do by hand: `release-npm.yml` publishes any version containing
-      a `-` under `next` and only a plain one under `latest`, the way the Docker workflow does.
-      Check it though — `npm view homematic-manager dist-tags` must still show `latest` on the old
-      1.0.14 after a beta, and `next` on the version just published. Testers install
-      `npm install -g homematic-manager@next`.
+- [ ] **npm dist-tag.** D-39: `release-npm.yml` publishes every version - a beta as well - as
+      `latest`, because the 1.x versions under the name are dead, and then tries to add the `next`
+      alias. That second step fails with E401 under the trusted-publishing token (beta.4, beta.6)
+      and only warns; move it by hand: `npm dist-tag add homematic-manager@<version> next`. Check
+      `npm view homematic-manager dist-tags` afterwards: `latest` **and** `next` on the version
+      just published. The registry needs a few minutes before `npm view <name>@<version>`
+      answers.
 
 ### 4. Verify, then publish
 
