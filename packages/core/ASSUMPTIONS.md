@@ -5,7 +5,7 @@ specification of the old behaviour that exists, D-3), the eQ-3 XML-RPC specifica
 `rpcMethods.json` carries it, and 962 real paramset descriptions from
 [node-red-contrib-ccu](https://github.com/rdmtc/node-red-contrib-ccu)'s `paramsets.json`.
 
-The list below is what [roadmap task 6](../../ROADMAP.md#6-paramset-write-safety-and-the-config_pending-study)
+The list below is what roadmap task 6 (the roadmap is kept outside this repository)
 had to verify in the lab, in the order in which getting it wrong hurts. Each entry says what the
 code does today, where it says so, and what would prove or disprove it.
 

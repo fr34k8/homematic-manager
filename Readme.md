@@ -22,8 +22,7 @@ Eine ausführliche Beschreibung der 2.x-Oberfläche steht im
 > 2.7.1-Stand liegt unverändert unter `legacy/`.
 > **3.0 gibt es als Beta**: die aktuelle Beta ([Releases](https://github.com/hobbyquaker/homematic-manager/releases), zurzeit 3.0.0-beta.4) ist als Pre-Release veröffentlicht, mit Installern
 > für Windows, macOS und Linux, den drei CCU-Addon-Paketen, dem Docker-Image und dem npm-Paket
-> (`npm install -g homematic-manager@next`). Bekannte Probleme und was zu testen ist, stehen in den Release-Notes; der Plan in
-> [ROADMAP.md](ROADMAP.md).
+> (`npm install -g homematic-manager@next`). Bekannte Probleme und was zu testen ist, stehen in den Release-Notes.
 
 | hell | dunkel (D-22) |
 | --- | --- |
@@ -145,7 +144,6 @@ das Wichtigste in drei Zeilen:
 | [docs/openccu-lite.md](docs/openccu-lite.md) | openccu-lite: die CCU-Firmware ohne ReGaHSS — Namen, Räume und Gewerke aus dem Metadatenspeicher der Box, die Anmeldung des Addons dort, und was es dort nicht gibt |
 | [docs/config-pending.md](docs/config-pending.md) | Die Laborstudie zu `CONFIG_PENDING` und dem Schreibpfad |
 | [BUILD.md](BUILD.md) | Selbst bauen, Monorepo-Aufbau, Tests, Release-Workflows |
-| [ROADMAP.md](ROADMAP.md) | Der Plan für 3.0, alle Entscheidungen D-1..D-30 und die offenen Fragen |
 | [docs/analysis-2026-09.md](docs/analysis-2026-09.md) | Die Analyse, auf der der Plan aufsetzt |
 
 Reverse-Proxy-Beispiele für die Serverinstallationen:
@@ -202,8 +200,7 @@ release and is a desktop app only; 3.0 is a rebuild on current Electron, Svelte 
 TypeScript core that additionally runs as a server and as a CCU addon. Work happens on `master`;
 the 2.7.1 sources sit unchanged under `legacy/`. **3.0 is available as a beta**:
 the current beta ([releases](https://github.com/hobbyquaker/homematic-manager/releases), 3.0.0-beta.4 at the time of writing) is a published pre-release with the Windows, macOS and Linux installers, the
-three CCU addon packages, the Docker image and the npm package (`npm install -g homematic-manager@next`). The plan is
-[ROADMAP.md](ROADMAP.md).
+three CCU addon packages, the Docker image and the npm package (`npm install -g homematic-manager@next`).
 
 Every install type runs the same backend and the same UI and shares one configuration format, so
 moving between them is a copy (D-25):

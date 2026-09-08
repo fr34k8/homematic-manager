@@ -39,7 +39,6 @@ npm workspaces, one lockfile at the root, every package at the same version:
 | `data`             | `@homematic-manager/data`      | pinned openccu-data artifacts, the converter, and the committed result under `data/dist/` — **not** AGPL, see [data/NOTICE.md](data/NOTICE.md)                                                                                                                                                                            |
 | `legacy/`          | —                              | the 2.7.1 code, reference only. Never built, never linted, deleted when 3.0 ships                                                                                                                                                                                                                                         |
 | `tools/lab/`       | —                              | scripts that talk to real hardware, run by hand, never in CI                                                                                                                                                                                                                                                              |
-| `roadmap-archive/` | —                              | one report per finished roadmap task                                                                                                                                                                                                                                                                                      |
 
 The workspace packages depend on each other with **exact** versions, and `@homematic-manager/core`,
 `backend`, `ui` and `data` are **not published separately** (D-29): the npm deliverable bundles them
@@ -284,22 +283,18 @@ contains one, and the private lab note lives outside the repository. A script th
 host has a bug.
 
 What is there and how to run it is [tools/lab/README.md](tools/lab/README.md). Read
-[docs/config-pending.md](docs/config-pending.md) and
-[roadmap-archive/task-6.md](roadmap-archive/task-6.md) before pointing the write-path study at a
+[docs/config-pending.md](docs/config-pending.md) (and the report of roadmap task 6, kept outside
+this repository) before pointing the write-path study at a
 device you care about: it provokes bad writes on purpose, and one lab channel was poisoned to the
 point where only re-pairing the device recovers it.
 
 ## Where the plan lives
 
-- [ROADMAP.md](ROADMAP.md) — the tasks, the decisions **D-1..D-30** and the open questions
-  **OQ-n**. A decision is only changed by the maintainer, and the change is recorded there with its
-  date.
-- [roadmap-archive/](roadmap-archive/) — one file per finished task (`task-N.md`) with what was done,
-  what was measured and what was found. Task numbers are stable and never reused; a dropped task
-  keeps its number. These are the primary record: where a document here says something was measured,
-  the number comes from one of them.
+- The roadmap (the tasks, the decisions **D-n** and the open questions **OQ-n**) and the reports of
+  the finished tasks (`task-N.md`, the primary record of what was measured) are kept outside this
+  repository; see [AGENTS.md](AGENTS.md).
 - [docs/analysis-2026-09.md](docs/analysis-2026-09.md) — the analysis the plan is built on, including
   the feature inventory and the issue triage.
-- [AGENTS.md](AGENTS.md) — the working rules, which apply to humans too: LF only, one commit per
-  change with a message that says why, and nothing about the lab in the repository.
+- [AGENTS.md](AGENTS.md) — where the working rules are kept (they apply to humans too: LF only, one
+  commit per change with a message that says why, and nothing about the lab in the repository).
 - [docs/README.md](docs/README.md) — the index of the user-facing documentation.

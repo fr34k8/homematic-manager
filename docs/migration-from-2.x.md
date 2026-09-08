@@ -284,4 +284,4 @@ Things that are known, measured and not fixed:
 - [moving-between-installs.md](moving-between-installs.md) — moving a 3.0 profile between install
   types
 - [../CHANGELOG.md](../CHANGELOG.md) — the full list of changes
-- [../ROADMAP.md](../ROADMAP.md) — the plan, the decisions D-1..D-30 and the open questions
+- the roadmap (kept outside this repository) — the plan, the decisions D-1..D-30 and the open questions

@@ -48,7 +48,7 @@ through and why the token is still required behind it:
 
 - [../BUILD.md](../BUILD.md) — the monorepo, the scripts, the tests, the release workflows, the
   SBOMs and the lab scripts.
-- [../AGENTS.md](../AGENTS.md) — the working rules for this repository.
+- [../AGENTS.md](../AGENTS.md) — where the working rules for this repository are kept.
 
 ## Releasing
 
@@ -62,11 +62,9 @@ For the maintainer; nothing here is run by an agent.
 
 ## Background
 
-- [../ROADMAP.md](../ROADMAP.md) — the plan for 3.0: tasks, the decisions **D-1..D-30** and the open
-  questions **OQ-n**.
-- [../roadmap-archive/](../roadmap-archive/) — one report per finished task, with what was done,
-  measured and found. Where a page here says something was measured, this is where the number comes
-  from.
+- The roadmap (tasks, the decisions **D-n**, the open questions **OQ-n**) and the reports of the
+  finished tasks — where a page here says something was measured, that is where the number comes
+  from — are kept outside this repository (see [../AGENTS.md](../AGENTS.md)).
 - [analysis-2026-09.md](analysis-2026-09.md) — the analysis the plan is built on: the state of the
   2.x code, the feature inventory to preserve, the write-path problem, and the issue triage.
 - [../data/README.md](../data/README.md) and [../data/NOTICE.md](../data/NOTICE.md) — where the

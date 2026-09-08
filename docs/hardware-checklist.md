@@ -311,7 +311,7 @@ the device lists filling where the box has a radio, a ten-minute idle session an
 restart. Update, uninstall and reinstall were verified on both OpenCCU boxes; the CCU3-firmware box
 got the single reboot install (ssh back after 239 s, addon started at boot, all interface processes
 and the wired devices back). The measurements — package and installed sizes, inodes, RSS — are in
-[`roadmap-archive/task-13.md`](../roadmap-archive/task-13.md).
+the report of roadmap task 13 (kept outside this repository).
 
 ## 2026-09-05 — task 6, the write-path study
 

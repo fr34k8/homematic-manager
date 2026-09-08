@@ -1,7 +1,7 @@
 # Homematic Manager: state analysis and modernisation study
 
 Written 2026-09-05. Research only, nothing was implemented. The plan derived from this document
-is [ROADMAP.md](../ROADMAP.md). Sources: this repository, the sibling projects
+is the roadmap (kept outside this repository). Sources: this repository, the sibling projects
 [node-red-contrib-ccu](https://github.com/rdmtc/node-red-contrib-ccu) 4.3,
 [hm2mqtt.js](https://github.com/hobbyquaker/hm2mqtt.js) 3.5, [RedMatic](https://github.com/rdmtc/RedMatic) 9,
 [hm-simulator](https://github.com/hobbyquaker/hm-simulator) 0.1.1,
@@ -514,4 +514,4 @@ out of scope.
 ## 11. Open decisions
 
 OQ-1 to OQ-11 were asked and answered on 2026-09-05; the answers are decisions D-7 to D-17 in
-[ROADMAP.md](../ROADMAP.md).
+the roadmap (kept outside this repository).
