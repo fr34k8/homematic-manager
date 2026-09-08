@@ -6,6 +6,7 @@
     import GithubLink from './lib/components/GithubLink.svelte';
     import InterfacePopup from './lib/components/InterfacePopup.svelte';
     import Loader from './lib/components/Loader.svelte';
+    import MetaIndicator from './lib/components/MetaIndicator.svelte';
     import Notices from './lib/components/Notices.svelte';
     import RpcLogPanel from './lib/components/RpcLogPanel.svelte';
     import RpcProgress from './lib/components/RpcProgress.svelte';
@@ -41,6 +42,13 @@
 
     const t = $derived(stores.i18n.t);
     const app = $derived(stores.app);
+
+    /** The provider names of the store indicator; `t` is reactive, so these are functions. */
+    const META_PROVIDER_LABELS: Record<'local' | 'occulite' | 'rega', () => string> = {
+        local: () => t('This profile'),
+        occulite: () => 'openccu-lite',
+        rega: () => 'ReGa',
+    };
 
     const TAB_LABELS: Record<TabId, string> = {
         devices: 'Devices',
@@ -138,6 +146,23 @@
             dutyCycleLabel={(value) => t('Duty cycle {value} %', {value})}
             testId="interface-select"
             onselect={(name) => void stores.selectInterface(name)}
+        />
+
+        <!--
+            D-40, task 25: which store the names, rooms and functions come from, next to the
+            interface mark. A click opens the settings, where the store has its own section.
+        -->
+        <MetaIndicator
+            state={stores.taxonomy.state}
+            providerLabel={(provider) => META_PROVIDER_LABELS[provider]()}
+            reachableText={t('Reachable')}
+            unreachableText={t('Unreachable')}
+            readOnlyText={t('Read-only')}
+            writableText={t('Writable')}
+            detailText={(state) =>
+                t('revision {revision}, {count} objects', {revision: state.revision, count: state.objects})}
+            testId="meta-indicator"
+            onclick={() => (app.configDialogOpen = true)}
         />
 
         <Tabs {tabs} active={app.tab} label={t('Devices')} onselect={(id) => app.setTab(id as TabId)} />

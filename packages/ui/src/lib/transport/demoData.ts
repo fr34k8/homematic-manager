@@ -17,6 +17,7 @@ import type {
     EventRecord,
     InterfaceState,
     LinkRecord,
+    MetaDocument,
     NameMap,
     Paramset,
     ParamsetDescription,
@@ -782,6 +783,79 @@ export const DEMO_TEAMS: DeviceDescription[] = [
         TEAM_CHANNELS: ['NEQ1000002:1'],
     },
 ];
+
+/**
+ * D-40, task 25: the metadata store of the demo - a house with two floors, a few rooms and three
+ * functions, and a handful of the channels above assigned. The mock transport loads it into core's
+ * own `MetaStore`, so every write of the dialog behaves exactly as the backend's `local` provider
+ * would, revisions and refusals included.
+ */
+export const DEMO_META: MetaDocument = {
+    format: 1,
+    revision: 7,
+    objects: {
+        'BidCos-RF.MEQ0123456:1': {
+            name: DEMO_NAMES['MEQ0123456:1'] ?? '',
+            enums: ['room/eg/kueche', 'function/licht'],
+            meta: {},
+        },
+        'BidCos-RF.JEQ0234567:1': {name: DEMO_NAMES['JEQ0234567:1'] ?? '', enums: ['room/eg/flur'], meta: {}},
+        'BidCos-RF.KEQ0345678:4': {
+            name: DEMO_NAMES['KEQ0345678:4'] ?? '',
+            enums: ['room/og/bad', 'function/heizung'],
+            meta: {},
+        },
+        'BidCos-RF.LEQ0456789:1': {
+            name: DEMO_NAMES['LEQ0456789:1'] ?? '',
+            enums: ['room/og/schlafzimmer', 'function/sicherheit'],
+            meta: {},
+        },
+        'BidCos-RF.GEQ0567890:1': {
+            name: DEMO_NAMES['GEQ0567890:1'] ?? '',
+            enums: ['room/eg/wohnzimmer', 'function/licht'],
+            meta: {},
+        },
+        'HmIP-RF.000A1B2C3D4E5F:4': {
+            name: DEMO_NAMES['000A1B2C3D4E5F:4'] ?? '',
+            enums: ['room/aussen', 'function/licht'],
+            meta: {},
+        },
+    },
+    enums: {
+        room: {
+            name: {de: 'Räume', en: 'Rooms'},
+            tree: [
+                {
+                    id: 'eg',
+                    name: 'Erdgeschoss',
+                    children: [
+                        {id: 'kueche', name: 'Küche'},
+                        {id: 'wohnzimmer', name: 'Wohnzimmer'},
+                        {id: 'flur', name: 'Flur'},
+                    ],
+                },
+                {
+                    id: 'og',
+                    name: 'Obergeschoss',
+                    children: [
+                        {id: 'bad', name: 'Bad'},
+                        {id: 'schlafzimmer', name: 'Schlafzimmer'},
+                    ],
+                },
+                {id: 'aussen', name: 'Außen'},
+            ],
+        },
+        function: {
+            name: {de: 'Gewerke', en: 'Functions'},
+            tree: [
+                {id: 'licht', name: 'Licht'},
+                {id: 'heizung', name: 'Heizung'},
+                {id: 'sicherheit', name: 'Sicherheit'},
+            ],
+        },
+        floor: {name: {de: 'Etagen', en: 'Floors'}, tree: []},
+    },
+};
 
 export const DEMO_REGA_STATE: RegaState = {
     enabled: true,

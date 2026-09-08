@@ -6,8 +6,12 @@ import type {
     ApiParams,
     ApiResult,
     LinkTemplate,
+    MetaEnum,
+    MetaObjectView,
+    MetaState,
     Transport,
 } from '@homematic-manager/core';
+import {findNode, MetaStore, parseDocument, parsePath, slugId, summarise} from '@homematic-manager/core';
 
 import {
     DEMO_BIDCOS_INTERFACES,
@@ -17,6 +21,7 @@ import {
     DEMO_EVENTS,
     DEMO_INTERFACE_STATES,
     DEMO_LINKS,
+    DEMO_META,
     DEMO_NAMES,
     DEMO_REGA_STATE,
     DEMO_TEAMS,
@@ -330,10 +335,125 @@ export class MockTransport implements Transport {
             }
             return file;
         });
+        this.useDemoMeta();
         // D-32: the demo runs in a browser with no host and therefore no login. `null` is the
         // answer every install type but the CCU addon in `--auth-mode rega` gives, and it is what
         // makes the header show no user and no logout link.
         this.result('session.info', null);
+        return this;
+    }
+
+    /**
+     * D-40, task 25: the metadata store of the demo, in memory and alive.
+     *
+     * Core's `MetaStore` is the same class the backend's `local` provider and the conformance
+     * corpus run, so a room created, moved or deleted in the browser demo behaves as it would
+     * against a backend - one revision per write, `has-members` on a delete that would orphan
+     * memberships - and the three events go out exactly as the backend sends them.
+     */
+    useDemoMeta(): this {
+        const store = new MetaStore({document: parseDocument(structuredClone(DEMO_META))});
+        const state = (): MetaState => ({
+            provider: 'local',
+            reachable: true,
+            writable: true,
+            revision: store.revision,
+            objects: store.size,
+        });
+        const objects = (): Record<string, MetaObjectView> => {
+            const document = store.document();
+            const views: Record<string, MetaObjectView> = {};
+            for (const [ref, object] of Object.entries(document.objects)) {
+                const summary = summarise(document.enums, object);
+                views[ref] = {
+                    name: summary.name,
+                    enums: [...object.enums],
+                    rooms: [...summary.rooms],
+                    functions: [...summary.functions],
+                    ...(summary.orphaned ? {orphaned: true} : {}),
+                };
+            }
+            return views;
+        };
+        const enums = (): Record<string, MetaEnum> => structuredClone(store.enums()) as Record<string, MetaEnum>;
+        const changed = (): void => {
+            this.emit('meta.changed', state());
+            this.emit('meta.enums.changed', enums());
+            this.emit('meta.objects.changed', objects());
+        };
+        this.respond('meta.state', state);
+        this.respond('meta.get', () => ({state: state(), enums: enums(), objects: objects()}));
+        this.respond('meta.enums', enums);
+        this.respond('meta.objects', objects);
+        this.respond('meta.setMembership', (entries) => {
+            const sets: Record<string, {enums: string[]}> = {};
+            for (const entry of entries) {
+                sets[entry.ref] = {enums: entry.paths};
+            }
+            store.bulk(sets);
+            changed();
+            return null;
+        });
+        this.respond('meta.assign', (refs, path, on) => {
+            const sets: Record<string, {name?: string; enums: string[]}> = {};
+            for (const ref of refs) {
+                const current = store.find(ref);
+                const paths = current?.enums ?? [];
+                const has = paths.includes(path);
+                if (has === on) {
+                    continue;
+                }
+                const next = on ? [...paths, path] : paths.filter((entry) => entry !== path);
+                const address = ref.slice(ref.indexOf('.') + 1);
+                sets[ref] = current ? {enums: next} : {name: DEMO_NAMES[address] ?? address, enums: next};
+            }
+            store.bulk(sets);
+            changed();
+            return null;
+        });
+        this.respond('meta.enum.create', (id, name) => {
+            store.createEnum(id, name);
+            changed();
+            return null;
+        });
+        this.respond('meta.enum.update', (id, name) => {
+            store.updateEnum(id, name);
+            changed();
+            return null;
+        });
+        this.respond('meta.enum.delete', (id, detach) => {
+            store.deleteEnum(id, detach === true ? 'detach' : 'refuse');
+            changed();
+            return null;
+        });
+        this.respond('meta.node.create', (enumId, parent, name, options) => {
+            const tree = store.getEnum(enumId).tree;
+            const parsed = parent === undefined ? undefined : parsePath(parent);
+            const siblings = parsed === undefined ? tree : (findNode(tree, parsed.ids)?.children ?? []);
+            const id = slugId(
+                name,
+                siblings.map((node) => node.id),
+            );
+            store.createNode(enumId, parent ?? null, id, name, options ?? {});
+            changed();
+            return `${parent ?? enumId}/${id}`;
+        });
+        this.respond('meta.node.update', (path, patch) => {
+            store.updateNode(path, patch);
+            changed();
+            return null;
+        });
+        this.respond('meta.node.delete', (path, detach) => {
+            store.deleteNode(path, detach === true ? 'detach' : 'refuse');
+            changed();
+            return null;
+        });
+        this.respond('meta.export', () => store.document());
+        this.respond('meta.import', (document, mode) => {
+            store.import(document, mode ?? 'replace');
+            changed();
+            return null;
+        });
         return this;
     }
 }

@@ -22,6 +22,8 @@ describe('the device grid columns', () => {
             '',
             'Name',
             'ADDRESS',
+            'Räume',
+            'Gewerke',
             'Msgs',
             'TYPE',
             'FIRMWARE',

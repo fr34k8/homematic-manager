@@ -18,16 +18,26 @@
     import type {DataTableColumn} from '../lib/components/tableModel.js';
     import {getStores} from '../lib/stores/context.js';
     import {firmwareCell, offersRepair, serviceMarks, serviceMessageExplanation} from '../lib/util/deviceGrid.js';
+    import {
+        channelVisible,
+        deviceMatches,
+        deviceNames,
+        indentedLabel,
+        namesOf,
+        type TaxonomyId,
+    } from '../lib/util/taxonomy.js';
 
     import AddLinkDialog from './links/AddLinkDialog.svelte';
     import TeamDialog from './devices/TeamDialog.svelte';
     import ParamsetDialog from './paramset/ParamsetDialog.svelte';
 
     import AddDeviceDialog from './devices/AddDeviceDialog.svelte';
+    import AssignDialog from './devices/AssignDialog.svelte';
     import DeleteDeviceDialog from './devices/DeleteDeviceDialog.svelte';
     import RenameDialog from './devices/RenameDialog.svelte';
     import RepairConfigDialog from './devices/RepairConfigDialog.svelte';
     import ReplaceDeviceDialog from './devices/ReplaceDeviceDialog.svelte';
+    import TaxonomyDialog from './devices/TaxonomyDialog.svelte';
 
     const stores = getStores();
     const t = stores.i18n.t;
@@ -60,11 +70,73 @@
     let paramsetAddress = $state('');
     let paramsetName = $state('MASTER');
 
+    /** Task 25: the assign dialog for the selection, and the tree dialog of rooms and functions. */
+    let assignOpen = $state(false);
+    let assignEnum = $state<TaxonomyId>('room');
+    let assignRefs = $state<string[]>([]);
+    let taxonomyOpen = $state(false);
+    /** The filter above the grid: a node path per taxonomy, `''` for everything. */
+    let roomFilter = $state('');
+    let functionFilter = $state('');
+
     const interfaceName = $derived(stores.app.selectedInterface);
     const interfaceType = $derived(stores.interfaces.typeOf(interfaceName));
-    const devices = $derived(stores.devices.devices(interfaceName));
+    const allDevices = $derived(stores.devices.devices(interfaceName));
     const index = $derived(stores.devices.index(interfaceName));
     const messages = $derived(stores.serviceMessages.of(interfaceName));
+
+    // ---------------------------------------------------------------- rooms and functions
+
+    const taxonomy = $derived(stores.taxonomy);
+    const roomOptions = $derived(taxonomy.options('room'));
+    const functionOptions = $derived(taxonomy.options('function'));
+    /** The active filter targets; a parent node matches everything below it. */
+    const filterTargets = $derived([roomFilter, functionFilter].filter((target) => target !== ''));
+
+    $effect(() => {
+        // a node that was deleted while it was the filter: back to everything, not to an empty grid
+        if (roomFilter !== '' && !roomOptions.some((option) => option.path === roomFilter)) {
+            roomFilter = '';
+        }
+        if (functionFilter !== '' && !functionOptions.some((option) => option.path === functionFilter)) {
+            functionFilter = '';
+        }
+    });
+
+    function refOf(address: string): string {
+        return taxonomy.refOf(interfaceName, address);
+    }
+
+    function viewOf(address: string) {
+        return taxonomy.view(refOf(address));
+    }
+
+    function channelViewsOf(device: DeviceDescription) {
+        return stores.devices.channels(interfaceName, device.ADDRESS).map((channel) => viewOf(channel.ADDRESS));
+    }
+
+    /** What the grid prints: the leaf names, and for a device without its own the channels' union. */
+    function taxonomyText(row: DeviceDescription, enumId: TaxonomyId): string {
+        const names = isDeviceAddress(row.ADDRESS)
+            ? deviceNames(viewOf(row.ADDRESS), channelViewsOf(row), enumId)
+            : namesOf(viewOf(row.ADDRESS), enumId);
+        return names.join(', ');
+    }
+
+    /**
+     * The filter is applied to the rows before the table sees them, so the per-column text filters
+     * and the sort work on what is left. A device stays when it or any of its channels is in the
+     * target; under it only the channels that are (or all of them when the device itself is).
+     */
+    const devices = $derived(
+        filterTargets.length === 0
+            ? allDevices
+            : allDevices.filter((device) =>
+                  filterTargets.every((target) =>
+                      deviceMatches(viewOf(device.ADDRESS), channelViewsOf(device), target),
+                  ),
+              ),
+    );
 
     /** #25: the link count in the channel grid needs the links of this interface to be loaded. */
     $effect(() => {
@@ -136,6 +208,9 @@
         },
         {key: 'name', label: t('Name'), width: 170, value: (device) => stores.nameOf(device.ADDRESS)},
         {key: 'ADDRESS', label: 'ADDRESS', width: 150, mono: true},
+        // Task 25: the taxonomy of the store, as the arrays of names ReGa's rooms always were
+        {key: 'rooms', label: t('Rooms'), width: 120, value: (device) => taxonomyText(device, 'room')},
+        {key: 'functions', label: t('Functions'), width: 110, value: (device) => taxonomyText(device, 'function')},
         {
             key: 'msgs',
             label: 'Msgs',
@@ -186,6 +261,8 @@
     const subColumns = $derived<DataTableColumn<DeviceDescription>[]>([
         {key: 'name', label: t('Name'), width: 170, value: (channel) => stores.nameOf(channel.ADDRESS)},
         {key: 'ADDRESS', label: 'ADDRESS', width: 150, mono: true},
+        {key: 'rooms', label: t('Rooms'), width: 120, value: (channel) => taxonomyText(channel, 'room')},
+        {key: 'functions', label: t('Functions'), width: 110, value: (channel) => taxonomyText(channel, 'function')},
         {key: 'TYPE', label: 'TYPE', width: 150},
         {key: 'DIRECTION', label: 'DIRECTION', width: 100, value: (channel) => decodeDirection(channel.DIRECTION)},
         {
@@ -235,8 +312,39 @@
     }
 
     function channelsOf(device: DeviceDescription): DeviceDescription[] {
-        return stores.devices.channels(interfaceName, device.ADDRESS);
+        const channels = stores.devices.channels(interfaceName, device.ADDRESS);
+        if (filterTargets.length === 0) {
+            return channels;
+        }
+        const deviceView = viewOf(device.ADDRESS);
+        return channels.filter((channel) =>
+            filterTargets.every((target) => channelVisible(viewOf(channel.ADDRESS), deviceView, target)),
+        );
     }
+
+    /** The refs the assign dialog works on: the selection, or the row the menu was opened on. */
+    function assignTargets(address: string): string[] {
+        const rows = selected.includes(address) ? selected : [address];
+        return rows.map((entry) => refOf(entry));
+    }
+
+    function openAssign(enumId: TaxonomyId, address?: string): void {
+        assignEnum = enumId;
+        assignRefs = address === undefined ? selected.map((entry) => refOf(entry)) : assignTargets(address);
+        if (assignRefs.length === 0) {
+            return;
+        }
+        assignOpen = true;
+    }
+
+    const canAssign = $derived(selected.length > 0 && taxonomy.writable);
+    const assignReason = $derived(
+        !taxonomy.available
+            ? t('No store connected')
+            : !taxonomy.writable
+              ? t('The store does not take writes')
+              : t('Select one or more rows'),
+    );
 
     // ---------------------------------------------------------------- firmware
 
@@ -360,6 +468,10 @@
                   {id: 'clear', label: t('clearConfigCache'), disabled: !isBidcos},
                   {id: 'repair', label: t('Repair configuration')},
                   {id: 'sep2', separator: true},
+                  // Task 25: the selection into a room or a function - one entry each
+                  {id: 'assign:room', label: `${t('Assign to room')}…`, disabled: !taxonomy.writable},
+                  {id: 'assign:function', label: `${t('Assign to function')}…`, disabled: !taxonomy.writable},
+                  {id: 'sep3', separator: true},
                   {id: 'replace', label: t('Replace'), disabled: dontDeleteOf(menuAddress)},
                   {id: 'delete', label: t('Delete'), danger: true, disabled: dontDeleteOf(menuAddress)},
               ]
@@ -371,6 +483,9 @@
                   {id: 'paramset:MASTER', label: t('MASTER Paramset')},
                   {id: 'paramset:VALUES', label: t('VALUES Paramset')},
                   {id: 'sep2', separator: true},
+                  {id: 'assign:room', label: `${t('Assign to room')}…`, disabled: !taxonomy.writable},
+                  {id: 'assign:function', label: `${t('Assign to function')}…`, disabled: !taxonomy.writable},
+                  {id: 'sep3', separator: true},
                   // Issue #25: create a link from here, with this channel already chosen
                   {
                       id: 'link:sender',
@@ -404,6 +519,10 @@
         const address = menuAddress;
         if (id.startsWith('paramset:')) {
             openParamset(address, id.slice('paramset:'.length));
+            return;
+        }
+        if (id === 'assign:room' || id === 'assign:function') {
+            openAssign(id === 'assign:room' ? 'room' : 'function', address);
             return;
         }
         switch (id) {
@@ -482,6 +601,30 @@
                     onclick={() => openRename(one)}
                 />
                 <ToolbarButton
+                    title={t('Assign to room')}
+                    icon="⌂"
+                    disabled={!canAssign}
+                    reason={assignReason}
+                    testId="devices-assign-room"
+                    onclick={() => openAssign('room')}
+                />
+                <ToolbarButton
+                    title={t('Assign to function')}
+                    icon="⚑"
+                    disabled={!canAssign}
+                    reason={assignReason}
+                    testId="devices-assign-function"
+                    onclick={() => openAssign('function')}
+                />
+                <ToolbarButton
+                    title={t('Rooms and functions')}
+                    icon="⊞"
+                    disabled={!taxonomy.available}
+                    reason={t('No store connected')}
+                    testId="devices-taxonomy"
+                    onclick={() => (taxonomyOpen = true)}
+                />
+                <ToolbarButton
                     title="reportValueUsage 1"
                     icon="⇩"
                     disabled={channelSelection.length === 0}
@@ -543,6 +686,37 @@
                     testId="devices-refresh"
                     onclick={() => void stores.devices.load(interfaceName, {refresh: true})}
                 />
+            {/snippet}
+
+            {#snippet status()}
+                <!--
+                    Task 25: the filter by room and by function, which is what the taxonomy is
+                    for. A parent node - a floor - matches everything under it.
+                -->
+                {#if taxonomy.available}
+                    <select
+                        class="hmm-select hmm-taxonomy-filter"
+                        bind:value={roomFilter}
+                        aria-label={t('Room')}
+                        data-testid="devices-filter-room"
+                    >
+                        <option value="">{t('All rooms')}</option>
+                        {#each roomOptions as option (option.path)}
+                            <option value={option.path}>{indentedLabel(option, ' ')}</option>
+                        {/each}
+                    </select>
+                    <select
+                        class="hmm-select hmm-taxonomy-filter"
+                        bind:value={functionFilter}
+                        aria-label={t('Function')}
+                        data-testid="devices-filter-function"
+                    >
+                        <option value="">{t('All functions')}</option>
+                        {#each functionOptions as option (option.path)}
+                            <option value={option.path}>{indentedLabel(option, ' ')}</option>
+                        {/each}
+                    </select>
+                {/if}
             {/snippet}
 
             {#snippet cell(row, column, flatRow)}
@@ -638,6 +812,8 @@
 <AddLinkDialog bind:open={addLinkOpen} presetSenders={linkSenders} presetReceivers={linkReceivers} />
 <TeamDialog bind:open={teamOpen} address={actionAddress} />
 <RepairConfigDialog bind:open={repairOpen} address={actionAddress} />
+<AssignDialog bind:open={assignOpen} enumId={assignEnum} refs={assignRefs} />
+<TaxonomyDialog bind:open={taxonomyOpen} />
 <ParamsetDialog bind:open={paramsetOpen} {interfaceName} address={paramsetAddress} paramset={paramsetName} />
 
 <style>
@@ -652,6 +828,13 @@
     .hmm-page-grid {
         flex: 1 1 auto;
         min-height: 0;
+    }
+
+    .hmm-taxonomy-filter {
+        max-width: 160px;
+        height: 22px;
+        padding: 0 4px;
+        font-size: var(--hmm-font-size-small);
     }
 
     .hmm-msg-mark {

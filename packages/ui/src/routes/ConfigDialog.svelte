@@ -1,6 +1,16 @@
 <script lang="ts">
-    import type {ConnectionConfig, LanguageChoice, UserDefinedInterface} from '@homematic-manager/core';
-    import {DEFAULT_INTERFACES, INTERFACE_NAMES, validateUserDefinedInterface} from '@homematic-manager/core';
+    import type {
+        ConnectionConfig,
+        LanguageChoice,
+        MetaProviderChoice,
+        UserDefinedInterface,
+    } from '@homematic-manager/core';
+    import {
+        DEFAULT_INTERFACES,
+        INTERFACE_NAMES,
+        META_PROVIDERS,
+        validateUserDefinedInterface,
+    } from '@homematic-manager/core';
 
     import Dialog from '../lib/components/Dialog.svelte';
     import LanguageSwitch from '../lib/components/LanguageSwitch.svelte';
@@ -138,6 +148,43 @@
     function setAutoConfirmInbox(value: boolean): void {
         if (draft) {
             draft.autoConfirmRegaInbox = value;
+        }
+    }
+
+    /**
+     * D-40, task 25: the store of names, rooms and functions. The choice is one of core's
+     * `META_PROVIDERS`; the token is a credential like the CCU password and is written as typed.
+     */
+    const metaProviderLabels: Record<MetaProviderChoice, () => string> = {
+        auto: () => t('Automatic'),
+        local: () => t('This profile'),
+        occulite: () => 'openccu-lite',
+    };
+    const metaState = $derived(stores.taxonomy.state);
+    const metaStateLine = $derived.by(() => {
+        if (metaState === undefined) {
+            return t('No store connected');
+        }
+        const parts = [
+            metaProviderLabels[metaState.provider === 'occulite' ? 'occulite' : 'local'](),
+            metaState.reachable ? t('Reachable') : t('Unreachable'),
+            metaState.reachable ? (metaState.writable ? t('Writable') : t('Read-only')) : undefined,
+            t('revision {revision}, {count} objects', {revision: metaState.revision, count: metaState.objects}),
+            metaState.implementation,
+            metaState.error,
+        ];
+        return parts.filter((part): part is string => part !== undefined && part !== '').join(' · ');
+    });
+
+    function setMetaProvider(value: string): void {
+        if (draft && META_PROVIDERS.some((choice) => choice === value)) {
+            draft.metaProvider = value as MetaProviderChoice;
+        }
+    }
+
+    function setMetaToken(value: string): void {
+        if (draft) {
+            draft.metaToken = value;
         }
     }
 
@@ -313,6 +360,52 @@
                                         bind:value={draft.callback.binrpcPort}
                                     />
                                     <small class="hmm-config-help">{t('0 picks a free port')}</small>
+                                </span>
+                            </label>
+                        </div>
+                    </section>
+
+                    <!--
+                        D-40, task 25: where names, rooms and functions are kept. `auto` probes
+                        the configured host for openccu-lite's metadata API once per connect and
+                        keeps everything in this profile otherwise; the token is only needed off
+                        the box. The state line is the same one the header's indicator carries.
+                    -->
+                    <section class="hmm-config-section" data-testid="config-meta">
+                        <h3 class="hmm-config-title">{t('Names and rooms')}</h3>
+                        <div class="hmm-config-grid">
+                            <label class="hmm-config-row">
+                                <span class="hmm-config-label">{t('Store')}</span>
+                                <span class="hmm-config-field">
+                                    <select
+                                        class="hmm-select"
+                                        value={draft.metaProvider ?? 'auto'}
+                                        data-testid="config-meta-provider"
+                                        onchange={(event) => setMetaProvider(event.currentTarget.value)}
+                                    >
+                                        {#each META_PROVIDERS as choice (choice)}
+                                            <option value={choice}>{metaProviderLabels[choice]()}</option>
+                                        {/each}
+                                    </select>
+                                    <!-- the state of the store that is in use now, which the header's indicator carries too -->
+                                    <small class="hmm-config-help" data-testid="config-meta-state"
+                                        >{metaStateLine}</small
+                                    >
+                                </span>
+                            </label>
+
+                            <label class="hmm-config-row">
+                                <span class="hmm-config-label">{t('API token')}</span>
+                                <span class="hmm-config-field">
+                                    <input
+                                        class="hmm-input hmm-config-wide"
+                                        type="password"
+                                        autocomplete="off"
+                                        value={draft.metaToken ?? ''}
+                                        data-testid="config-meta-token"
+                                        oninput={(event) => setMetaToken(event.currentTarget.value)}
+                                    />
+                                    <small class="hmm-config-help">{t('Only needed off the box')}</small>
                                 </span>
                             </label>
                         </div>

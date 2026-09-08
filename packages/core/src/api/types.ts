@@ -255,6 +255,11 @@ export interface MetaState {
     objects: number;
     /** `occulited 0.1.0`, from `/api/meta/v1/version`. */
     implementation?: string;
+    /**
+     * The provider's taxonomies are flat lists: no node below another, no new taxonomy. The
+     * editing UI (task 25) hides "add below" and "move" then and says so. Absent means trees.
+     */
+    flat?: boolean;
     /** The base URL the provider talks to, for the settings dialog and the log. */
     url?: string;
     error?: string;

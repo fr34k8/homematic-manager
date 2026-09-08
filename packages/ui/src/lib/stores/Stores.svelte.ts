@@ -19,6 +19,7 @@ import {NoticesStore} from './NoticesStore.svelte.js';
 import {ParamsetStore} from './ParamsetStore.svelte.js';
 import {RadioStore} from './RadioStore.svelte.js';
 import {ServiceMessagesStore} from './ServiceMessagesStore.svelte.js';
+import {TaxonomyStore} from './TaxonomyStore.svelte.js';
 import {UnreachStore} from './UnreachStore.svelte.js';
 import {tabsForInterface, type TabId} from './routing.js';
 import {WriteLogStore} from './WriteLogStore.svelte.js';
@@ -57,6 +58,8 @@ export class Stores {
     readonly writeLog: WriteLogStore;
     readonly host: HostStore;
     readonly meta: MetaStore;
+    /** D-40, task 25: rooms, functions and the state of the store they come from. */
+    readonly taxonomy: TaxonomyStore;
     readonly paramsets: ParamsetStore;
     readonly radio: RadioStore;
     readonly console: ConsoleStore;
@@ -81,6 +84,7 @@ export class Stores {
         this.meta = new MetaStore(transport, {
             ...(options.dataSource === undefined ? {} : {source: options.dataSource}),
         });
+        this.taxonomy = new TaxonomyStore(transport, this.notices);
         this.paramsets = new ParamsetStore(transport, this.notices);
         this.radio = new RadioStore(transport, this.notices);
         this.console = new ConsoleStore(transport, this.notices);
@@ -111,7 +115,7 @@ export class Stores {
         void this.meta.setLanguage(this.app.language).catch(() => undefined);
         // The host is optional and must never hold up the CCU work, so its failure is swallowed.
         void this.host.load().catch(() => undefined);
-        await Promise.all([this.interfaces.load(), this.names.load(), this.writeLog.load()]);
+        await Promise.all([this.interfaces.load(), this.names.load(), this.writeLog.load(), this.taxonomy.load()]);
         await this.selectInterface(this.app.selectedInterface);
     }
 
@@ -155,6 +159,7 @@ export class Stores {
         this.writeLog.dispose();
         this.events.dispose();
         this.serviceMessages.dispose();
+        this.taxonomy.dispose();
         this.names.dispose();
         this.devices.dispose();
         this.interfaces.dispose();

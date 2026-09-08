@@ -510,6 +510,70 @@ export const UI_MESSAGES: MessageCatalogue = {
         de: 'Diese Werte haben Namen in der CCU-Zeichenkettentabelle, die die Beschreibung nicht mitliefert.',
         en: 'These values have names in the CCU string table that the description does not carry.',
     },
+
+    // D-40, task 25: rooms and functions - the grid columns, the filter, the assign dialog, the
+    // tree dialog and the store indicator beside the interface mark.
+    Rooms: {de: 'Räume', en: 'Rooms'},
+    Functions: {de: 'Gewerke', en: 'Functions'},
+    Room: {de: 'Raum', en: 'Room'},
+    Function: {de: 'Gewerk', en: 'Function'},
+    'All rooms': {de: 'Alle Räume', en: 'All rooms'},
+    'All functions': {de: 'Alle Gewerke', en: 'All functions'},
+    'Assign to room': {de: 'Raum zuordnen', en: 'Assign to room'},
+    'Assign to function': {de: 'Gewerk zuordnen', en: 'Assign to function'},
+    'Rooms and functions': {de: 'Räume und Gewerke', en: 'Rooms and functions'},
+    'Add to': {de: 'Hinzufügen zu', en: 'Add to'},
+    'Remove from': {de: 'Entfernen aus', en: 'Remove from'},
+    '{count} rows selected': {
+        de: {one: 'Eine Zeile ausgewählt', other: '{count} Zeilen ausgewählt'},
+        en: {one: 'One row selected', other: '{count} rows selected'},
+    },
+    'Select one or more rows': {de: 'Eine oder mehrere Zeilen auswählen', en: 'Select one or more rows'},
+    'The store does not take writes': {
+        de: 'Der Speicher nimmt keine Änderungen an',
+        en: 'The store does not take writes',
+    },
+    'No store connected': {de: 'Kein Speicher verbunden', en: 'No store connected'},
+    'No rooms yet': {de: 'Noch keine Räume', en: 'No rooms yet'},
+    'No functions yet': {de: 'Noch keine Gewerke', en: 'No functions yet'},
+    Add: {de: 'Anlegen', en: 'Add'},
+    'Add below': {de: 'Darunter anlegen', en: 'Add below'},
+    Move: {de: 'Verschieben', en: 'Move'},
+    'Move to': {de: 'Verschieben nach', en: 'Move to'},
+    'Top level': {de: 'Oberste Ebene', en: 'Top level'},
+    'New name': {de: 'Neuer Name', en: 'New name'},
+    'Delete and detach': {de: 'Löschen und Zuordnungen entfernen', en: 'Delete and detach'},
+    'Still assigned here - the assignments are removed with the node:': {
+        de: 'Noch zugeordnet - die Zuordnungen werden mit dem Knoten entfernt:',
+        en: 'Still assigned here - the assignments are removed with the node:',
+    },
+    'Nothing is assigned here': {de: 'Hier ist nichts zugeordnet', en: 'Nothing is assigned here'},
+    'A floor is a room with rooms below it: add one, then add rooms below it.': {
+        de: 'Eine Etage ist ein Raum mit Räumen darunter: erst die Etage anlegen, dann Räume darunter.',
+        en: 'A floor is a room with rooms below it: add one, then add rooms below it.',
+    },
+    'Rooms are a flat list on this system: no floors, no room below another.': {
+        de: 'Räume sind auf diesem System eine flache Liste: keine Etagen, kein Raum unter einem anderen.',
+        en: 'Rooms are a flat list on this system: no floors, no room below another.',
+    },
+    'Names and rooms': {de: 'Namen und Räume', en: 'Names and rooms'},
+    'Where names, rooms and functions are kept': {
+        de: 'Wo Namen, Räume und Gewerke gespeichert sind',
+        en: 'Where names, rooms and functions are kept',
+    },
+    Store: {de: 'Speicher', en: 'Store'},
+    Automatic: {de: 'Automatisch', en: 'Automatic'},
+    'This profile': {de: 'Dieses Profil', en: 'This profile'},
+    'API token': {de: 'API-Token', en: 'API token'},
+    'Only needed off the box': {de: 'Nur nötig, wenn nicht auf der Box', en: 'Only needed off the box'},
+    Reachable: {de: 'Erreichbar', en: 'Reachable'},
+    Unreachable: {de: 'Nicht erreichbar', en: 'Unreachable'},
+    'Read-only': {de: 'Nur lesen', en: 'Read-only'},
+    Writable: {de: 'Schreibbar', en: 'Writable'},
+    'revision {revision}, {count} objects': {
+        de: 'Revision {revision}, {count} Objekte',
+        en: 'revision {revision}, {count} objects',
+    },
 };
 
 /** Core's catalogue plus the UI's own keys; the UI's entries win on a collision. */

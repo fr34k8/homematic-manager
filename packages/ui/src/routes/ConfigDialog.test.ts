@@ -64,11 +64,11 @@ describe('ConfigDialog', () => {
      * list, with no way to see which of them belong together. The five sections of the roadmap are
      * the structure, and every setting of `ConnectionConfig` is in exactly one of them.
      */
-    it('groups the settings into the five titled sections', async () => {
+    it('groups the settings into the six titled sections', async () => {
         await open(transport);
         const dialog = screen.getByTestId('config-dialog');
         const titles = [...dialog.querySelectorAll('h3')].map((title) => title.textContent);
-        expect(titles).toEqual(['Verbindung', 'Rückruf', 'Schnittstellen', 'ReGa', 'Verhalten']);
+        expect(titles).toEqual(['Verbindung', 'Rückruf', 'Namen und Räume', 'Schnittstellen', 'ReGa', 'Verhalten']);
     });
 
     it('takes the host from the discovered list', async () => {

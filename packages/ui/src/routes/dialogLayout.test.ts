@@ -125,9 +125,10 @@ describe.skipIf(!hasLayout)('dialogs at 1280x800', () => {
     /**
      * Task 23: and it fits *without scrolling*. The maintainer's complaint about the old dialog
      * was that it read badly, and a settings dialog whose content is longer than its own box reads
-     * worst of all - the five sections stand in two columns exactly so that they do not.
+     * worst of all - the sections stand in two columns exactly so that they do not (six since
+     * task 25 added the store of names and rooms).
      */
-    it('the settings dialog shows all five sections without a scrollbar', async () => {
+    it('the settings dialog shows all of its sections without a scrollbar', async () => {
         await mountApp({transport: new MockTransport({demo: true})});
         await fireEvent.click(screen.getByTestId('settings-button'));
         const dialog = await waitFor(() => screen.getByTestId('config-dialog'));

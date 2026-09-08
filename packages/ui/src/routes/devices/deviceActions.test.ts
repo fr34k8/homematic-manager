@@ -342,6 +342,8 @@ describe('the context menu', () => {
             'restoreConfigToDevice',
             'clearConfigCache',
             'Konfiguration reparieren',
+            'Raum zuordnen…',
+            'Gewerk zuordnen…',
             'Gerät tauschen',
             'Löschen',
         ]);
@@ -359,6 +361,8 @@ describe('the context menu', () => {
             'reportValueUsage 0',
             'MASTER Paramset',
             'VALUES Paramset',
+            'Raum zuordnen…',
+            'Gewerk zuordnen…',
             'Verknüpfung als Sender anlegen',
             'Verknüpfung als Empfänger anlegen',
             'Verknüpfungen anzeigen (0)',
@@ -367,8 +371,10 @@ describe('the context menu', () => {
         // The three that act on the channel are off for :0; the paramsets of :0 are readable.
         expect(items.slice(0, 3).every((item) => item.disabled)).toBe(true);
         expect(items.slice(3, 5).some((item) => item.disabled)).toBe(false);
+        // task 25: the store of the demo takes writes, so a :0 channel may be put into a room
+        expect(items.slice(5, 7).some((item) => item.disabled)).toBe(false);
         // MAINTENANCE has no link roles and no TEAM_TAG, so the link and team entries are off
-        expect(items.slice(5).every((item) => item.disabled)).toBe(true);
+        expect(items.slice(7).every((item) => item.disabled)).toBe(true);
     });
 
     it('puts a smoke detector into the other detector team (#97)', async () => {
