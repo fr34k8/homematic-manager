@@ -149,34 +149,34 @@
         font-size: 12px;
     }
     .hmm-routing-graph line {
-        stroke: var(--hmm-fg-muted, #888);
+        stroke: var(--hmm-fg-muted);
         stroke-width: 1.5;
     }
     .hmm-routing-graph line.hmm-routing-static {
         stroke-dasharray: 5 4;
     }
     .hmm-routing-edge {
-        fill: var(--hmm-fg-muted, #888);
+        fill: var(--hmm-fg-muted);
         font-size: 10px;
         text-anchor: middle;
     }
     .hmm-routing-node circle {
-        fill: var(--hmm-bg-muted, #eee);
-        stroke: var(--hmm-fg-muted, #888);
+        fill: var(--hmm-bg-sunken);
+        stroke: var(--hmm-fg-muted);
         stroke-width: 1.5;
     }
     .hmm-routing-node.hmm-routing-router circle {
-        stroke: var(--hmm-accent, #0095d0);
+        stroke: var(--hmm-accent);
     }
     .hmm-routing-node.hmm-routing-self circle {
-        fill: var(--hmm-accent, #0095d0);
-        stroke: var(--hmm-accent, #0095d0);
+        fill: var(--hmm-accent);
+        stroke: var(--hmm-accent);
     }
     .hmm-routing-node text {
-        fill: var(--hmm-fg, #222);
+        fill: var(--hmm-fg);
     }
     .hmm-routing-node.hmm-routing-self .hmm-routing-mark {
-        fill: #fff;
+        fill: var(--hmm-bg);
     }
     .hmm-routing-mark {
         font-size: 11px;
