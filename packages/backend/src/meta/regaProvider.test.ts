@@ -11,7 +11,7 @@ import {describe, expect, it} from 'vitest';
 import {isMetaError, type MetaState} from '@homematic-manager/core';
 
 import {META_READ_SCRIPT} from '../rega/scripts.js';
-import {parseRegaNodeId, RegaMetaProvider, regaNodeId} from './regaProvider.js';
+import {parseRegaNodeId, RegaMetaProvider, regaNodeId, regaStockName} from './regaProvider.js';
 
 interface FakeRega {
     readonly scripts: string[];
@@ -49,7 +49,10 @@ function fakeRega(): FakeRega {
     };
 }
 
-function build(rega: FakeRega): {
+function build(
+    rega: FakeRega,
+    language?: 'de' | 'en',
+): {
     provider: RegaMetaProvider;
     states: MetaState[];
     notices: string[];
@@ -59,6 +62,7 @@ function build(rega: FakeRega): {
     const notices: string[] = [];
     const changes: number[] = [];
     const provider = new RegaMetaProvider({
+        language,
         exec: (script) => {
             rega.scripts.push(script);
             if (rega.offline) {
@@ -332,5 +336,73 @@ describe('what ReGa cannot do', () => {
         await expect(provider.deleteEnum()).rejects.toMatchObject({code: 'forbidden'});
         await expect(provider.import()).rejects.toMatchObject({code: 'forbidden'});
         await provider.stop();
+    });
+});
+
+describe('the stock rooms and functions', () => {
+    /**
+     * Found in the first lab pass (CCU3, firmware 3.89.8): a CCU comes with eleven rooms and ten
+     * functions whose `Name()` is a translation key - `roomKitchen`, `funcCentral` - and the WebUI
+     * translates it wherever it is shown. The list here has to show what the WebUI shows.
+     */
+    function stock(): FakeRega {
+        const rega = fakeRega();
+        rega.snapshot.rooms = [
+            {id: 1228, name: 'roomKitchen', channels: [102]},
+            {id: 1233, name: 'roomBathroom', channels: []},
+            {id: 1001, name: 'Bad', channels: []},
+        ];
+        rega.snapshot.functions = [
+            {id: 1225, name: 'funcCentral', channels: [201]},
+            {id: 2000, name: 'Licht', channels: []},
+        ];
+        return rega;
+    }
+
+    it('translates a key the way the WebUI does, and leaves any other name alone', () => {
+        expect(regaStockName('roomKitchen', 'de')).toBe('Küche');
+        expect(regaStockName('roomKitchen', 'en')).toBe('Kitchen');
+        expect(regaStockName('funcCentral', undefined)).toBe('Zentrale');
+        expect(regaStockName('Küche', 'de')).toBe('Küche');
+        expect(regaStockName('', 'en')).toBe('');
+    });
+
+    it('shows the translated names in the document, sorted by what is shown', async () => {
+        const rega = stock();
+        const {provider} = build(rega, 'de');
+        await provider.start();
+        expect(provider.document().enums['room']?.tree).toEqual([
+            {id: 'r1001', name: 'Bad'},
+            {id: 'r1233', name: 'Badezimmer'},
+            {id: 'r1228', name: 'Küche'},
+        ]);
+        expect(provider.document().enums['function']?.tree).toEqual([
+            {id: 'r2000', name: 'Licht'},
+            {id: 'r1225', name: 'Zentrale'},
+        ]);
+        // the memberships are by id and do not care about the name
+        expect(provider.document().objects['BidCos-RF.ABC1:1']?.enums).toEqual(['room/r1228']);
+
+        const english = build(stock(), 'en');
+        await english.provider.start();
+        expect(english.provider.document().enums['room']?.tree.map((node) => node.name)).toEqual([
+            'Bad',
+            'Bathroom',
+            'Kitchen',
+        ]);
+    });
+
+    it('takes the translation as the current name: renaming to it sends nothing, any other name is written', async () => {
+        const rega = stock();
+        const {provider} = build(rega, 'de');
+        await provider.start();
+        const before = rega.scripts.length;
+        await provider.updateNode('room/r1228', {name: 'Küche'});
+        await provider.updateNode('room/r1228', {name: 'roomKitchen'});
+        expect(rega.scripts).toHaveLength(before);
+
+        await provider.updateNode('room/r1228', {name: 'Kochen'});
+        expect(rega.scripts.at(-1)).toBe('dom.GetObject(1228).Name("Kochen");\n');
+        expect(provider.document().enums['room']?.tree.find((node) => node.id === 'r1228')?.name).toBe('Kochen');
     });
 });

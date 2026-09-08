@@ -22,12 +22,15 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
   objects, so what is assigned here is what the WebUI shows, and the other way round. ReGa's
   rooms are a flat list: the dialog says so and offers no floors there. A ⟳ in the dialog reads
   the CCU's lists again (ReGa announces no changes by itself). `metaProvider` accepts `rega` to
-  insist on it. Not yet tried against a real CCU; see the roadmap.
+  insist on it. Tried against a CCU3 (firmware 3.89.8) on 2026-09-08: create, rename, assign,
+  read back, remove and delete all did what ReGa's own objects then showed; the roadmap archive
+  has the run. Found there and fixed: the rooms and functions a CCU comes with are stored under
+  translation keys (`roomKitchen`), which the WebUI translates on display - the list here now
+  shows them the same way (German, or English when the profile's language is English).
 - **The Docker image's cookie default is decided (D-41, OQ-15):** the image keeps
   `HMM_ISSUE_COOKIE=true`, and the host now prints one warning line at start whenever it hands
   the token cookie to every browser on a non-loopback bind - whoever reaches that port is in -
   with the three ways to lock it down. `HMM_ISSUE_COOKIE=false` silences it.
-
 
 - **HmIP service-message suppression, reworked after the maintainer's look at beta.5.** The
   _Service messages_ box on top of the VALUES dialog is gone. Instead, the paramset dialog of

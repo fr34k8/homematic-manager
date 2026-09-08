@@ -30,6 +30,7 @@ import {
     makeRef,
     normaliseName,
     parsePath,
+    type Language,
     type MetaDocument,
     type MetaEnum,
     type MetaNode,
@@ -63,6 +64,11 @@ export interface RegaMetaProviderOptions extends MetaProviderEvents {
      * whose interface ReGa does not name (an older firmware, a CUxD device).
      */
     readonly interfaceOf: (address: string) => string | undefined;
+    /**
+     * The language the stock rooms and functions are shown in. ReGa stores them as translation keys
+     * (`roomKitchen`) and the WebUI translates them on display; the CCU's own default is German.
+     */
+    readonly language?: Language | undefined;
 }
 
 /** What the provider keeps per device or channel. */
@@ -84,6 +90,47 @@ const ENUM_NAMES: Readonly<Record<RegaEnumKind, Readonly<Record<string, string>>
     room: {de: 'Räume', en: 'Rooms'},
     function: {de: 'Gewerke', en: 'Functions'},
 };
+
+/**
+ * The rooms and functions a CCU comes with, as the WebUI translates them (`translate.lang.js` of
+ * the German and the English WebUI, firmware 3.89.8). ReGa's objects carry the *key* as their
+ * `Name()` - `roomKitchen`, not `Küche` - and every WebUI page translates it on display, so a list
+ * that shows the keys is not what the user sees on the CCU. Found in the first lab pass of task 27.
+ * A name that is not one of these keys is shown as it is; a rename writes the literal name.
+ */
+export const REGA_STOCK_NAMES: Readonly<Record<string, Readonly<Record<'de' | 'en', string>>>> = {
+    roomLivingRoom: {de: 'Wohnzimmer', en: 'Living room'},
+    roomKitchen: {de: 'Küche', en: 'Kitchen'},
+    roomBedroom: {de: 'Schlafzimmer', en: 'Bed room'},
+    roomChildrensRoom1: {de: 'Kinderzimmer 1', en: "Children's room 1"},
+    roomChildrensRoom2: {de: 'Kinderzimmer 2', en: "Children's room 2"},
+    roomOffice: {de: 'Büro', en: 'Home office'},
+    roomBathroom: {de: 'Badezimmer', en: 'Bathroom'},
+    roomGarage: {de: 'Garage', en: 'Garage'},
+    roomHWR: {de: 'Hauswirtschaftsraum', en: 'Utility room'},
+    roomGarden: {de: 'Garten', en: 'Garden'},
+    roomTerrace: {de: 'Terrasse', en: 'Terrace'},
+    funcLight: {de: 'Licht', en: 'Light'},
+    funcHeating: {de: 'Heizung', en: 'Heating'},
+    funcClimateControl: {de: 'Klima', en: 'Climatic conditions'},
+    funcWeather: {de: 'Wetter', en: 'Weather'},
+    funcEnvironment: {de: 'Umwelt', en: 'Environment'},
+    funcSecurity: {de: 'Sicherheit', en: 'Security'},
+    funcLock: {de: 'Verschluss', en: 'Lock'},
+    funcButton: {de: 'Taster', en: 'Button'},
+    funcCentral: {de: 'Zentrale', en: 'Central control unit'},
+    funcEnergy: {de: 'Energiemanagement', en: 'Energy management'},
+};
+
+/** `roomKitchen` -> `Küche`; anything that is not a stock key is answered as it is. */
+export function regaStockName(name: string, language: Language | undefined): string {
+    const stock = REGA_STOCK_NAMES[name];
+    if (stock === undefined) {
+        return name;
+    }
+    // the WebUI has German and English; the CCU's own default is German
+    return language === 'en' ? stock.en : stock.de;
+}
 
 /** `r4711` - the node id of a ReGa enum object; stable across renames. */
 export function regaNodeId(id: number): string {
@@ -263,7 +310,8 @@ export class RegaMetaProvider implements MetadataProvider {
             return;
         }
         const name = normaliseName(patch.name);
-        if (name === node.name) {
+        if (name === node.name || name === this.#displayName(node)) {
+            // the same name again is not a write - nor is the translation of a stock key
             return;
         }
         const script = renameObjectsScript([{id: node.id, name}]);
@@ -343,8 +391,8 @@ export class RegaMetaProvider implements MetadataProvider {
         const enums: Record<string, MetaEnum> = {};
         for (const kind of ['room', 'function'] as const) {
             const tree: MetaNode[] = [...this.#enums[kind].values()]
-                .sort((a, b) => a.name.localeCompare(b.name, 'de') || a.id - b.id)
-                .map((node) => ({id: regaNodeId(node.id), name: node.name}));
+                .sort((a, b) => this.#displayName(a).localeCompare(this.#displayName(b), 'de') || a.id - b.id)
+                .map((node) => ({id: regaNodeId(node.id), name: this.#displayName(node)}));
             enums[kind] = {name: {...ENUM_NAMES[kind]}, tree};
         }
         return {format: 1, revision: this.#revision, objects, enums};
@@ -384,6 +432,11 @@ export class RegaMetaProvider implements MetadataProvider {
             throw new MetaError('unknown-path', `${path} is not a room or function of this CCU`);
         }
         return {kind, node};
+    }
+
+    /** What the WebUI shows for this node: the stock key translated, anything else as it is. */
+    #displayName(node: RegaEnumNode): string {
+        return regaStockName(node.name, this.#options.language);
     }
 
     #nodeById(id: number): RegaEnumNode | undefined {

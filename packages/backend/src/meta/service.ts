@@ -419,9 +419,13 @@ export class MetaService {
     }
 
     #buildRega(rega: MetaRegaLink): MetadataProvider {
+        const language = this.#options.connection.language;
         return new RegaMetaProvider({
             exec: rega.exec,
             interfaceOf: this.#options.interfaceOf,
+            // the stock rooms are shown the way the WebUI shows them; `auto` and Turkish (which
+            // the WebUI does not have) fall back to the CCU's own German
+            language: language === 'en' ? 'en' : 'de',
             onChanged: () => {
                 this.applyNames();
                 this.#options.onChanged();

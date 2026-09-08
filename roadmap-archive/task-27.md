@@ -1,4 +1,4 @@
-# Task 27: Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener (done 2026-09-08)
+# Task 27: Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener (done 2026-09-08, lab pass 2026-09-08)
 
 ## The task, as given
 
@@ -34,17 +34,54 @@ the provider only, not through the name service as well - the same script would 
 sent twice. Tests: the scripts and parsers, 22 provider tests against a scripted ReGa, the
 selection in the service, four backend tests through the contract, and the UI's refresh path.
 
-## What was not done
+## The lab pass (2026-09-08, CCU3 firmware 3.89.8)
 
-**Not seen against a CCU.** hm-simulator's ReGa mock knows `Name()` and nothing of `ID_ROOMS`,
-`OT_ENUM` or `DeleteObject`, so the script idioms - in particular `dom.CreateObject(OT_ENUM)` for
-a new room and `oDevice.Interface()` for the interface name - are from eQ-3's script reference
-and the forum's use of them, not from a run against ReGaHSS. The first lab pass should create,
-rename, assign to and delete one room on the CCU3 and look at the WebUI's room list afterwards;
-the read script's answer is the other thing to check (a device whose interface ReGa does not
-name falls back to the device caches). Known limits: no ordering of rooms (ReGa has none; the
-list is sorted by name), `icon` and `position` are accepted and ignored, and a name ReGa refuses
-is reported as the script's error.
+Until this pass hm-simulator's ReGa mock (`Name()` and nothing of `ID_ROOMS`, `OT_ENUM` or
+`DeleteObject`) was all the provider had met; the idioms were from eQ-3's script reference. The
+pass drove `RegaMetaProvider` itself (the built `packages/backend`, `homematic-rega` as the
+transport, the CCU's ReGa port reached through an ssh tunnel because the CCU's firewall keeps
+8181 `restricted`) and checked every step against ReGa's own objects with separate scripts:
+`ID_ROOMS` / `ID_FUNCTIONS` with `EnumUsedIDs()`, the channel's `ChnRoom()` / `ChnFunction()`,
+`dom.GetObject(id)` of the new object. The full table is in `docs/hardware-checklist.md`.
+
+- `start()`: 164 objects, 11 rooms, 10 functions, 12 ms through the tunnel. `oDevice.Interface()`
+  names `BidCos-RF` and `HmIP-RF` for every device including the two virtual centrals; the wired
+  DRAP, DRI16 and DRS8 are `HmIP-RF`, as the interface list says. The RCV-50's channels are members
+  of `funcCentral`, as the WebUI has them.
+- `createNode('room', …, 'HMM Prüfraum "Lab"')`: `dom.CreateObject(OT_ENUM)` + `Add` on `ID_ROOMS`
+  works and answers the new id; the object has `Type()` 3, the name arrives with the umlaut and the
+  quotes intact (`escapeRegaString`), and `WriteURL` gives it back as `HMM%20Pr%FCfraum%20%22Lab%22`,
+  which the decoder turns into the original. The same for a function.
+- A parent is refused with `too-deep` before anything is sent.
+- `updateNode` rename: `Name()` by id; ReGa shows the new name at once; `refresh()` reads it back.
+- `setMembership` of one channel to the room and the function: `Add(id)` on both enums;
+  `ChnRoom()` of the channel names the room and `ChnFunction()` the function afterwards - ReGa
+  keeps the reverse index itself. A device ref put all 33 channels of the DRS8 but `:0` into the
+  room, read back the same way.
+- Removing both: `Remove(id)`, the room's list is empty and `ChnRoom()` of the channel is empty.
+- `deleteNode` with a member: refused with `has-members`; with `detach`: `Remove` on `ID_ROOMS`
+  and `dom.DeleteObject` - `dom.GetObject(id)` is null afterwards, the list no longer has it and
+  the channel's `ChnRoom()` is empty, so the membership went with the object.
+- At the end `ID_ROOMS` and `ID_FUNCTIONS` were byte-identical to the baseline taken before the
+  pass, and the provider read 11 and 10 again. No notice was raised at any point.
+
+**Found:** a CCU's stock rooms and functions carry **translation keys** as their `Name()` -
+`roomKitchen`, `roomHWR`, `funcCentral` - and every WebUI page translates them on display
+(`translate.lang.js`: `Küche`, `Hauswirtschaftsraum`, `Zentrale`). The provider showed the keys.
+Fixed the same day: `REGA_STOCK_NAMES` in `regaProvider.ts` carries the 21 keys with the German and
+English WebUI texts, the document shows the translation (German unless the profile's language is
+English), the list is sorted by what is shown, and a rename to the translation is not a write
+(checked on the box: `roomKitchen` stayed `roomKitchen`). Any other name is shown and written as it
+is. Three tests in `regaProvider.test.ts`.
+
+**Also seen:** ReGa persists its DOM on its own schedule - `homematic.regadom` on the box was
+written at 06:45 and 18:45 that day, not by the pass - so a room made here (or in the WebUI) lives
+in memory until ReGa's next save, as everything ReGa holds does.
+
+Known limits, unchanged: no ordering of rooms (ReGa has none; the list is sorted by name), `icon`
+and `position` are accepted and ignored, and a name ReGa refuses is reported as the script's error.
+Not done: the tree dialog was not clicked through against the CCU - the pass drove the provider,
+not the UI - and no WebUI page was opened; the comparison was with ReGa's objects directly.
 
 ## What was measured
 

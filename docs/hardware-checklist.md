@@ -19,6 +19,57 @@ their target from the environment. Everything else in a run is done by hand and 
 
 ---
 
+## 2026-09-08 — task 27, the ReGa metadata provider on the CCU3 firmware
+
+The `rega` provider of rooms and functions (`packages/backend/src/meta/regaProvider.ts`) had never
+met ReGaHSS: hm-simulator's mock knows `Name()` and nothing else. This run drove the provider
+itself - the built backend, `homematic-rega` as the transport - against the **CCU3 firmware** box,
+its ReGa port reached through an ssh tunnel (the CCU's firewall keeps 8181 `restricted`). Every
+step was checked with a separate script against ReGa's own objects. The box was left exactly as
+found: `ID_ROOMS` and `ID_FUNCTIONS` were byte-identical to the baseline at the end. Nothing was
+installed, no device was written to, the addon on the box was not touched.
+
+| step | what the provider sent | what ReGa's objects said |
+| --- | --- | --- |
+| `start()` | the read script | 164 objects (five devices with their channels, the two virtual centrals included), 11 rooms, 10 functions, in 12 ms; `oDevice.Interface()` named `BidCos-RF` / `HmIP-RF` for every device; the RCV-50 channels are in `funcCentral` as the WebUI has them |
+| `createNode` room `HMM Prüfraum "Lab"` | `dom.CreateObject(OT_ENUM)`, `Name()`, `Add` on `ID_ROOMS`, `Write(ID)` | the id came back; `dom.GetObject(id)` exists with `Type()` 3 and the name with umlaut and quotes intact; `ID_ROOMS` lists it; `WriteURL` gives `HMM%20Pr%FCfraum%20%22Lab%22`, decoded back to the original |
+| `createNode` function | the same on `ID_FUNCTIONS` | the same |
+| `createNode` with a parent | nothing | refused with `too-deep` before any script |
+| `updateNode` rename | `Name()` by id | the new name at once; `refresh()` reads it back |
+| `setMembership` one channel → room + function | `Add(id)` on both enums | the room's `EnumUsedIDs()` has the channel; the channel's `ChnRoom()` names the room and `ChnFunction()` the function - ReGa keeps the reverse index itself |
+| `setMembership` a device ref → room | 33 `Add` lines | every channel of the DRS8 but `:0` in the room; read back the same way |
+| `setMembership` both → nothing | `Remove` lines | the room empty, the channel's `ChnRoom()` empty |
+| `deleteNode` with a member, `detach: false` | nothing | refused with `has-members` |
+| `deleteNode` with `detach: true` | `Remove` on `ID_ROOMS`, `dom.DeleteObject` | `dom.GetObject(id)` null, `ID_ROOMS` without it, the channel's `ChnRoom()` empty |
+| `deleteNode` function | the same | gone |
+| final read | the read script | 11 rooms, 10 functions, both lists identical to the baseline; no notice raised in the whole run |
+
+### Found and fixed
+
+**The stock rooms and functions are translation keys.** A CCU comes with eleven rooms and ten
+functions whose `Name()` is `roomLivingRoom`, `roomKitchen`, `roomHWR`, `funcCentral`… - and every
+WebUI page translates the key on display (`/www/webui/js/lang/de/translate.lang.js`: `Wohnzimmer`,
+`Küche`, `Hauswirtschaftsraum`, `Zentrale`). The provider showed the keys. Fixed the same day:
+`REGA_STOCK_NAMES` carries the 21 keys with the German and English WebUI texts, the document shows
+the translation (German unless the profile's language is English), and a rename to the translation
+sends nothing - checked on the box in both languages, `roomKitchen` stayed `roomKitchen`.
+
+### Also seen
+
+- ReGa persists its DOM on its own schedule: `homematic.regadom` on the box was written at 06:45
+  and 18:45 that day, not by the pass. What is created here lives in memory until ReGa's next save,
+  the same as a room made in the WebUI.
+- The CCU's firewall (`MOST_OPEN`, ReGa `restricted`) does not let the desktop or a Docker install
+  reach 8181 from a network the firewall does not list; that is the CCU's setting, and the
+  provider's "ReGa did not answer" is the right report for it.
+
+### Not done
+
+The tree dialog of task 25 was not clicked through against the box (the run drove the provider,
+not the UI), no WebUI page was opened for the comparison (ReGa's objects were read directly), and
+task 26's channel-0 dialog (suppression on HmIP) was not opened either - the addon on this box is an
+old build and was not updated.
+
 ## 2026-09-05 — task 17, the beta hardware pass
 
 **Build:** `3.0.0-dev.0` at commit `c4b04fd` (`BUILD_DATE` 2026-09-05T20:42Z), the three packages

@@ -729,7 +729,8 @@ documentation is [docs/openccu-lite.md](docs/openccu-lite.md).
 Done 2026-09-08, archived in [roadmap-archive/task-25.md](roadmap-archive/task-25.md): the rooms
 and functions columns, assign over the multi-selection, the filter, the tree dialog, the store
 indicator and the settings section - on the contract of task 24 plus one optional flag,
-`MetaState.flat`. Not seen against a box or a CCU yet.
+`MetaState.flat`. The ReGa half behind it was seen against the CCU3 on 2026-09-08 (task 27's lab
+pass); the dialog itself has not been clicked through against a box or a CCU yet.
 
 ## 26. HmIP service-message suppression, and the routing tables
 
@@ -810,8 +811,13 @@ stub, and the component tests mock them.
 Done 2026-09-08, archived in [roadmap-archive/task-27.md](roadmap-archive/task-27.md): `127.0.0.1`
 as the last callback candidate, and the `rega` metadata provider - the CCU's own rooms and
 functions through ReGa's objects, flat, behind the same interface the box's provider has, with
-`meta.refresh` because ReGa announces no changes. Not seen against a CCU yet: the script idioms
-(`dom.CreateObject(OT_ENUM)`, `oDevice.Interface()`) are what the first lab pass has to check.
+`meta.refresh` because ReGa announces no changes. **Lab pass 2026-09-08 on the CCU3** (firmware
+3.89.8, through the provider itself): read, create, rename, assign a channel and a device, read
+back, remove, refuse a delete with members, delete with detach - every idiom did what the script
+reference says, and ReGa's own objects (`ID_ROOMS`, `ChnRoom()`, `dom.GetObject(id)`) agreed at
+every step; the box was left exactly as found. One finding, fixed the same day: a CCU's stock rooms
+and functions carry translation keys as their names (`roomKitchen`), which the WebUI translates
+and the provider now does too. Details in the archive and in `docs/hardware-checklist.md`.
 
 ## Open questions
 
