@@ -165,6 +165,47 @@ export class ParamsetStore {
         }
     }
 
+    /**
+     * Task 26 (openccu-lite 28.9): the service parameters of a channel whose messages the HmIP
+     * server suppresses - eQ-3's `getSuppressedServiceMessages`, HmIP only. `undefined` when the
+     * interface does not offer the method (BidCos, Homegear): the dialog then shows nothing, and
+     * no notice is raised for what is simply not there.
+     */
+    async suppressedServiceMessages(interfaceName: string, address: string): Promise<string[] | undefined> {
+        try {
+            const result = await this.#transport.request('rpc.call', interfaceName, 'getSuppressedServiceMessages', [
+                address,
+            ]);
+            return Array.isArray(result) ? result.filter((entry): entry is string => typeof entry === 'string') : [];
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * `suppressServiceMessages(channelAddress, parameter, suppress)`: `parameter` is one with the
+     * service flag, or `''` for every service parameter of the channel. Suppression works by the
+     * interface reporting a value that raises no message (`UNREACH` becomes `false`).
+     */
+    async suppressServiceMessages(
+        interfaceName: string,
+        address: string,
+        parameter: string,
+        suppress: boolean,
+    ): Promise<boolean> {
+        try {
+            await this.#transport.request('rpc.call', interfaceName, 'suppressServiceMessages', [
+                address,
+                parameter,
+                suppress,
+            ]);
+            return true;
+        } catch (error) {
+            this.#notices.fromError(error, `suppressServiceMessages ${address} ${parameter || '*'}`);
+            return false;
+        }
+    }
+
     clearResults(): void {
         this.results = [];
     }

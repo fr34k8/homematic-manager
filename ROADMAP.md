@@ -771,6 +771,15 @@ there through `system.listMethods` once the interface offers them, what is missi
 signature hint; and a visualisation of the routing tables — a graph of routers and their
 next hops, distance and RSSI on the edges, read when the user asks.
 
+**Done 2026-09-08, the first part**: the VALUES dialog of a channel on an HmIP interface shows
+a *Service messages* section — one checkbox per service datapoint of the channel, *Suppress
+all* / *Unsuppress all* — fed by `getSuppressedServiceMessages` and written with
+`suppressServiceMessages` through the generic `rpc.call`
+(`ParamsetStore.suppressedServiceMessages` / `.suppressServiceMessages`). An interface without
+the method answers nothing and the section stays away, with no notice. Not yet seen against a
+real HmIP server: the demo transport has no such method. Open: the console's signature hint,
+and the routing-table graph.
+
 ## 27. Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener
 
 **From the maintainer, 2026-09-08 (openccu-lite task 28.10).** Task 25's editing UI must work

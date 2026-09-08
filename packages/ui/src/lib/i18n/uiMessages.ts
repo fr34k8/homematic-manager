@@ -224,6 +224,14 @@ export const UI_MESSAGES: MessageCatalogue = {
         en: 'Write every parameter, not only the changed ones',
     },
     'Show hidden parameters': {de: 'Ausgeblendete Parameter zeigen', en: 'Show hidden parameters'},
+    // Task 26: HmIP service-message suppression in the VALUES dialog of channel 0.
+    'Suppress {parameter}': {de: '{parameter} unterdrücken', en: 'Suppress {parameter}'},
+    'Suppress all': {de: 'Alle unterdrücken', en: 'Suppress all'},
+    'Unsuppress all': {de: 'Keine unterdrücken', en: 'Unsuppress all'},
+    'A suppressed one reports a value that raises no message; the CCU shows it as inactive.': {
+        de: 'Eine unterdrückte meldet einen Wert, der keine Meldung auslöst; die CCU zeigt sie als inaktiv.',
+        en: 'A suppressed one reports a value that raises no message; the CCU shows it as inactive.',
+    },
     'other firmware or device type': {
         de: 'andere Firmware oder anderer Gerätetyp',
         en: 'other firmware or device type',

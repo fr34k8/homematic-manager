@@ -1,6 +1,6 @@
 <script lang="ts">
     import type {MasterView, Paramset, ParamsetDescription, ParamsetValue, WriteResult} from '@homematic-manager/core';
-    import {multiApplyEligibility} from '@homematic-manager/core';
+    import {isServiceMessageDatapoint, multiApplyEligibility} from '@homematic-manager/core';
 
     import Dialog from '../../lib/components/Dialog.svelte';
     import MultiSelect from '../../lib/components/MultiSelect.svelte';
@@ -45,11 +45,38 @@
     let results = $state<WriteResult[]>([]);
     let readBack = $state<ReadBackEntry[]>([]);
     let loadToken = 0;
+    /**
+     * Task 26 (openccu-lite 28.9): which service messages of this channel the HmIP server
+     * suppresses. Read on its own, not with the paramset: the method exists on HmIP only, and a
+     * VALUES dialog on channel 0 is where a user looks for UNREACH and LOWBAT. `undefined` = not
+     * offered here, and the section stays away.
+     */
+    let suppressed = $state<string[] | undefined>(undefined);
+    const hmip = $derived(/hmip/i.test(interfaceName));
+    $effect(() => {
+        if (!open || paramset !== 'VALUES' || !hmip || interfaceName === '' || address === '') {
+            suppressed = undefined;
+            return;
+        }
+        const request = {interfaceName, address};
+        void stores.paramsets.suppressedServiceMessages(request.interfaceName, request.address).then((list) => {
+            if (request.address === address) {
+                suppressed = list;
+            }
+        });
+    });
+    async function toggleSuppress(parameter: string, suppress: boolean): Promise<void> {
+        if (await stores.paramsets.suppressServiceMessages(interfaceName, address, parameter, suppress)) {
+            suppressed = await stores.paramsets.suppressedServiceMessages(interfaceName, address);
+        }
+    }
 
     const index = $derived(stores.devices.index(interfaceName));
     const channelType = $derived(index?.get(address)?.TYPE ?? '');
     const title = $derived(`${paramset} — ${stores.nameOf(address)} (${address})`);
     const fields = $derived(description ? formFields(description, view) : []);
+    /** Task 26: the rows that are service messages, for the suppression section below. */
+    const serviceFields = $derived(fields.filter((field) => isServiceMessageDatapoint(field.name)));
     /**
      * The device-specific editors of task 10. They are plug-ins on top of this dialog: whatever
      * they recognise they draw themselves, and exactly those rows leave the generic list - the
@@ -360,6 +387,44 @@
             {/if}
         </div>
 
+        {#if suppressed !== undefined && serviceFields.length > 0}
+            <div class="hmm-paramset-service" data-testid="paramset-service-messages">
+                <div class="hmm-paramset-service-head">
+                    <strong>{t('Service messages')}</strong>
+                    <span
+                        >{t(
+                            'A suppressed one reports a value that raises no message; the CCU shows it as inactive.',
+                        )}</span
+                    >
+                </div>
+                {#each serviceFields as field (field.name)}
+                    <label class="hmm-paramset-option">
+                        <input
+                            type="checkbox"
+                            checked={suppressed.includes(field.name)}
+                            onchange={(event) => void toggleSuppress(field.name, event.currentTarget.checked)}
+                            data-testid={`suppress-${field.name}`}
+                        />
+                        <span>{t('Suppress {parameter}', {parameter: field.name})}</span>
+                    </label>
+                {/each}
+                <div class="hmm-paramset-service-all">
+                    <button
+                        type="button"
+                        class="hmm-button"
+                        onclick={() => void toggleSuppress('', true)}
+                        data-testid="suppress-all">{t('Suppress all')}</button
+                    >
+                    <button
+                        type="button"
+                        class="hmm-button"
+                        onclick={() => void toggleSuppress('', false)}
+                        data-testid="unsuppress-all">{t('Unsuppress all')}</button
+                    >
+                </div>
+            </div>
+        {/if}
+
         {#if warnings.length > 0}
             <ul class="hmm-paramset-warnings" data-testid="paramset-warnings">
                 {#each warnings as warning (warning)}
@@ -431,6 +496,25 @@
         border-bottom: 1px solid var(--hmm-border);
     }
 
+    .hmm-paramset-service {
+        border: 1px solid var(--hmm-border-muted, var(--hmm-border));
+        border-radius: var(--hmm-radius, 4px);
+        padding: 8px 10px;
+        margin: 8px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .hmm-paramset-service-head span {
+        margin-left: 6px;
+        color: var(--hmm-fg-muted, inherit);
+        font-size: 0.9em;
+    }
+    .hmm-paramset-service-all {
+        display: flex;
+        gap: 8px;
+        margin-top: 4px;
+    }
     .hmm-paramset-option {
         display: flex;
         align-items: center;
