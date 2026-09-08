@@ -746,6 +746,40 @@ store's enums — rooms, functions, and floors. There is no separate floor enum:
 floor is made, renamed, or emptied. The grid's room column shows the leaf; the filter may pick a
 parent and match everything under it.
 
+## 26. HmIP service-message suppression, and the routing tables
+
+**From the maintainer, 2026-09-08 (openccu-lite task 28.9).** eQ-3's *Homematic IP Legacy API
+(XML-RPC) Addendum* documents, on the HmIP interface (port 2010) only:
+
+- `void suppressServiceMessages(String channelAddress, String parameter, bool suppress)` —
+  `parameter` is one with the *Service* flag in its description, or `""` for every service
+  parameter of the channel; suppression works by reporting a value that raises no message
+  (`UNREACH` → always `false`).
+- `String[] getSuppressedServiceMessages(String channelAddress)` — the parameters currently
+  suppressed for the channel.
+- Devices with `ROUTER_MODULE_ENABLED=true` (the DeviceDescription says which) expose the
+  paramset type **`ROUTING_TABLE`**, the same for every channel of the device, up to 400
+  numbered entries `DYNAMIC_ROUTE_IP_DESTINATION_ADDRESS_n`, `…NEXT_HOP_ADDRESS_n`,
+  `…OM_ACCESS_CONTROLLER_n`, `…OM_ROUTER_n`, `…OM_PORTABLE_DEVICE_n`, `…OM_LISTENER_MODE_n`,
+  `…OM_VALID_n`, `…DISTANCE_n` (hops), `…IS_STATIC_ROUTE_n`, `…IS_NEIGHBOUR_n`,
+  `…IS_MAC_SEQUENCE_NUMBER_VALID_n`, `…RSSI_n`. Every read goes to the device over the air
+  (duty cycle): on demand only, never on a timer.
+
+Wanted: the suppression status in the channel-0 paramset dialog with a suppress/unsuppress
+control per service parameter (and "all"); both methods in the RPC console — they appear
+there through `system.listMethods` once the interface offers them, what is missing is a
+signature hint; and a visualisation of the routing tables — a graph of routers and their
+next hops, distance and RSSI on the edges, read when the user asks.
+
+## 27. Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener
+
+**From the maintainer, 2026-09-08 (openccu-lite task 28.10).** Task 25's editing UI must work
+against ReGa too — rooms and functions through ReGa's own objects, not only names — as well as
+against the metadata API, so one dialog serves a CCU and an openccu-lite box. And the callback
+address list must offer **`127.0.0.1`**: on an openccu-lite box the interface processes bind
+the loopback only (their D-29), so for the manager running on the box it is the only address
+they can reach. **Done 2026-09-08**: `localIPv4Addresses` appends the loopback last.
+
 ## Open questions
 
 OQ-1 to OQ-11 were answered on 2026-09-05 and are recorded as D-7 to D-17 in the Decisions

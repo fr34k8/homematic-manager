@@ -11,7 +11,13 @@
 import net from 'node:net';
 import os from 'node:os';
 
-/** Every non-internal IPv4 address of this machine; candidates for the callback address. */
+/**
+ * Every non-internal IPv4 address of this machine, then `127.0.0.1`; candidates for the callback
+ * address. The loopback comes last so nothing that picked "the first candidate" changes - but it
+ * has to be offered: on an openccu-lite box the interface processes bind the loopback only
+ * (their D-29), so for the Homematic Manager running *on* the box it is the one address they
+ * can call back (openccu-lite task 28.10, maintainer 2026-09-08).
+ */
 export function localIPv4Addresses(
     interfaces: () => NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces,
 ): string[] {
@@ -23,6 +29,7 @@ export function localIPv4Addresses(
             }
         }
     }
+    addresses.push('127.0.0.1');
     return addresses;
 }
 

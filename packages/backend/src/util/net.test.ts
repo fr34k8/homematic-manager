@@ -22,7 +22,7 @@ describe('localIPv4Addresses', () => {
                     down: undefined,
                 }) as never,
         );
-        expect(addresses).toEqual(['192.168.1.10']);
+        expect(addresses).toEqual(['192.168.1.10', '127.0.0.1']); // the loopback last, always offered (28.10)
     });
 
     it('asks the operating system when nothing is injected', () => {
