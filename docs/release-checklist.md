@@ -108,6 +108,13 @@ tag, and vice versa.
 Whichever gets there first creates the GitHub release as a **draft**; the others add their assets
 to it. Nothing is public until the draft is published by hand.
 
+The draft's **title and body are generated** (`scripts/release-notes.mjs`, run by each of the four
+workflows, so they are the same whichever creates the draft): the title is the version without the
+`v` (`3.0.0-beta.5` for the tag `v3.0.0-beta.5`), the body is the 3.0 hint paragraph (German and
+English), the `CHANGELOG.md` section of the version (between `## [<version>]` and the next
+`## [`, links pointed at the tag) and GitHub's generated notes below it. Nothing to add by hand for
+those; a version without a changelog section gets a body that says so and a warning in the run.
+
 ```sh
 gh run list --limit 8
 gh run watch <run-id>
@@ -127,8 +134,9 @@ gh run watch <run-id>
 - [ ] Install each of the D-25 install types **from the published artefacts, not from the
       checkout**: the three addon packages on the lab boxes, `docker run` on the image, the npm
       package with `--install` in a fresh LXC, the three Electron apps.
-- [ ] Edit the draft: the generated notes plus a short "what to test / what is known broken", and
-      **tick "Set as a pre-release"**.
+- [ ] Edit the draft: the generated title and body (hint, changelog section, GitHub's notes - step 3)
+      stay; add a short "what to test / what is known broken" by hand, and **tick "Set as a
+      pre-release"**.
 - [ ] Publish the draft.
 
 ```sh

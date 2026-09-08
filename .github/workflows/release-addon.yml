@@ -101,12 +101,23 @@ jobs:
           subject-path: ${{ steps.assets.outputs.package }}
           sbom-path: ${{ steps.assets.outputs.sbom }}
 
+      # The draft's title (the version without the `v`) and body (the 3.0 hint, the CHANGELOG.md
+      # section of the version, GitHub's generated notes), the same from every workflow because the
+      # action replaces both on every attach - see release-electron.yml.
+      - name: Title and body of the draft release
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: node scripts/release-notes.mjs "$TAG" "$RUNNER_TEMP/release-notes.md"
+
       - name: Attach the package, its checksum and its SBOM to the draft release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
+          name: ${{ steps.notes.outputs.name }}
+          body_path: ${{ steps.notes.outputs.body }}
           draft: true
-          generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
             ${{ steps.assets.outputs.package }}

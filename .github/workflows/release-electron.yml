@@ -170,14 +170,30 @@ jobs:
           # true of all of them; the per-installer files go along as release assets.
           sbom-path: apps/electron/dist-electron/sbom.cdx.json
 
+      # The draft's title and body come from `scripts/release-notes.mjs`, the same from every
+      # workflow and from every job of this matrix, because the action *replaces* both on every
+      # attach: left to itself it names the release after the tag (`v3.0.0-beta.5`, where every
+      # release so far was `3.0.0-beta.5`) and puts only GitHub's generated notes in the body. The
+      # script gives the version without the `v`, and the 3.0 hint, the CHANGELOG.md section of
+      # the version and the generated notes, in that order; a missing section is said in the body
+      # and warned about, never a failed release. `shell: bash` for the Windows job.
+      - name: Title and body of the draft release
+        id: notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: node scripts/release-notes.mjs "$TAG" "$RUNNER_TEMP/release-notes.md"
+
       # Idempotent by design: the action creates the draft release when it is not there yet and
-      # only adds the files when it is, so all three OS jobs - and all three workflows of D-24 -
-      # can run in any order and be re-run alone.
+      # only adds the files (and rewrites the same title and body) when it is, so all three OS
+      # jobs - and all four workflows of D-24 - can run in any order and be re-run alone.
       - name: Attach the assets to the draft release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
+          name: ${{ steps.notes.outputs.name }}
+          body_path: ${{ steps.notes.outputs.body }}
           draft: true
-          generate_release_notes: true
           fail_on_unmatched_files: true
           files: ${{ matrix.assets }}
