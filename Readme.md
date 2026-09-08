@@ -124,8 +124,10 @@ das Wichtigste in drei Zeilen:
   Räume, Gewerke, Etagen und was ein Benutzer sonst anlegt — und speichert sie im Profil. Auf
   [openccu-lite](docs/openccu-lite.md), der CCU-Firmware ohne ReGaHSS, kommen Namen und Taxonomie
   stattdessen aus dem Metadatenspeicher der Box, und die App ist dort deren Editor: Umbenennen und
-  Zuordnen schreibt in die Box, jede Änderung dort ist hier sofort sichtbar. Erkannt wird das zur
-  Laufzeit, es gibt nichts einzustellen.
+  Zuordnen schreibt in die Box, jede Änderung dort ist hier sofort sichtbar. Auf einer CCU mit
+  ReGa sind es ReGas eigene Räume und Gewerke (eine flache Liste, ohne Etagen). Erkannt wird das
+  zur Laufzeit, es gibt nichts einzustellen; Spalten, Filter, Zuordnen und der Dialog *Räume und
+  Gewerke* sind auf allen dreien dieselben.
 - Außerhalb der CCU wird ausschließlich **XML-RPC** gesprochen (D-28). BIN-RPC gibt es auf einer CCU
   nur auf dem Loopback; die öffentlichen Ports 2001/2000 sind lighttpd-XML-RPC-Proxys.
 

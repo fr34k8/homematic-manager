@@ -8,6 +8,22 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+- **Rooms and functions can be edited** (task 25, D-40). The device and channel grids gain a
+  _Rooms_ and a _Functions_ column; select rows and use _Assign to room_ / _Assign to function_
+  (toolbar or context menu) to put them into, or take them out of, a node - one write for the
+  whole selection. A filter by room and by function sits above the grid; a floor - a room with
+  rooms below it - matches everything under it. The new _Rooms and functions_ dialog adds,
+  renames, moves and deletes nodes and lists what is still assigned before a non-empty node
+  goes. Beside the interface mark a small indicator says where names and rooms come from (this
+  profile, an openccu-lite box, or ReGa) and whether the store answers and takes writes; the
+  settings dialog has a _Names and rooms_ section for the provider choice and the API token.
+- **Rooms and functions on a CCU come from ReGa** (task 27). With ReGa switched on and no
+  openccu-lite box, the rooms and functions are the CCU's own - read and written through ReGa's
+  objects, so what is assigned here is what the WebUI shows, and the other way round. ReGa's
+  rooms are a flat list: the dialog says so and offers no floors there. A ⟳ in the dialog reads
+  the CCU's lists again (ReGa announces no changes by itself). `metaProvider` accepts `rega` to
+  insist on it. Not yet tried against a real CCU; see the roadmap.
+
 - **HmIP service-message suppression, reworked after the maintainer's look at beta.5.** The
   _Service messages_ box on top of the VALUES dialog is gone. Instead, the paramset dialog of
   channel 0 on an HmIP interface shows a _suppressed_ checkbox per service parameter inside the

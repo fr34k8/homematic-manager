@@ -94,7 +94,8 @@ taking the session that box's shell hands over.
 - [22. UI third look and the beta](#22-ui-third-look-and-the-beta) ✅ UI part; beta cut 2026-09-06
 - [23. Settings dialog and the help menu](#23-settings-dialog-and-the-help-menu) ✅
 - [24. The metadata store: rooms, functions and openccu-lite](#24-the-metadata-store-rooms-functions-and-openccu-lite) ✅ [archived](roadmap-archive/task-24.md)
-- [25. The editing UI for rooms and functions](#25-the-editing-ui-for-rooms-and-functions)
+- [25. The editing UI for rooms and functions](#25-the-editing-ui-for-rooms-and-functions) ✅ [archived](roadmap-archive/task-25.md)
+- [27. Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener](#27-taxonomy-for-rega-as-well-and-127001-as-a-callback-listener) ✅ [archived](roadmap-archive/task-27.md)
 - [Open questions](#open-questions)
 - [Lab and hardware](#lab-and-hardware)
 
@@ -724,27 +725,10 @@ documentation is [docs/openccu-lite.md](docs/openccu-lite.md).
 
 ## 25. The editing UI for rooms and functions
 
-Task 24 built the store and the whole write surface of the contract; what it deliberately did not
-build is the user interface for it, which is a UI task and not a protocol one. What is missing:
-
-- a **rooms / functions column** in the device and channel grids, filled from `meta.objects`
-  (`rooms` and `functions` are already arrays of names there, in tree order);
-- the interaction that matters: **select rows, assign to a room** - a multi-select in the grid and
-  one menu entry, which is `meta.assign` with the selected refs;
-- a small **tree dialog**: add, rename, move, delete, with the members listed before a node that
-  has any is removed (`meta.node.*`, `meta.enum.*`, and `detach` for the delete);
-- **a filter** by room and by function above the grid, which is what the taxonomy is *for*;
-- the **state** beside the ReGa indicator: which provider, whether the box is reachable and whether
-  it takes writes (`meta.state`, `meta.changed`), and a settings section for `metaProvider` and
-  `metaToken`.
-
-Nothing here needs a backend change: every method and every event it uses exists and is tested.
-
-**Clarified by the maintainer, 2026-09-08**: "taxonomy" here means exactly the management of the
-store's enums — rooms, functions, and floors. There is no separate floor enum: rooms are a
-**tree**, so a floor is a parent node with rooms beneath it, and the tree dialog above is where a
-floor is made, renamed, or emptied. The grid's room column shows the leaf; the filter may pick a
-parent and match everything under it.
+Done 2026-09-08, archived in [roadmap-archive/task-25.md](roadmap-archive/task-25.md): the rooms
+and functions columns, assign over the multi-selection, the filter, the tree dialog, the store
+indicator and the settings section - on the contract of task 24 plus one optional flag,
+`MetaState.flat`. Not seen against a box or a CCU yet.
 
 ## 26. HmIP service-message suppression, and the routing tables
 
@@ -822,12 +806,11 @@ stub, and the component tests mock them.
 
 ## 27. Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener
 
-**From the maintainer, 2026-09-08 (openccu-lite task 28.10).** Task 25's editing UI must work
-against ReGa too — rooms and functions through ReGa's own objects, not only names — as well as
-against the metadata API, so one dialog serves a CCU and an openccu-lite box. And the callback
-address list must offer **`127.0.0.1`**: on an openccu-lite box the interface processes bind
-the loopback only (their D-29), so for the manager running on the box it is the only address
-they can reach. **Done 2026-09-08**: `localIPv4Addresses` appends the loopback last.
+Done 2026-09-08, archived in [roadmap-archive/task-27.md](roadmap-archive/task-27.md): `127.0.0.1`
+as the last callback candidate, and the `rega` metadata provider - the CCU's own rooms and
+functions through ReGa's objects, flat, behind the same interface the box's provider has, with
+`meta.refresh` because ReGa announces no changes. Not seen against a CCU yet: the script idioms
+(`dom.CreateObject(OT_ENUM)`, `oDevice.Interface()`) are what the first lab pass has to check.
 
 ## Open questions
 

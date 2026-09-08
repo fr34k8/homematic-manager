@@ -20,7 +20,7 @@ immediately.
 | --- | --- | --- |
 | Devices, channels, paramsets, direct links, RSSI, service messages, events, the RPC console | XML-RPC / BIN-RPC to `rfd`, `hs485d`, `hmipserver` | identical — the interface processes are the same |
 | Friendly names | ReGa when it is on, else this profile's own store | the box's metadata store; a rename is written there |
-| Rooms, functions, floors | this profile's own store (new in 3.0.0-beta.3) | the box's, as trees; shared with every other program on the box |
+| Rooms, functions, floors | ReGa's own rooms and functions when ReGa is on (a flat list, no floors), else this profile's own store | the box's, as trees; shared with every other program on the box |
 | The login of the addon | the WebUI session (`settings.cgi`), optionally a CCU user (`--auth-mode rega`) | the session openccu-lite's shell hands over (`--auth-mode occulite`) |
 | Device images | fetched from the CCU | the bundled subset — the box has no `/config/img/devices/` |
 | System variables, programs, HM-Script | ReGa | **not available** — see below |
@@ -28,7 +28,9 @@ immediately.
 Nothing has to be configured for any of this. The Homematic Manager asks
 `GET /api/meta/v1/version` on the host it is configured for, once per connection: an openccu-lite
 box answers with `{"api":"meta","version":1,…}` and its store is used, a CCU answers 404 and
-everything stays exactly as it was. A profile that is moved from one to the other and back needs no
+the rooms and functions come from ReGa when it is on (and answered), else from this profile. The
+same grid columns, the same filter and the same dialog work against all three; the indicator
+beside the interface mark says which one it is. A profile that is moved from one to the other and back needs no
 edit — which is the point, because moving between OpenCCU and openccu-lite in both directions is a
 supported operation of that project (its D-17).
 
@@ -98,7 +100,7 @@ on a non-standard port, and for the integration tests. It is not needed for a no
 
 | Key in `config.json` → `connection` | Meaning |
 | --- | --- |
-| `metaProvider` | `auto` (the default: probe once per connect), `local` (never probe, keep everything in this profile), `occulite` (insist on the box and say so when it does not answer) |
+| `metaProvider` | `auto` (the default: probe once per connect, then ReGa when it is on and answered, else this profile), `local` (never probe, keep everything in this profile), `occulite` (insist on the box and say so when it does not answer), `rega` (insist on ReGa's rooms and functions; a flat list, no floors) |
 | `metaToken` | the API token for an installation that is not on the box |
 | `metaUrl` | the box's base URL when it is not `http(s)://<host>` |
 
@@ -112,8 +114,9 @@ the per-CCU cache directory instead, so a restart while the box is unreachable s
 The provider is deliberately readable as a reference: openccu-lite's format and API are implemented
 in [`packages/core/src/meta/`](../packages/core/src/meta) (the document, its validation, the store
 with every operation and its revisions, and `applyEvent` for following the change stream), and the
-HTTP side in [`packages/backend/src/meta/`](../packages/backend/src/meta) (the client, the two
-providers, the detection and the credentials). Both halves run openccu-lite's **conformance
+HTTP side in [`packages/backend/src/meta/`](../packages/backend/src/meta) (the client, the three
+providers - `local`, `occulite`, and `rega` over the CCU's script interface - the detection and the
+credentials). Both halves run openccu-lite's **conformance
 corpus** — its D-16 contract between the Go implementation and this one — from
 `packages/core/test/fixtures/meta/`, refreshed with `node scripts/sync-meta-fixtures.mjs
 <checkout>`, and there is an integration test against a real `occulited` in
