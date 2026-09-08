@@ -13,6 +13,7 @@
 import {realpathSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 
+import {isLoopbackHost} from './auth.js';
 import {createWebHost, type WebHost} from './server.js';
 import {installService, uninstallService, type InstallerOptions} from './install.js';
 import {createLogger, type CreateLoggerOptions, type Logger} from './log.js';
@@ -121,6 +122,17 @@ export async function runCli(options: RunCliOptions = {}): Promise<CliRun> {
         log.debug(`token ${host.token}`);
     }
     log.debug(`a client without a cookie can use ${host.url}?token=${host.token}`);
+    if (host.token !== undefined && host.issueCookie && !isLoopbackHost(parsed.host)) {
+        // D-41: the Docker image binds 0.0.0.0 and issues the cookie so that the UI works out of
+        // the box - which means whoever reaches the port is in. Said once, at start, with the ways
+        // out; the host cannot see a proxy or TLS in front of it, so it says this whenever it is
+        // in that position
+        log.warn(
+            `the token cookie is handed to every browser that loads the page on ${parsed.host}: whoever reaches this port is in;` +
+                ' put a proxy with authentication and TLS in front, publish the port on the loopback only,' +
+                ' or set HMM_ISSUE_COOKIE=false and open the UI once with ?token=',
+        );
+    }
     if (parsed.authMode === 'rega') {
         // D-32: the token still works and `settings.cgi` still hands it out - the login is a second
         // door, not a replacement, and saying so keeps the addon's two paths straight in the log

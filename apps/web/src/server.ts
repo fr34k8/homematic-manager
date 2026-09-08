@@ -176,6 +176,8 @@ export interface WebHost {
     readonly base: string;
     /** `undefined` when auth is off. */
     readonly token: string | undefined;
+    /** Whether the page load hands the token to the browser as a cookie (D-41 says when to warn). */
+    readonly issueCookie: boolean;
     /** D-32: how a browser is let in. */
     readonly authMode: AuthMode;
     /** D-32/D-40: the login sessions; `undefined` in `token` mode, where there are none. */
@@ -661,6 +663,7 @@ export async function createWebHost(options: WebHostOptions = {}): Promise<WebHo
         port,
         base,
         token,
+        issueCookie,
         authMode,
         sessions,
         close,

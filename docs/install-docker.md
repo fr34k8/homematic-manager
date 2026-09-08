@@ -128,11 +128,12 @@ same position 2.x was in. Where it is not acceptable:
 - set `HMM_ISSUE_COOKIE=false` and `HMM_TOKEN=<something long>`, and open the UI once as
   `http://host:8090/?token=<the token>`; nothing else will get in.
 
-> **This default is still open (OQ-15).** The question is whether the image keeps `true` — the UI
-> works out of the box and this page names three ways to lock it down — or whether it ships refusing
-> until the user has read this page. The roadmap's recommendation is to keep it and print a one-line
-> warning at start when the cookie is issued on a non-loopback bind without TLS or a proxy in front;
-> that warning is **not implemented yet**. It is decided before the first image is published.
+**This default is decided (D-41, 2026-09-09): the image keeps `true`.** So that it is never a
+surprise, the host prints one warning line at start whenever it issues the cookie on a bind that is
+not the loopback — which in a container is every start with the default — naming the three ways
+above. The host itself never terminates TLS and cannot see a reverse proxy in front of it, so the
+line appears in a locked-down setup as well; `HMM_ISSUE_COOKIE=false` is what silences it, and
+behind a proxy that issues the token that is the right setting anyway.
 
 ## Idle unsubscribe (D-31)
 

@@ -34,7 +34,8 @@ These are one-time, and nothing below works until they are done.
       names the workflow *file*, so that file cannot be renamed without updating the publisher on
       npmjs.com first. A publish step failing with `ENEEDAUTH` means the two no longer match — which
       is the intended failure, not a reason to add a token secret.
-- [ ] **Decide OQ-15**, the Docker cookie default, before the first image is published.
+- [x] **Done (D-41, 2026-09-09): OQ-15 is decided**, the image keeps `HMM_ISSUE_COOKIE=true` and the
+      host warns at start when it issues the cookie on a non-loopback bind.
 - [ ] Optional, both still missing: Apple notarisation secrets (`APPLE_ID`, `APPLE_TEAM_ID`,
       `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_CERTIFICATE_P12`, `APPLE_CERTIFICATE_PASSWORD`) and
       SignPath for Windows (the step is in `release-electron.yml`, commented out). Without them

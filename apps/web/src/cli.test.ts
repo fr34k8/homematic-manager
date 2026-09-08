@@ -29,9 +29,9 @@ function capture(): {out: string[]; err: string[]; write: (text: string) => void
     return {out, err, write: (text) => out.push(text), writeError: (text) => err.push(text)};
 }
 
-/** A host that is not a host: `runCli` only needs `url`, `token` and `close`. */
-function fakeHost(token: string | undefined = 'abc'): WebHost {
-    return {url: 'http://127.0.0.1:1234/', token, close: () => Promise.resolve()} as unknown as WebHost;
+/** A host that is not a host: `runCli` only needs `url`, `token`, `issueCookie` and `close`. */
+function fakeHost(token: string | undefined = 'abc', issueCookie = false): WebHost {
+    return {url: 'http://127.0.0.1:1234/', token, issueCookie, close: () => Promise.resolve()} as unknown as WebHost;
 }
 
 describe('runCli', () => {
@@ -124,6 +124,34 @@ describe('runCli', () => {
         });
         expect(run.code).toBe(1);
         expect(io.err.join('')).toContain('EADDRINUSE');
+    });
+
+    it('warns once at start when the cookie is issued on a non-loopback bind (D-41), and only then', async () => {
+        const warnings = async (argv: string[], issueCookie: boolean): Promise<string[]> => {
+            const lines: string[] = [];
+            await runCli({
+                argv,
+                env: {},
+                ...capture(),
+                logWrite: (level, line) => {
+                    if (level === 'warn') {
+                        lines.push(line);
+                    }
+                },
+                start: () => Promise.resolve(fakeHost('abc', issueCookie)),
+                onSignal: () => undefined,
+            });
+            return lines;
+        };
+        // the Docker image's position: 0.0.0.0 and HMM_ISSUE_COOKIE=true
+        const docker = await warnings(['--host', '0.0.0.0', '--issue-cookie'], true);
+        expect(docker).toHaveLength(1);
+        expect(docker[0]).toContain('whoever reaches this port is in');
+        expect(docker[0]).toContain('HMM_ISSUE_COOKIE=false');
+        // a loopback bind is what the cookie was made for
+        expect(await warnings(['--host', '127.0.0.1'], true)).toHaveLength(0);
+        // the addon: a public bind whose proxy issues the cookie
+        expect(await warnings(['--host', '0.0.0.0', '--no-issue-cookie'], false)).toHaveLength(0);
     });
 
     it('passes the parsed options through to the host', async () => {
