@@ -8,6 +8,7 @@
  * main.js (:404-432 for the events, :800-822 for the paramset read).
  */
 
+import type {BidcosInterfaceInfo} from '../api/types.js';
 import type {Paramset, ParamsetValue} from '../rpc/values.js';
 
 /** What an interface process sends instead of a value it does not have. */
@@ -83,6 +84,38 @@ export function rssiColor(dbm: number | undefined): string | undefined {
     const red = channel((256 * (value - RSSI_GOOD)) / (RSSI_MEDIUM - RSSI_GOOD));
     const green = channel((256 * (value - RSSI_BAD)) / (RSSI_MEDIUM - RSSI_BAD));
     return `#${hex(red)}${hex(green)}00`;
+}
+
+/** The two fields of a `listBidcosInterfaces` entry that name it. */
+export type BidcosInterfaceName = Pick<BidcosInterfaceInfo, 'ADDRESS' | 'DESCRIPTION'>;
+
+/**
+ * How a BidCos interface is named for a person: the `DESCRIPTION` the CCU carries for it - the
+ * name a LAN gateway was given in the WebUI, `CCU2-Coprocessor` for the built-in module - and the
+ * serial when there is none. The 2.x Funk grid put the serial over the interface's columns with
+ * the description in small print under it; a gateway without a description shows its serial alone.
+ */
+export function bidcosInterfaceLabel(gateway: BidcosInterfaceName): string {
+    const description = gateway.DESCRIPTION?.trim() ?? '';
+    return description === '' ? gateway.ADDRESS : description;
+}
+
+/**
+ * The receiver a BidCos-RF device is routed through, for the device grid (BUGS.md B-2): the
+ * label of the gateway whose serial the description's `INTERFACE` names, the serial itself when
+ * `listBidcosInterfaces` does not know it or has not been read yet, and nothing for a device
+ * without one - HmIP and Wired have no receivers.
+ */
+export function receiverLabel(
+    device: {readonly INTERFACE?: string | undefined},
+    gateways: readonly BidcosInterfaceName[],
+): string {
+    const serial = device.INTERFACE ?? '';
+    if (serial === '') {
+        return '';
+    }
+    const gateway = gateways.find((candidate) => candidate.ADDRESS === serial);
+    return gateway ? bidcosInterfaceLabel(gateway) : serial;
 }
 
 /** The HmIP datapoints the matrix is built from. */

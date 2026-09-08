@@ -107,6 +107,14 @@ export function decodeRxMode(rxMode: number | undefined): string[] {
     return names;
 }
 
+/**
+ * Is roaming on for this device? rfd reports `ROAMING` as `1`/`0` over BIN-RPC and as a boolean
+ * over XML-RPC, so both spellings mean yes.
+ */
+export function isRoaming(device: {readonly ROAMING?: boolean | number | undefined}): boolean {
+    return device.ROAMING === true || device.ROAMING === 1;
+}
+
 /** `DIRECTION` of a channel. */
 export const DIRECTIONS = ['NONE', 'SENDER', 'RECEIVER'] as const;
 

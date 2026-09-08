@@ -83,6 +83,55 @@ describe('the radio tab', () => {
         expect(screen.getByTestId('rssi-LEQ0456789-BidCoS-RF-tx').getAttribute('data-rssi')).toBe('unknown');
     });
 
+    it('names each interface over its own columns - serial, description, configured marker (B-2, #142)', async () => {
+        await mountApp({transport, hash: '#/BidCos-RF/rssi'});
+        await waitFor(() => {
+            expect(document.querySelector('[data-row-id="MEQ0123456"]')).toBeTruthy();
+        });
+        // the 2.x group header: the serial, the description in small print under it
+        const group = screen.getByTestId('radio-table-group-BidCoS-RF');
+        expect(group.textContent).toContain('BidCoS-RF');
+        expect(group.textContent).toContain('(CCU2-Coprocessor)');
+        expect(group.getAttribute('aria-colspan')).toBe('3');
+        // the dBm labels no longer carry the serial (it was cut off at every width)
+        const labels = within(screen.getByTestId('radio-table'))
+            .getAllByRole('columnheader')
+            .map((header) => header.textContent.trim());
+        expect(labels).toContain('← dBm');
+        expect(labels).not.toContain('← dBm BidCoS-RF');
+        // MEQ0123456 is configured for BidCoS-RF: its marker is filled
+        const marker = screen.getByTestId('receiver-MEQ0123456-BidCoS-RF');
+        expect(marker.getAttribute('aria-pressed')).toBe('true');
+        expect(marker.textContent).toBe('◉');
+    });
+
+    it('opens the setBidcosInterface dialog on the gateway whose marker was clicked', async () => {
+        transport.result('bidcos.interfaces', [
+            {ADDRESS: 'BidCoS-RF', TYPE: 'CCU2', DESCRIPTION: 'CCU2-Coprocessor', DEFAULT: true},
+            // a LAN gateway nobody named: the header shows the serial alone
+            {ADDRESS: 'OEQ0328853', TYPE: 'HMLGW2', DESCRIPTION: ''},
+        ]);
+        await mountApp({transport, hash: '#/BidCos-RF/rssi'});
+        await waitFor(() => {
+            expect(screen.getByTestId('receiver-MEQ0123456-OEQ0328853')).toBeTruthy();
+        });
+        expect(screen.getByTestId('radio-table-group-OEQ0328853').textContent.trim()).toBe('OEQ0328853');
+        const other = screen.getByTestId('receiver-MEQ0123456-OEQ0328853');
+        expect(other.getAttribute('aria-pressed')).toBe('false');
+        expect(other.textContent).toBe('○');
+
+        await fireEvent.click(other);
+        await waitFor(() => {
+            expect(screen.getByTestId('set-interface-confirm')).toBeTruthy();
+        });
+        // the dialog proposes the gateway that was clicked and marks the one that is configured
+        expect(screen.getByTestId<HTMLSelectElement>('set-interface-select').value).toBe('OEQ0328853');
+        expect(screen.getByTestId('set-interface-current').textContent).toBe('BidCoS-RF');
+        expect(screen.getByTestId('set-interface-row-BidCoS-RF').getAttribute('aria-current')).toBe('true');
+        expect(screen.getByTestId('set-interface-row-BidCoS-RF').textContent).toContain('◉');
+        expect(screen.getByTestId('set-interface-row-OEQ0328853').getAttribute('aria-current')).toBeNull();
+    });
+
     it('opens the peers of a device as the 2.7 RSSI sub-grid', async () => {
         await mountApp({transport, hash: '#/BidCos-RF/rssi'});
         await waitFor(() => {

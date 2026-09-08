@@ -9,9 +9,10 @@ import type {AddressInfo} from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
+import {DeviceIndex} from '@homematic-manager/core';
 import {afterEach, describe, expect, it} from 'vitest';
 
-import {simulatorAvailable, startBackend, startSimulator, waitFor} from './helpers.js';
+import {simulatorAvailable, startBackend, startSimulator, VIRTUAL_DEVICES, waitFor} from './helpers.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- hm-simulator ships no types */
 
@@ -61,6 +62,29 @@ describe.skipIf(!simulatorAvailable)('connecting to hm-simulator', () => {
         expect(Object.keys(sim.clients.rfd ?? {}).length + Object.keys(sim.clients.hmip ?? {}).length).toBeGreaterThan(
             0,
         );
+    });
+
+    it('lists the groups of VirtualDevices as the group process describes them (BUGS.md B-1)', async () => {
+        const sim = await startSimulator({virtualDevices: VIRTUAL_DEVICES});
+        running.push({close: () => sim.close()});
+        const harness = await startBackend(sim, {connection: {interfaces: ['BidCos-RF', 'VirtualDevices']}});
+        running.unshift({close: () => harness.close()});
+
+        const groups = await harness.backend.request('devices.list', 'VirtualDevices');
+        const index = new DeviceIndex('VirtualDevices', groups);
+        // one device to count and to list, three channels under it
+        expect(index.devices().map((device) => device.ADDRESS)).toEqual(['INT0000001']);
+        expect(index.childrenOf('INT0000001').map((channel) => channel.ADDRESS)).toEqual([
+            'INT0000001:0',
+            'INT0000001:1',
+            'INT0000001:2',
+        ]);
+        // the shape a real CCU sends survives the XML-RPC round trip untouched
+        const channel = index.require('INT0000001:1') as unknown as Record<string, unknown>;
+        expect(channel['CHILDREN']).toBe('');
+        expect(channel['UPDATABLE']).toBe(true);
+        expect(channel['PARENT_TYPE']).toBe('HM-CC-VG-1');
+        expect(index.require('INT0000001').TYPE).toBe('HM-CC-VG-1');
     });
 
     it('speaks binrpc to an interface that offers it', async () => {

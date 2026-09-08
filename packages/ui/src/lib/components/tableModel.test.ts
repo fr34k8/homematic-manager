@@ -12,6 +12,8 @@ import {
     matchesText,
     nextSelection,
     rangeIds,
+    groupSpans,
+    hasActiveFilter,
     tableLayout,
     visibleWindow,
     type DataTableColumn,
@@ -357,5 +359,48 @@ describe('per-depth columns', () => {
             subHeader: true,
         });
         expect(rangeIds(flat, 'MEQ0000002', 'MEQ0000002:1')).toEqual(['MEQ0000002', 'MEQ0000002:1']);
+    });
+});
+
+describe('groupSpans', () => {
+    // the Funk grid: fixed device columns, then per interface a rx / tx / set triple
+    const columns: DataTableColumn<Record<string, unknown>>[] = [
+        {key: 'name', label: 'Name', width: 100},
+        {key: 'rx:A', label: '← dBm', width: 60},
+        {key: 'tx:A', label: '→ dBm', width: 60},
+        {key: 'set:A', label: '', width: 30, fixed: true},
+        {key: 'rx:B', label: '← dBm', width: 60},
+        {key: 'tx:B', label: '→ dBm', width: 60},
+        {key: 'set:B', label: '', width: 30, fixed: true, hidden: true},
+    ];
+    const groups = [
+        {key: 'A', label: 'PEQ1098001', sublabel: '(CCU2-Coprocessor)', columns: ['rx:A', 'tx:A', 'set:A']},
+        {key: 'B', label: 'OEQ0328853', columns: ['rx:B', 'tx:B', 'set:B']},
+        {key: 'C', label: 'gone', columns: ['rx:C', 'tx:C']},
+    ];
+
+    it('spans each group from its first visible column to its last, on the layout tracks', () => {
+        const layout = tableLayout(columns, undefined, true);
+        expect(groupSpans(groups, columns, layout)).toEqual([
+            // the expander is track 1, Name track 2, so A starts at 3 and ends before 6
+            {key: 'A', label: 'PEQ1098001', sublabel: '(CCU2-Coprocessor)', start: 3, end: 6},
+            // set:B is hidden: the span stops at tx:B
+            {key: 'B', label: 'OEQ0328853', sublabel: undefined, start: 6, end: 8},
+        ]);
+    });
+
+    it('drops a group with no visible column and copes with no groups at all', () => {
+        const layout = tableLayout(columns, undefined, false);
+        expect(groupSpans(groups, columns, layout).map((span) => span.key)).toEqual(['A', 'B']);
+        expect(groupSpans([], columns, layout)).toEqual([]);
+    });
+});
+
+describe('hasActiveFilter', () => {
+    it('sees the outside needle and any non-blank column field', () => {
+        expect(hasActiveFilter('', {})).toBe(false);
+        expect(hasActiveFilter('', {name: '', address: '  '})).toBe(false);
+        expect(hasActiveFilter('x', {})).toBe(true);
+        expect(hasActiveFilter('', {address: 'LEQ'})).toBe(true);
     });
 });

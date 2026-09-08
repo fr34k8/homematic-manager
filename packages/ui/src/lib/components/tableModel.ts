@@ -352,6 +352,65 @@ export function tableLayout<T>(
     return {template: expander ? `22px ${parts.join(' ')}` : parts.join(' '), track};
 }
 
+/**
+ * A header cell over several columns, drawn in a row of its own above the column labels - what
+ * jqGrid's `setGroupHeaders` did for the 2.x Funk grid, where every BidCos interface got its serial
+ * (and its description in small print) over its `<- dBm` / `-> dBm` / set columns.
+ */
+export interface DataTableColumnGroup {
+    readonly key: string;
+    readonly label: string;
+    /** A second, smaller line under the label. */
+    readonly sublabel?: string | undefined;
+    /** The keys of the columns it spans. Hidden columns do not count; a group with none left is not drawn. */
+    readonly columns: readonly string[];
+}
+
+/** Where a group header sits on the grid: 1-based track of its first column, exclusive end. */
+export interface GroupSpan {
+    readonly key: string;
+    readonly label: string;
+    readonly sublabel?: string | undefined;
+    readonly start: number;
+    readonly end: number;
+}
+
+/**
+ * The spans of the group headers, on the same tracks the layout gives the columns. A group spans
+ * from its leftmost visible column to its rightmost one; a group whose columns are all hidden or
+ * unknown is dropped.
+ */
+export function groupSpans<T>(
+    groups: readonly DataTableColumnGroup[],
+    columns: readonly DataTableColumn<T>[],
+    layout: TableLayout,
+): GroupSpan[] {
+    const visible = new Set(columns.filter((column) => column.hidden !== true).map((column) => column.key));
+    const spans: GroupSpan[] = [];
+    for (const group of groups) {
+        const tracks = group.columns
+            .filter((key) => visible.has(key))
+            .map((key) => layout.track[key])
+            .filter((track): track is number => track !== undefined);
+        if (tracks.length === 0) {
+            continue;
+        }
+        spans.push({
+            key: group.key,
+            label: group.label,
+            sublabel: group.sublabel,
+            start: Math.min(...tracks),
+            end: Math.max(...tracks) + 1,
+        });
+    }
+    return spans;
+}
+
+/** Is any filter - the outside needle or a column field - narrowing the rows? */
+export function hasActiveFilter(globalFilter: string, columnFilters: Readonly<Record<string, string>>): boolean {
+    return globalFilter.trim() !== '' || Object.values(columnFilters).some((value) => value.trim() !== '');
+}
+
 /** The `grid-template-columns` for a set of columns, plus the leading expander when there is one. */
 export function gridTemplate<T>(columns: readonly DataTableColumn<T>[], expander: boolean): string {
     return tableLayout(columns, undefined, expander).template;

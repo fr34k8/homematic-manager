@@ -114,6 +114,7 @@
     <div class="hmm-page-grid">
         <DataTable
             rows={messages}
+            scope={interfaceName}
             {columns}
             getId={idOf}
             bind:selected

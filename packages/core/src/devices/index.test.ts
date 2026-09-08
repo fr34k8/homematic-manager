@@ -10,6 +10,7 @@ import {
     decodeRxMode,
     isCentralDeviceType,
     isChannelDescription,
+    isRoaming,
     parseRoles,
     paramsetIdentity,
     type DeviceDescription,
@@ -57,6 +58,16 @@ describe('decodeRxMode', () => {
     it('is empty for zero and for a missing RX_MODE', () => {
         expect(decodeRxMode(0)).toEqual([]);
         expect(decodeRxMode(undefined)).toEqual([]);
+    });
+});
+
+describe('isRoaming', () => {
+    it('takes the numeric spelling of BIN-RPC and the boolean of XML-RPC', () => {
+        expect(isRoaming({ROAMING: 1})).toBe(true);
+        expect(isRoaming({ROAMING: true})).toBe(true);
+        expect(isRoaming({ROAMING: 0})).toBe(false);
+        expect(isRoaming({ROAMING: false})).toBe(false);
+        expect(isRoaming({})).toBe(false);
     });
 });
 

@@ -1,16 +1,19 @@
 <script lang="ts" generics="T">
-    import type {Snippet} from 'svelte';
+    import {untrack, type Snippet} from 'svelte';
 
     import {ROW_HEIGHT} from './metrics.js';
     import {
         buildRows,
         cellText,
+        groupSpans,
+        hasActiveFilter,
         isFilterable,
         isSortable,
         nextSelection,
         tableLayout,
         visibleWindow,
         type DataTableColumn,
+        type DataTableColumnGroup,
         type FlatRow,
         type SortState,
     } from './tableModel.js';
@@ -18,6 +21,18 @@
     interface Props {
         rows: T[];
         columns: DataTableColumn<T>[];
+        /**
+         * Header cells spanning several columns, in a row above the column labels (jqGrid's
+         * `setGroupHeaders`): the Funk grid puts every BidCos interface over its own columns.
+         */
+        columnGroups?: DataTableColumnGroup[] | undefined;
+        /**
+         * What the rows belong to - the interface, in every grid of this app. When it changes the
+         * column filters are cleared and the body scrolls to the top: a filter typed for one
+         * interface's addresses hid every device of the next one while the count still said how
+         * many there were (BUGS.md B-1).
+         */
+        scope?: string | undefined;
         /** Stable identity of a row - the address, in every grid of this app. */
         getId: (row: T) => string;
         /** Sub-rows of a row; a device's channels. Absent means no expander column. */
@@ -36,7 +51,14 @@
         /** Show the per-column filter row under the column labels, as the 2.x filter toolbar did. */
         columnFilterRow?: boolean;
         caption?: string | undefined;
+        /** What the body says when there are no rows at all. */
         emptyText?: string;
+        /** What the body says when there are rows but the filters hide every one of them. */
+        noMatchText?: string;
+        /** The button under that text; it empties the column filters. */
+        clearFilterLabel?: string;
+        /** Replaces `countText` while a filter is active: "Showing 0 of 31". */
+        showingText?: ((shown: number, total: number) => string) | undefined;
         filterLabel?: string;
         /**
          * The tab's actions - buttons, selection controls - drawn at the left of the header band.
@@ -73,6 +95,8 @@
     let {
         rows,
         columns,
+        columnGroups = undefined,
+        scope = undefined,
         getId,
         subRows = undefined,
         subColumns = undefined,
@@ -82,6 +106,9 @@
         columnFilterRow = true,
         caption = undefined,
         emptyText = '',
+        noMatchText = 'No row matches the filter',
+        clearFilterLabel = 'Clear filter',
+        showingText = undefined,
         filterLabel = 'Filter',
         toolbar = undefined,
         toolbarLabel = undefined,
@@ -120,6 +147,7 @@
      */
     const layout = $derived(tableLayout(columns, subColumns, hasExpander));
     const template = $derived(layout.template);
+    const spans = $derived(groupSpans(columnGroups ?? [], columns, layout));
     const expandedSet = $derived(new Set(expanded));
     /**
      * One header band per table (task 20, the maintainer's second look): the actions and the filter
@@ -149,6 +177,30 @@
     const bodyHeight = $derived(height ?? measuredHeight);
     const window_ = $derived(visibleWindow(flat.length, scrollTop, bodyHeight, rowHeight, overscan));
     const windowRows = $derived(flat.slice(window_.start, window_.end));
+
+    const filterActive = $derived(hasActiveFilter(filter, columnFilters));
+    /** Top-level rows left after the filters - what "Showing n of m" counts. */
+    const shownCount = $derived(flat.filter((entry) => entry.depth === 0).length);
+    /** Rows exist, the filters hide all of them: the count and the empty text must say so. */
+    const hiddenByFilter = $derived(filterActive && rows.length > 0);
+
+    function clearFilters(): void {
+        columnFilters = {};
+    }
+
+    // The scope is the interface; a filter belongs to the rows it was typed for.
+    let lastScope = untrack(() => scope);
+    $effect(() => {
+        if (scope === lastScope) {
+            return;
+        }
+        lastScope = scope;
+        clearFilters();
+        if (viewport) {
+            viewport.scrollTop = 0;
+            scrollTop = 0;
+        }
+    });
 
     $effect(() => {
         const element = viewport;
@@ -299,7 +351,11 @@
             {/if}
             <div class="hmm-table-trailing">
                 {#if status}{@render status()}{/if}
-                {#if countText !== undefined}
+                {#if hiddenByFilter && showingText !== undefined}
+                    <span class="hmm-table-count" data-testid={testId === undefined ? undefined : `${testId}-count`}
+                        >{showingText(shownCount, rows.length)}</span
+                    >
+                {:else if countText !== undefined}
                     <span class="hmm-table-count" data-testid={testId === undefined ? undefined : `${testId}-count`}
                         >{countText}</span
                     >
@@ -316,6 +372,31 @@
         tabindex="0"
         onkeydown={onKeyDown}
     >
+        {#if spans.length > 0}
+            <!-- The 2.x Funk grid's second header row: one cell per interface over its columns. -->
+            <div
+                class="hmm-table-groups"
+                role="row"
+                style:grid-template-columns={template}
+                style:padding-right={`${gutter}px`}
+            >
+                {#each spans as span (span.key)}
+                    <div
+                        class="hmm-th hmm-th-group"
+                        role="columnheader"
+                        aria-colspan={span.end - span.start}
+                        style:grid-column={`${String(span.start)} / ${String(span.end)}`}
+                        data-testid={testId === undefined ? undefined : `${testId}-group-${span.key}`}
+                    >
+                        <span class="hmm-th-group-label">{span.label}</span>
+                        {#if span.sublabel !== undefined && span.sublabel !== ''}
+                            <span class="hmm-th-group-sub">{span.sublabel}</span>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
+        {/if}
+
         <div
             class="hmm-table-head"
             role="row"
@@ -382,7 +463,19 @@
             style:height={height === undefined ? undefined : `${height}px`}
         >
             {#if flat.length === 0}
-                <div class="hmm-table-empty">{emptyText}</div>
+                <div class="hmm-table-empty">
+                    {#if hiddenByFilter}
+                        <span>{noMatchText}</span>
+                        <button
+                            type="button"
+                            class="hmm-button hmm-table-clear"
+                            data-testid={testId === undefined ? undefined : `${testId}-clear-filter`}
+                            onclick={clearFilters}>{clearFilterLabel}</button
+                        >
+                    {:else}
+                        {emptyText}
+                    {/if}
+                </div>
             {:else}
                 <div class="hmm-table-spacer" style:height={`${flat.length * rowHeight}px`}>
                     <div class="hmm-table-rows" style:transform={`translateY(${window_.start * rowHeight}px)`}>
@@ -516,6 +609,29 @@
         display: grid;
         background: var(--hmm-header-bg);
         border-bottom: 1px solid var(--hmm-border);
+    }
+
+    .hmm-table-groups {
+        display: grid;
+        background: var(--hmm-header-bg);
+        border-bottom: 1px solid var(--hmm-border-muted);
+    }
+
+    /* Two lines, centred over the columns the group spans, with a rule on its left so the eye
+       can tell where one interface's columns end and the next one's begin. */
+    .hmm-th-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 3px 6px 2px;
+        border-left: 1px solid var(--hmm-border-muted);
+        line-height: 1.2;
+        text-align: center;
+    }
+
+    .hmm-th-group-sub {
+        font-weight: normal;
+        color: var(--hmm-fg-faint);
     }
 
     /* D-34: a column label the way the she UI writes one - small, semibold, muted, and with no vertical
@@ -652,7 +768,16 @@
     }
 
     .hmm-table-empty {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         padding: 8px;
         color: var(--hmm-fg-muted);
+    }
+
+    .hmm-table-clear {
+        height: 22px;
+        padding: 0 8px;
+        font-size: var(--hmm-font-size-small);
     }
 </style>

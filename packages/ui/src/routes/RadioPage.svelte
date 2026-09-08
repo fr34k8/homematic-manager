@@ -1,12 +1,13 @@
 <script lang="ts">
     import type {BidcosInterfaceInfo, DeviceDescription} from '@homematic-manager/core';
+    import {bidcosInterfaceLabel, isRoaming} from '@homematic-manager/core';
 
     import DataTable from '../lib/components/DataTable.svelte';
     import DeviceImage from '../lib/components/DeviceImage.svelte';
     import {ICON_COLUMN_WIDTH} from '../lib/components/metrics.js';
     import RssiCell from '../lib/components/RssiCell.svelte';
     import ToolbarButton from '../lib/components/ToolbarButton.svelte';
-    import type {DataTableColumn} from '../lib/components/tableModel.js';
+    import type {DataTableColumn, DataTableColumnGroup} from '../lib/components/tableModel.js';
     import {getStores} from '../lib/stores/context.js';
 
     import SetInterfaceDialog from './radio/SetInterfaceDialog.svelte';
@@ -19,9 +20,17 @@
     let expanded = $state<string[]>([]);
     let setInterfaceOpen = $state(false);
     let setInterfaceAddress = $state('');
+    /** The gateway the dialog opens on when a marker in the grid was clicked; `''` for the device's own. */
+    let setInterfacePreset = $state('');
 
     const interfaceName = $derived(stores.app.selectedInterface);
     const gateways = $derived(stores.radio.gateways(interfaceName));
+
+    function openSetInterface(address: string, preset = ''): void {
+        setInterfaceAddress = address;
+        setInterfacePreset = preset;
+        setInterfaceOpen = true;
+    }
     /** The RSSI grid has one row per device; a channel has no radio of its own. */
     const devices = $derived(stores.devices.devices(interfaceName));
     const one = $derived(selected.length === 1 ? (selected[0] ?? '') : '');
@@ -57,9 +66,11 @@
     ];
 
     /**
-     * The 2.7 RSSI grid: the device columns, then a receive/send pair per gateway. 2.x drew one
-     * `<- dBm` / `-> dBm` pair for the default interface and one further column per additional one;
-     * here every gateway gets its pair, which is what a CCU with two LAN gateways needs.
+     * The 2.7 RSSI grid: the device columns, then per gateway a receive/send pair and - on BidCos -
+     * the marker of the configured receiver, under a group header that names the gateway (its
+     * serial, its description in small print: jqGrid's `setGroupHeaders` in 2.x). Forum report
+     * against beta.5 (BUGS.md B-2, #142): with the serial in every dBm label the labels were cut
+     * off, and nothing in the grid said which receiver a device was configured for.
      */
     const rssiColumns = $derived<DataTableColumn<DeviceDescription>[]>([
         {
@@ -88,7 +99,7 @@
             label: 'ROAMING',
             width: 90,
             align: 'center',
-            value: (device) => (device.ROAMING === true || device.ROAMING === 1 ? '✔' : ''),
+            value: (device) => (isRoaming(device) ? '✔' : ''),
         },
         {
             // Issue #26 asked for the unreach counter "im Tab Funk", next to the receive levels:
@@ -107,8 +118,8 @@
         ...gateways.flatMap((gateway) => [
             {
                 key: `rx:${gateway.ADDRESS}`,
-                label: `← dBm ${gateway.ADDRESS}`,
-                width: 120,
+                label: '← dBm',
+                width: 90,
                 align: 'right' as const,
                 filterable: false,
                 value: (device: DeviceDescription) =>
@@ -116,15 +127,39 @@
             },
             {
                 key: `tx:${gateway.ADDRESS}`,
-                label: `→ dBm ${gateway.ADDRESS}`,
-                width: 120,
+                label: '→ dBm',
+                width: 90,
                 align: 'right' as const,
                 filterable: false,
                 value: (device: DeviceDescription) =>
                     stores.radio.pair(interfaceName, device.ADDRESS, gateway.ADDRESS)?.tx ?? '',
             },
+            {
+                // 2.x: a radio button per interface, checked for the configured one; here a marker
+                // that opens the setBidcosInterface dialog on that gateway. (2.x left it out on
+                // HmIP; in 3.0 the Funk tab is BidCos-RF's alone, see `tabsForInterface`.)
+                key: `set:${gateway.ADDRESS}`,
+                label: '',
+                width: 30,
+                fixed: true,
+                align: 'center' as const,
+                sortable: false,
+                filterable: false,
+                value: (device: DeviceDescription) => (device.INTERFACE === gateway.ADDRESS ? '◉' : ''),
+            },
         ]),
     ]);
+
+    /** One header per gateway over its three columns, as the 2.x Funk grid drew them. */
+    const columnGroups = $derived<DataTableColumnGroup[]>(
+        gateways.map((gateway) => ({
+            key: gateway.ADDRESS,
+            label: gateway.ADDRESS,
+            sublabel:
+                bidcosInterfaceLabel(gateway) === gateway.ADDRESS ? undefined : `(${bidcosInterfaceLabel(gateway)})`,
+            columns: [`rx:${gateway.ADDRESS}`, `tx:${gateway.ADDRESS}`, `set:${gateway.ADDRESS}`],
+        })),
+    );
 
     /** The 2.7 RSSI sub-grid: every peer this device measures, not only the gateways. */
     const peerColumns = $derived<DataTableColumn<DeviceDescription>[]>([
@@ -190,7 +225,9 @@
         <DataTable
             rows={devices}
             columns={rssiColumns}
+            {columnGroups}
             subColumns={peerColumns}
+            scope={interfaceName}
             getId={(device) => device.ADDRESS}
             subRows={peersOf}
             bind:selected
@@ -198,10 +235,10 @@
             caption={t('RSSI')}
             filterLabel={t('Filter')}
             emptyText={t('No data')}
-            onactivate={(device) => {
-                setInterfaceAddress = device.ADDRESS;
-                setInterfaceOpen = true;
-            }}
+            noMatchText={t('No row matches the filter')}
+            clearFilterLabel={t('Clear filter')}
+            showingText={(shown, total) => t('Showing {shown} of {total}', {shown, total})}
+            onactivate={(device) => openSetInterface(device.ADDRESS)}
             toolbarLabel={t('RSSI')}
             countText={t('{count} devices', {}, devices.length)}
             testId="radio-table"
@@ -214,10 +251,7 @@
                     disabled={one === ''}
                     reason={t('Select a device')}
                     testId="radio-set-interface"
-                    onclick={() => {
-                        setInterfaceAddress = one;
-                        setInterfaceOpen = true;
-                    }}
+                    onclick={() => openSetInterface(one)}
                 />
                 <ToolbarButton
                     title={t('Reset the unreach counters')}
@@ -238,6 +272,23 @@
                         value={column.key === 'rx' ? measured?.rx : measured?.tx}
                         testId={`rssi-${flatRow.rootId}-${row.ADDRESS}-${column.key}`}
                     />
+                {:else if column.key.startsWith('set:') && flatRow.depth === 0}
+                    {@const gateway = column.key.slice(4)}
+                    {@const configured = row.INTERFACE === gateway}
+                    <button
+                        type="button"
+                        class="hmm-receiver-mark"
+                        class:hmm-receiver-configured={configured}
+                        aria-pressed={configured}
+                        title={configured
+                            ? `${t('Configured')}: ${gateway}`
+                            : t('Use {interface} as receiver', {interface: gateway})}
+                        data-testid={`receiver-${row.ADDRESS}-${gateway}`}
+                        onclick={(event) => {
+                            event.stopPropagation();
+                            openSetInterface(row.ADDRESS, gateway);
+                        }}>{configured ? '◉' : '○'}</button
+                    >
                 {:else if column.key.startsWith('rx:') || column.key.startsWith('tx:')}
                     {@const gateway = column.key.slice(3)}
                     {@const measured = stores.radio.pair(interfaceName, row.ADDRESS, gateway)}
@@ -255,7 +306,7 @@
     </div>
 </div>
 
-<SetInterfaceDialog bind:open={setInterfaceOpen} address={setInterfaceAddress} />
+<SetInterfaceDialog bind:open={setInterfaceOpen} address={setInterfaceAddress} preset={setInterfacePreset} />
 
 <style>
     .hmm-page {
@@ -274,5 +325,26 @@
     .hmm-page-grid {
         flex: 1 1 auto;
         min-height: 0;
+    }
+
+    /* The 2.x radio button, drawn as a glyph: filled for the configured receiver. */
+    .hmm-receiver-mark {
+        width: 22px;
+        height: 18px;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--hmm-fg-faint);
+        font: inherit;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .hmm-receiver-mark:hover {
+        color: var(--hmm-fg);
+    }
+
+    .hmm-receiver-configured {
+        color: var(--hmm-fg);
     }
 </style>

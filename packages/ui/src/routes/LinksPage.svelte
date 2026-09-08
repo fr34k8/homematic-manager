@@ -180,6 +180,7 @@
     <div class="hmm-page-grid">
         <DataTable
             rows={links}
+            scope={interfaceName}
             {columns}
             getId={(link) => `${link.SENDER}->${link.RECEIVER}`}
             bind:selected

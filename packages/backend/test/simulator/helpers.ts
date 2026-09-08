@@ -243,6 +243,78 @@ export const PARAMSET_DESCRIPTIONS: Record<string, unknown> = {
     },
 };
 
+/**
+ * One heating group in the shape a CCU3's group process really sends (BUGS.md B-1, taken from a
+ * real `listDevices` answer): `CHILDREN` is an empty string on a channel, `UPDATABLE` a boolean,
+ * and every field is present. What the round trip has to leave untouched.
+ */
+export const VIRTUAL_DEVICES = {
+    devices: [
+        {
+            TYPE: 'HM-CC-VG-1',
+            SUBTYPE: '',
+            ADDRESS: 'INT0000001',
+            RF_ADDRESS: 0,
+            CHILDREN: ['INT0000001:0', 'INT0000001:1', 'INT0000001:2'],
+            PARENT: '',
+            PARENT_TYPE: '',
+            INDEX: 0,
+            AES_ACTIVE: 0,
+            PARAMSETS: ['MASTER'],
+            FIRMWARE: '1.3',
+            AVAILABLE_FIRMWARE: '1.3',
+            UPDATABLE: true,
+            FIRMWARE_UPDATE_STATE: '',
+            VERSION: 3,
+            FLAGS: 1,
+            LINK_SOURCE_ROLES: '',
+            LINK_TARGET_ROLES: '',
+            DIRECTION: 0,
+            GROUP: '',
+            TEAM: '',
+            TEAM_TAG: '',
+            TEAM_CHANNELS: [],
+            INTERFACE: '',
+            ROAMING: 0,
+            RX_MODE: 1,
+        },
+        ...(
+            [
+                ['MAINTENANCE', 0, 3],
+                ['CLIMATECONTROL_RT_TRANSCEIVER', 1, 1],
+                ['SHUTTER_CONTACT', 2, 1],
+            ] as const
+        ).map(([type, index, flags]) => ({
+            TYPE: type,
+            SUBTYPE: '',
+            ADDRESS: `INT0000001:${String(index)}`,
+            RF_ADDRESS: 0,
+            CHILDREN: '',
+            PARENT: 'INT0000001',
+            PARENT_TYPE: 'HM-CC-VG-1',
+            INDEX: index,
+            AES_ACTIVE: 0,
+            PARAMSETS: ['VALUES'],
+            FIRMWARE: '1.3',
+            AVAILABLE_FIRMWARE: '1.3',
+            UPDATABLE: true,
+            FIRMWARE_UPDATE_STATE: '',
+            VERSION: 3,
+            FLAGS: flags,
+            LINK_SOURCE_ROLES: '',
+            LINK_TARGET_ROLES: '',
+            DIRECTION: 0,
+            GROUP: '',
+            TEAM: '',
+            TEAM_TAG: '',
+            TEAM_CHANNELS: [],
+            INTERFACE: '',
+            ROAMING: 0,
+            RX_MODE: 0,
+        })),
+    ],
+};
+
 export const REGA_CHANNELS = [
     {id: 1000, address: 'LEQ0000001', name: 'Steckdose'},
     {id: 1001, address: 'LEQ0000001:1', name: 'Steckdose:1'},
@@ -266,18 +338,25 @@ export interface SimulatorOptions {
     readonly serviceMessages?: Record<string, unknown[]>;
     /** Starts the VirtualDevices server (the CCU's group process) on `/groups`, port from the OS. */
     readonly virtual?: boolean;
+    /** What that server lists; empty unless given. Implies `virtual`. */
+    readonly virtualDevices?: {devices: unknown[]};
 }
 
 /** Starts a simulator with the fixtures above. */
 export async function startSimulator(options: SimulatorOptions = {}): Promise<any> {
+    const virtual = options.virtual === true || options.virtualDevices !== undefined;
     const sim = new HmSim({
-        devices: {rfd: RFD_DEVICES, hmip: HMIP_DEVICES},
+        devices: {
+            rfd: RFD_DEVICES,
+            hmip: HMIP_DEVICES,
+            ...(options.virtualDevices === undefined ? {} : {virtual: options.virtualDevices}),
+        },
         paramsetDescriptions: PARAMSET_DESCRIPTIONS,
         config: {
             listenAddress: '127.0.0.1',
             binrpcListenPort: 0,
             xmlrpcListenPort: 0,
-            ...(options.virtual === true ? {virtualListenPort: 0} : {}),
+            ...(virtual ? {virtualListenPort: 0} : {}),
         },
         behaviorPath: path.join(os.tmpdir(), 'hmm-no-behaviors'),
         ...(options.tls === true ? {tls: true} : {}),

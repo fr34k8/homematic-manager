@@ -6,7 +6,9 @@
         decodeRxMode,
         isDeviceAddress,
         isMaintenanceAddress,
+        isRoaming,
         parseRoles,
+        receiverLabel,
     } from '@homematic-manager/core';
 
     import ContextMenu from '../lib/components/ContextMenu.svelte';
@@ -84,6 +86,22 @@
     const allDevices = $derived(stores.devices.devices(interfaceName));
     const index = $derived(stores.devices.index(interfaceName));
     const messages = $derived(stores.serviceMessages.of(interfaceName));
+    /** The BidCos interfaces of this process, for the names of the receivers (B-2). */
+    const gateways = $derived(stores.radio.gateways(interfaceName));
+
+    $effect(() => {
+        if (interfaceType === 'BidCos-RF') {
+            void stores.radio.ensureGateways(interfaceName);
+        }
+    });
+
+    // A selection and the expanded rows belong to the interface they were made on (B-1: state
+    // that outlives an interface switch is what emptied the grid).
+    $effect(() => {
+        void interfaceName;
+        selected = [];
+        expanded = [];
+    });
 
     // ---------------------------------------------------------------- rooms and functions
 
@@ -250,17 +268,17 @@
             value: (device) => decodeDeviceFlags(device.FLAGS).labels.join(' '),
         },
         {
-            // Forum report against beta.5 (BUGS.md B-2): which receiver a BidCos-RF device talks
-            // through is what a user with LAN gateways looks for first, and 2.7 had this column
-            // commented out. The value is the gateway's serial as `listDevices` reports it;
-            // `✔` behind it says ROAMING is on. BidCos-RF only: HmIP and Wired have no receivers.
+            // Forum report against beta.5 (BUGS.md B-2, #142): which receiver a BidCos-RF device
+            // is routed through is what a user with LAN gateways looks for first, and 2.7 had this
+            // column commented out. The value is the receiver's name as `listBidcosInterfaces`
+            // describes it (the CCU's own module, a named LAN gateway) and its serial otherwise;
+            // the cell adds a mark when ROAMING is on. BidCos-RF only: HmIP and Wired have no
+            // receivers.
             key: 'INTERFACE',
             label: 'INTERFACE',
-            width: 120,
-            mono: true,
+            width: 130,
             hidden: interfaceType !== 'BidCos-RF',
-            value: (device) =>
-                `${device.INTERFACE ?? ''}${device.ROAMING === true || device.ROAMING === 1 ? ' ✔' : ''}`.trim(),
+            value: (device) => receiverLabel(device, gateways),
         },
         {
             key: 'RX_MODE',
@@ -600,9 +618,13 @@
             subRows={channelsOf}
             bind:selected
             bind:expanded
+            scope={interfaceName}
             caption={t('Devices')}
             filterLabel={t('Filter')}
             {emptyText}
+            noMatchText={t('No row matches the filter')}
+            clearFilterLabel={t('Clear filter')}
+            showingText={(shown, total) => t('Showing {shown} of {total}', {shown, total})}
             onrowcontextmenu={openMenu}
             toolbarLabel={t('Devices')}
             countText={t('{count} devices', {}, devices.length)}
@@ -803,6 +825,11 @@
                     {#if row.AES_ACTIVE}
                         <span title="AES_ACTIVE" aria-label="AES_ACTIVE" role="img">🔑</span>
                     {/if}
+                {:else if column.key === 'INTERFACE' && flatRow.depth === 0}
+                    <span data-testid={`receiver-${row.ADDRESS}`}>{receiverLabel(row, gateways)}</span>
+                    {#if isRoaming(row)}
+                        <span class="hmm-roaming" title="ROAMING" aria-label="ROAMING" role="img">⇄</span>
+                    {/if}
                 {:else}
                     {column.value
                         ? (column.value(row) ?? '')
@@ -865,6 +892,11 @@
 
     .hmm-msg-warn {
         color: var(--hmm-warn);
+    }
+
+    .hmm-roaming {
+        padding-left: 4px;
+        color: var(--hmm-fg-muted);
     }
 
     .hmm-firmware-status {

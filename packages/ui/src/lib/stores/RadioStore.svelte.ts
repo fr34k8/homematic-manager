@@ -20,6 +20,8 @@ export class RadioStore {
     /** Not reactive on purpose - `#version` is what the derived reads; a plain record keeps
      *  the Svelte reactivity rule out of a cache that is never rendered directly. */
     readonly #stores: Record<string, RssiStore> = {};
+    /** Interfaces whose gateway list is being read, was read, or failed once this session. Plain, like `#stores`. */
+    readonly #gatewayReads: Record<string, 'busy' | 'done' | 'failed'> = {};
     readonly #transport: Transport;
     readonly #notices: NoticesStore;
     readonly #unsubscribe: () => void;
@@ -77,6 +79,38 @@ export class RadioStore {
     }
 
     /**
+     * Reads the gateway list once, without the matrix. The device grid needs only the names of
+     * the receivers (BUGS.md B-2), not `rssiInfo` for every device; the Funk tab's {@link load}
+     * reads both. A list that was read - or refused - is not asked for again this session.
+     */
+    async ensureGateways(interfaceName: string): Promise<void> {
+        if (
+            interfaceName === '' ||
+            this.interfaces[interfaceName] !== undefined ||
+            this.#gatewayReads[interfaceName] !== undefined
+        ) {
+            return;
+        }
+        this.#gatewayReads[interfaceName] = 'busy';
+        try {
+            await this.#loadGateways(interfaceName);
+            this.#gatewayReads[interfaceName] = 'done';
+        } catch (error) {
+            this.#gatewayReads[interfaceName] = 'failed';
+            this.#notices.fromError(error, `listBidcosInterfaces ${interfaceName}`);
+        }
+    }
+
+    async #loadGateways(interfaceName: string): Promise<void> {
+        const gateways = await this.#transport.request('bidcos.interfaces', interfaceName);
+        this.interfaces = {...this.interfaces, [interfaceName]: gateways};
+        const central = gateways.find((gateway) => gateway.DEFAULT === true) ?? gateways[0];
+        if (central) {
+            this.#store(interfaceName).setCentralAddress(central.ADDRESS);
+        }
+    }
+
+    /**
      * Reads the matrix and the gateway list. `listBidcosInterfaces` is asked first, because its
      * answer names the access point the HmIP values are filed against - without it they have no
      * counterpart and are dropped.
@@ -87,12 +121,7 @@ export class RadioStore {
         }
         this.loading = true;
         try {
-            const gateways = await this.#transport.request('bidcos.interfaces', interfaceName);
-            this.interfaces = {...this.interfaces, [interfaceName]: gateways};
-            const central = gateways.find((gateway) => gateway.DEFAULT === true) ?? gateways[0];
-            if (central) {
-                this.#store(interfaceName).setCentralAddress(central.ADDRESS);
-            }
+            await this.#loadGateways(interfaceName);
         } catch (error) {
             this.#notices.fromError(error, `listBidcosInterfaces ${interfaceName}`);
         }

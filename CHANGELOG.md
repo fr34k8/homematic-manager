@@ -6,17 +6,41 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
-## [Unreleased]
+## [3.0.0-beta.7] — 2026-09-08
 
-Two forum reports against beta.5 (NickHM), recorded in `BUGS.md`; they reached the tree after
-`v3.0.0-beta.6` was tagged and are not in that release.
+Two reports from the first tester of beta.5 (NickHM, in the forum thread of the announcement and
+then as #142 and #143), both about what the grids say - fixed the way 2.7 had it.
 
-- **The device grid shows the receiver of a BidCos-RF device** (B-2): an `INTERFACE` column with
-  the gateway's serial and a `✔` when roaming is on, on BidCos-RF only. 2.7 had the column
-  commented out and showed it in the Funk tab alone.
-- **Open (B-1):** virtual devices counted but not listed. Not reproduced - a heating group as the
-  group process describes it is listed, and a test now guards that; the reporter's own
-  `listDevices` answer is what is needed.
+- **The receiver of a BidCos-RF device is named in the device grid and over its Funk columns**
+  (#142, `BUGS.md` B-2). The device grid on BidCos-RF has an `INTERFACE` column that names the
+  receiver a device is routed through - the CCU's own radio module, a LAN gateway - as
+  `listBidcosInterfaces` describes it, and by serial when the gateway has no description; `⇄`
+  behind it says roaming is on. The Funk grid has 2.7's second header row back: one cell per
+  interface over its `← dBm` / `→ dBm` columns with the serial and, in small print, the
+  description (the serials had been squeezed into every dBm label, where they were cut off), and
+  next to the two levels the marker of the configured receiver - `◉` for the one the device is
+  set to, `○` for the others; clicking a marker opens `setBidcosInterface` on that gateway. In
+  that dialog the bold row is now the configured receiver; it was the one heard best, which is
+  still named under the table. HmIP and Wired have no receivers and show none of this.
+- **VirtualDevices: the grid lists what the header counts** (#143, `BUGS.md` B-1). A filter typed
+  into a column of the device grid outlived the switch to another interface: the reporter's 31
+  groups were counted in the popup, hidden by a filter typed for BidCos-RF addresses, and the
+  empty grid said the interface had reported nothing. The column filters and the scroll position
+  now belong to the interface they were typed for and are cleared on a switch, the device grid
+  drops its selection with them, and while a filter hides rows the count says "Showing 0 of 31"
+  and the grid says that no row matches, with a button to clear the filter - in every grid that
+  has a filter row. The groups themselves were never the problem: 31 of them in the exact shape
+  a CCU3 sends render in the component test, and one goes through the real XML-RPC path in the
+  backend and e2e suites.
+
+### Known issues
+
+- The receiver names, the header row and the marker have met hm-simulator's one interface and the
+  demo data; a CCU with a LAN gateway has not shown them yet. The VirtualDevices fix reproduces
+  the reporter's screenshot in a test, not on his CCU.
+- #140 (umlauts in the addon overview) and #141 (no feedback when an addon update has finished),
+  both reported against the CCU addon on OpenCCU, are open and not in this release.
+- Everything under beta.6's "Known issues" still applies.
 
 ## [3.0.0-beta.6] — 2026-09-08
 
@@ -409,6 +433,7 @@ available to verify that against]; and the extended set of device-specific edito
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
 [unreleased]: https://github.com/hobbyquaker/homematic-manager/compare/v3.0.0-beta.6...master
+[3.0.0-beta.7]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.7
 [3.0.0-beta.6]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.6
 [3.0.0-beta.5]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.5
 [3.0.0-beta.2]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.2

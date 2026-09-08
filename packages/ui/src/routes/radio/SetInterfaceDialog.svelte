@@ -1,4 +1,6 @@
 <script lang="ts">
+    import {bidcosInterfaceLabel, isRoaming} from '@homematic-manager/core';
+
     import Dialog from '../../lib/components/Dialog.svelte';
     import RssiCell from '../../lib/components/RssiCell.svelte';
     import {getStores} from '../../lib/stores/context.js';
@@ -6,9 +8,11 @@
     interface Props {
         open?: boolean;
         address?: string;
+        /** The gateway to open on - the marker that was clicked in the grid; `''` for the current one. */
+        preset?: string;
     }
 
-    let {open = $bindable(false), address = ''}: Props = $props();
+    let {open = $bindable(false), address = '', preset = ''}: Props = $props();
 
     const stores = getStores();
     const t = stores.i18n.t;
@@ -21,6 +25,8 @@
     const device = $derived(stores.devices.index(interfaceName)?.get(address));
     const gateways = $derived(stores.radio.gateways(interfaceName));
     const best = $derived(stores.radio.bestGatewayFor(interfaceName, address));
+    /** What the device is configured for right now - the row the table marks (B-2, #142). */
+    const configured = $derived(device?.INTERFACE ?? '');
 
     $effect(() => {
         if (!open) {
@@ -29,8 +35,9 @@
         // The assignment the interface process reports right now, not the one read at start-up
         // (#122): 2.x kept its first `listDevices` answer and showed that for the rest of the
         // session, so an interface changed here looked unchanged until the app was restarted.
-        gateway = device?.INTERFACE ?? gateways[0]?.ADDRESS ?? '';
-        roaming = device?.ROAMING === true || device?.ROAMING === 1;
+        const known = gateways.some((entry) => entry.ADDRESS === preset);
+        gateway = known ? preset : (device?.INTERFACE ?? gateways[0]?.ADDRESS ?? '');
+        roaming = device === undefined ? false : isRoaming(device);
     });
 
     async function apply(): Promise<void> {
@@ -49,7 +56,8 @@
 <Dialog bind:open title="setBidcosInterface" width="560px" testId="set-interface-dialog">
     <p class="hmm-set-interface-device">{stores.nameOf(address)} <span class="hmm-mono">{address}</span></p>
     <p class="hmm-set-interface-current">
-        {t('Interface')}: <span class="hmm-mono" data-testid="set-interface-current">{device?.INTERFACE ?? '—'}</span>
+        {t('Configured')}:
+        <span class="hmm-mono" data-testid="set-interface-current">{configured === '' ? '—' : configured}</span>
     </p>
 
     <label class="hmm-set-interface-row">
@@ -70,15 +78,34 @@
     </label>
 
     {#if gateways.length > 0}
+        <!--
+            Bold marks the receiver the device is configured for, not the one that hears it best:
+            a tester read the bold row as the configuration and was misled (#142). The best one
+            is named under the table.
+        -->
         <table class="hmm-set-interface-table">
             <thead>
-                <tr><th>{t('Interface')}</th><th>← dBm</th><th>→ dBm</th></tr>
+                <tr><th></th><th>{t('Interface')}</th><th>← dBm</th><th>→ dBm</th></tr>
             </thead>
             <tbody>
                 {#each gateways as entry (entry.ADDRESS)}
                     {@const measured = stores.radio.pair(interfaceName, address, entry.ADDRESS)}
-                    <tr class:hmm-set-interface-best={best?.address === entry.ADDRESS}>
-                        <td class="hmm-mono">{entry.ADDRESS}</td>
+                    <tr
+                        class:hmm-set-interface-configured={configured === entry.ADDRESS}
+                        data-testid={`set-interface-row-${entry.ADDRESS}`}
+                        aria-current={configured === entry.ADDRESS ? 'true' : undefined}
+                    >
+                        <td
+                            class="hmm-set-interface-mark"
+                            title={configured === entry.ADDRESS ? t('Configured') : undefined}
+                            >{configured === entry.ADDRESS ? '◉' : ''}</td
+                        >
+                        <td>
+                            <span class="hmm-mono">{entry.ADDRESS}</span>
+                            {#if bidcosInterfaceLabel(entry) !== entry.ADDRESS}
+                                <span class="hmm-set-interface-name">{bidcosInterfaceLabel(entry)}</span>
+                            {/if}
+                        </td>
                         <td><RssiCell value={measured?.rx} /></td>
                         <td><RssiCell value={measured?.tx} testId={`set-interface-tx-${entry.ADDRESS}`} /></td>
                     </tr>
@@ -134,8 +161,17 @@
         border-bottom: 1px solid var(--hmm-border-muted);
     }
 
-    .hmm-set-interface-best {
+    .hmm-set-interface-configured {
         font-weight: bold;
+    }
+
+    .hmm-set-interface-mark {
+        width: 18px;
+    }
+
+    .hmm-set-interface-name {
+        padding-left: 6px;
+        color: var(--hmm-fg-muted);
     }
 
     .hmm-set-interface-best-note {

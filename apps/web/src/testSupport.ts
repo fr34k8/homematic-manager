@@ -230,7 +230,14 @@ export async function startForTest(options: StartForTestOptions = {}): Promise<T
     }
 
     const ports: Record<string, number> = simulator
-        ? {'BidCos-RF': simulator.ports.rfd as number, 'HmIP-RF': simulator.ports.hmip as number}
+        ? {
+              'BidCos-RF': simulator.ports.rfd as number,
+              'HmIP-RF': simulator.ports.hmip as number,
+              // only when the simulator was given a `virtualListenPort` (the CCU's group process)
+              ...(typeof simulator.ports.virtual === 'number'
+                  ? {VirtualDevices: simulator.ports.virtual as number}
+                  : {}),
+          }
         : {};
 
     const host = await createWebHost({
@@ -255,7 +262,7 @@ export async function startForTest(options: StartForTestOptions = {}): Promise<T
     if (simulator && host.backend) {
         const connection: ConnectionConfig = {
             host: '127.0.0.1',
-            interfaces: ['BidCos-RF', 'HmIP-RF'],
+            interfaces: ['BidCos-RF', 'HmIP-RF', ...(ports['VirtualDevices'] === undefined ? [] : ['VirtualDevices'])],
             autoDetect: false,
             extraInterfaces: [],
             tls: false,

@@ -67,6 +67,7 @@
     <div class="hmm-page-grid">
         <DataTable
             rows={events}
+            scope={interfaceName}
             {columns}
             getId={(event) => String(event.seq)}
             bind:selected

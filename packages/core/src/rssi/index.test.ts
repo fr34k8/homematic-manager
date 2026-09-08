@@ -1,6 +1,15 @@
 import {describe, expect, it} from 'vitest';
 
-import {normaliseRssiInfo, normaliseRssiValue, RSSI_UNKNOWN, rssiClass, rssiColor, RssiStore} from './index.js';
+import {
+    bidcosInterfaceLabel,
+    normaliseRssiInfo,
+    normaliseRssiValue,
+    receiverLabel,
+    RSSI_UNKNOWN,
+    rssiClass,
+    rssiColor,
+    RssiStore,
+} from './index.js';
 
 describe('normaliseRssiValue', () => {
     it('keeps a real measurement', () => {
@@ -188,5 +197,32 @@ describe('bestInterfaceFor (input for issue #69)', () => {
         expect(store.bestInterfaceFor('nope', ['BidCoS-RF'])).toBeUndefined();
         expect(store.bestInterfaceFor('MEQ0123456', [])).toBeUndefined();
         expect(store.bestInterfaceFor('MEQ0123456', ['LEQ-LGW-02'])).toBeUndefined();
+    });
+});
+
+describe('the names of the BidCos interfaces (BUGS.md B-2)', () => {
+    const coprocessor = {ADDRESS: 'PEQ1098001', DESCRIPTION: 'CCU2-Coprocessor'};
+    // a LAN gateway nobody named: the CCU sends an empty description
+    const unnamed = {ADDRESS: 'OEQ0328853', DESCRIPTION: ''};
+    const bare = {ADDRESS: 'OEQ0328953'};
+    const gateways = [coprocessor, unnamed, bare];
+
+    it('names an interface by its description and falls back to the serial', () => {
+        expect(bidcosInterfaceLabel(coprocessor)).toBe('CCU2-Coprocessor');
+        expect(bidcosInterfaceLabel(unnamed)).toBe('OEQ0328853');
+        expect(bidcosInterfaceLabel(bare)).toBe('OEQ0328953');
+        expect(bidcosInterfaceLabel({ADDRESS: 'OEQ0000001', DESCRIPTION: '   '})).toBe('OEQ0000001');
+    });
+
+    it('labels the receiver of a device with the name of the gateway its INTERFACE names', () => {
+        expect(receiverLabel({INTERFACE: 'PEQ1098001'}, gateways)).toBe('CCU2-Coprocessor');
+        expect(receiverLabel({INTERFACE: 'OEQ0328853'}, gateways)).toBe('OEQ0328853');
+    });
+
+    it('shows the serial when the gateway list does not know it, and nothing for a device without one', () => {
+        expect(receiverLabel({INTERFACE: 'OEQ9999999'}, gateways)).toBe('OEQ9999999');
+        expect(receiverLabel({INTERFACE: 'PEQ1098001'}, [])).toBe('PEQ1098001');
+        expect(receiverLabel({}, gateways)).toBe('');
+        expect(receiverLabel({INTERFACE: ''}, gateways)).toBe('');
     });
 });

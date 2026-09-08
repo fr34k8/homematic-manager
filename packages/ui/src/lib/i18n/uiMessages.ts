@@ -161,6 +161,15 @@ export const UI_MESSAGES: MessageCatalogue = {
         de: 'Keine Geräte - die Schnittstelle hat noch keine gemeldet',
         en: 'No devices - the interface has not reported any yet',
     },
+    // BUGS.md B-1: a filter that leaves nothing has to say so; the old text blamed the interface.
+    'No row matches the filter': {de: 'Keine Zeile passt zum Filter', en: 'No row matches the filter'},
+    'Clear filter': {de: 'Filter löschen', en: 'Clear filter'},
+    // BUGS.md B-2: the receiver a BidCos-RF device is configured for, in the Funk dialog.
+    Configured: {de: 'Konfiguriert', en: 'Configured'},
+    'Use {interface} as receiver': {
+        de: '{interface} als Empfänger verwenden',
+        en: 'Use {interface} as receiver',
+    },
     install: {de: 'installieren', en: 'install'},
     'Install firmware {version}': {de: 'Firmware {version} installieren', en: 'Install firmware {version}'},
 

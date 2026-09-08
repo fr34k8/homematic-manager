@@ -2,7 +2,7 @@ import type {DeviceDescription, ServiceMessage} from '@homematic-manager/core';
 import {fireEvent, screen, waitFor, within} from '@testing-library/svelte';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
-import {DEMO_DEVICES} from '../lib/transport/demoData.js';
+import {DEMO_DEVICES, isDemoInterface} from '../lib/transport/demoData.js';
 import {MockTransport} from '../lib/transport/MockTransport.js';
 import {firmwareCell, serviceMarks} from '../lib/util/deviceGrid.js';
 import {mountApp} from '../testHarness.js';
@@ -34,9 +34,39 @@ describe('the device grid columns', () => {
         ]);
     });
 
-    it('shows the receiver a BidCos-RF device talks through (B-2)', async () => {
-        await mountApp({hash: '#/BidCos-RF/devices'});
-        expect(rowOf('MEQ0123456').textContent).toContain('BidCoS-RF');
+    it('names the receiver a BidCos-RF device is routed through, from the gateway list (B-2, #142)', async () => {
+        const transport = new MockTransport({demo: true});
+        const {stores} = await mountApp({transport, hash: '#/BidCos-RF/devices'});
+        await waitFor(() => {
+            expect(stores.radio.gateways('BidCos-RF')).toHaveLength(1);
+        });
+        // INTERFACE is `BidCoS-RF`, the serial of the demo's coprocessor; the grid says its name
+        await waitFor(() => {
+            expect(screen.getByTestId('receiver-MEQ0123456').textContent).toBe('CCU2-Coprocessor');
+        });
+        expect(rowOf('MEQ0123456').textContent).not.toContain('⇄');
+        // the device grid reads the gateway list alone - the matrix is the Funk tab's business
+        expect(transport.countOf('bidcos.interfaces')).toBe(1);
+        expect(transport.countOf('rssi.get')).toBe(0);
+    });
+
+    it('shows the serial when the gateway has no description, and marks roaming (B-2)', async () => {
+        const transport = new MockTransport({demo: true});
+        transport.result('bidcos.interfaces', [{ADDRESS: 'OEQ0328853', TYPE: 'HMLGW2', DESCRIPTION: ''}]);
+        transport.respond('devices.list', (interfaceName) =>
+            isDemoInterface(interfaceName)
+                ? DEMO_DEVICES[interfaceName].map((device) =>
+                      device.ADDRESS === 'MEQ0123456' ? {...device, INTERFACE: 'OEQ0328853', ROAMING: 1} : device,
+                  )
+                : [],
+        );
+        await mountApp({transport, hash: '#/BidCos-RF/devices'});
+        await waitFor(() => {
+            expect(screen.getByTestId('receiver-MEQ0123456').textContent).toBe('OEQ0328853');
+        });
+        expect(within(rowOf('MEQ0123456')).getByLabelText('ROAMING')).toBeTruthy();
+        // a device whose receiver the gateway list does not know keeps the serial
+        expect(screen.getByTestId('receiver-JEQ0234567').textContent).toBe('BidCoS-RF');
     });
 
     it('has no INTERFACE column on HmIP, which has no receivers (B-2)', async () => {

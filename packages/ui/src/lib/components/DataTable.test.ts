@@ -311,6 +311,83 @@ describe('the channel sub-grid', () => {
  */
 const hasLayout = document.body.getBoundingClientRect().width > 0;
 
+describe('the group header row', () => {
+    const grouped: DataTableColumn<Row>[] = [
+        ...columns,
+        {key: 'rx:A', label: '← dBm', width: 60, filterable: false},
+        {key: 'tx:A', label: '→ dBm', width: 60, filterable: false},
+    ];
+
+    it('draws one cell per group over the columns it spans, with the second line', () => {
+        render(DataTable, {
+            props: {
+                ...base,
+                columns: grouped,
+                rows: makeRows(3),
+                columnGroups: [
+                    {key: 'A', label: 'PEQ1098001', sublabel: '(CCU2-Coprocessor)', columns: ['rx:A', 'tx:A']},
+                ],
+                testId: 'grid',
+            },
+        });
+        const cell = screen.getByTestId('grid-group-A');
+        expect(cell.textContent).toContain('PEQ1098001');
+        expect(cell.textContent).toContain('(CCU2-Coprocessor)');
+        expect(cell.getAttribute('aria-colspan')).toBe('2');
+        // no expander here: Name, ADDRESS, TYPE are tracks 1-3, the pair sits on 4 and 5
+        expect(cell.style.gridColumn).toBe('4 / 6');
+    });
+
+    it('draws no group row without groups', () => {
+        render(DataTable, {props: {...base, rows: makeRows(3), testId: 'grid'}});
+        expect(document.querySelector('.hmm-table-groups')).toBeNull();
+    });
+});
+
+describe('filters and the scope (BUGS.md B-1)', () => {
+    it('says how many rows the filter leaves and offers to clear it when it leaves none', async () => {
+        render(DataTable, {
+            props: {
+                ...base,
+                rows: makeRows(31),
+                countText: '31 devices',
+                showingText: (shown: number, total: number) => `Showing ${String(shown)} of ${String(total)}`,
+                noMatchText: 'Nothing matches',
+                clearFilterLabel: 'Clear',
+                emptyText: 'No devices at all',
+                testId: 'grid',
+            },
+        });
+        expect(screen.getByTestId('grid-count').textContent).toBe('31 devices');
+
+        const address = screen.getByLabelText('Filter: ADDRESS');
+        await fireEvent.input(address, {target: {value: 'ADDR0000'}});
+        expect(screen.getByTestId('grid-count').textContent).toBe('Showing 10 of 31');
+
+        await fireEvent.input(address, {target: {value: 'LEQ'}});
+        expect(screen.getByTestId('grid-count').textContent).toBe('Showing 0 of 31');
+        expect(screen.getByText('Nothing matches')).toBeTruthy();
+        expect(screen.queryByText('No devices at all')).toBeNull();
+
+        await fireEvent.click(screen.getByTestId('grid-clear-filter'));
+        expect(screen.getByTestId('grid-count').textContent).toBe('31 devices');
+        expect((address as HTMLInputElement).value).toBe('');
+        expect(rowsInDom().length).toBeGreaterThan(5);
+    });
+
+    it('clears the column filters when the scope changes', async () => {
+        const {rerender} = render(DataTable, {
+            props: {...base, rows: makeRows(31), scope: 'BidCos-RF', testId: 'grid'},
+        });
+        await fireEvent.input(screen.getByLabelText('Filter: ADDRESS'), {target: {value: 'LEQ'}});
+        expect(rowsInDom()).toHaveLength(0);
+
+        await rerender({...base, rows: makeRows(5), scope: 'VirtualDevices', testId: 'grid'});
+        expect(rowsInDom()).toHaveLength(5);
+        expect((screen.getByLabelText('Filter: ADDRESS') as HTMLInputElement).value).toBe('');
+    });
+});
+
 describe('column tracks at 1280 px', () => {
     const deviceColumns: DataTableColumn<Row>[] = [
         {key: 'icon', label: '', width: 24, fixed: true, sortable: false, filterable: false, value: () => ''},

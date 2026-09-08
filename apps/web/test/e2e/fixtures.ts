@@ -19,6 +19,11 @@ import {test as base, expect} from '@playwright/test';
 export {expect};
 
 export const BIDCOS_SWITCH = 'LEQ0000001';
+/** hm-simulator's built-in BidCos interface: `OEQ0123456`, described as `HM-MOD-RPI-PCB`. */
+export const BIDCOS_GATEWAY = 'OEQ0123456';
+export const BIDCOS_GATEWAY_NAME = 'HM-MOD-RPI-PCB';
+/** A heating group on the VirtualDevices interface (the CCU's group process). */
+export const HEATING_GROUP = 'INT0000001';
 export const HMIP_DIMMER = '0001D3C99ABCDE';
 export const HMIP_BUTTON = '0002D3C99ABCDE';
 /** A second HmIP-PDT on firmware 1.6.0: the target multi-apply has to refuse. */
@@ -34,6 +39,9 @@ const RFD_DEVICES = {
             CHILDREN: [`${BIDCOS_SWITCH}:0`, `${BIDCOS_SWITCH}:1`],
             PARAMSETS: ['MASTER'],
             RF_ADDRESS: 1,
+            // routed through the simulator's own interface, as rfd reports it (BUGS.md B-2)
+            INTERFACE: BIDCOS_GATEWAY,
+            ROAMING: 0,
         },
         {
             ADDRESS: `${BIDCOS_SWITCH}:0`,
@@ -147,6 +155,75 @@ const HMIP_DEVICES = {
     ],
 };
 
+/**
+ * One heating group, in the shape a CCU3's group process really sends (BUGS.md B-1): `CHILDREN`
+ * is an empty string on a channel, `UPDATABLE` a boolean, and every field is present.
+ */
+const VIRTUAL_DEVICES = {
+    devices: [
+        {
+            TYPE: 'HM-CC-VG-1',
+            SUBTYPE: '',
+            ADDRESS: HEATING_GROUP,
+            RF_ADDRESS: 0,
+            CHILDREN: [`${HEATING_GROUP}:0`, `${HEATING_GROUP}:1`, `${HEATING_GROUP}:2`],
+            PARENT: '',
+            PARENT_TYPE: '',
+            INDEX: 0,
+            AES_ACTIVE: 0,
+            PARAMSETS: ['MASTER'],
+            FIRMWARE: '1.3',
+            AVAILABLE_FIRMWARE: '1.3',
+            UPDATABLE: true,
+            FIRMWARE_UPDATE_STATE: '',
+            VERSION: 3,
+            FLAGS: 1,
+            LINK_SOURCE_ROLES: '',
+            LINK_TARGET_ROLES: '',
+            DIRECTION: 0,
+            GROUP: '',
+            TEAM: '',
+            TEAM_TAG: '',
+            TEAM_CHANNELS: [],
+            INTERFACE: '',
+            ROAMING: 0,
+            RX_MODE: 1,
+        },
+        ...[
+            ['MAINTENANCE', 0, 3, ['VALUES']],
+            ['CLIMATECONTROL_RT_TRANSCEIVER', 1, 1, ['VALUES']],
+            ['SHUTTER_CONTACT', 2, 1, ['VALUES']],
+        ].map(([type, index, flags, paramsets]) => ({
+            TYPE: type,
+            SUBTYPE: '',
+            ADDRESS: `${HEATING_GROUP}:${String(index)}`,
+            RF_ADDRESS: 0,
+            CHILDREN: '',
+            PARENT: HEATING_GROUP,
+            PARENT_TYPE: 'HM-CC-VG-1',
+            INDEX: index,
+            AES_ACTIVE: 0,
+            PARAMSETS: paramsets,
+            FIRMWARE: '1.3',
+            AVAILABLE_FIRMWARE: '1.3',
+            UPDATABLE: true,
+            FIRMWARE_UPDATE_STATE: '',
+            VERSION: 3,
+            FLAGS: flags,
+            LINK_SOURCE_ROLES: '',
+            LINK_TARGET_ROLES: '',
+            DIRECTION: 0,
+            GROUP: '',
+            TEAM: '',
+            TEAM_TAG: '',
+            TEAM_CHANNELS: [],
+            INTERFACE: '',
+            ROAMING: 0,
+            RX_MODE: 0,
+        })),
+    ],
+};
+
 const PARAMSET_DESCRIPTIONS: Record<string, unknown> = {
     'BidCos-RF/HM-LC-Sw1-Pl/2.8/1/SWITCH/MASTER': {
         LOGGING: {TYPE: 'BOOL', OPERATIONS: 7, FLAGS: 1, DEFAULT: false, MIN: false, MAX: true},
@@ -237,7 +314,10 @@ const REGA_CHANNELS = [
  * hypothesis of hm-simulator 1.0 did.
  */
 export const SIMULATOR_FIXTURE: Record<string, unknown> = {
-    devices: {rfd: RFD_DEVICES, hmip: HMIP_DEVICES},
+    devices: {rfd: RFD_DEVICES, hmip: HMIP_DEVICES, virtual: VIRTUAL_DEVICES},
+    // `config` replaces `startForTest`'s default as a whole, so the loopback bind and the OS-picked
+    // ports are repeated here; the virtual port is what starts the VirtualDevices server
+    config: {listenAddress: '127.0.0.1', binrpcListenPort: 0, xmlrpcListenPort: 0, virtualListenPort: 0},
     paramsetDescriptions: PARAMSET_DESCRIPTIONS,
     rega: {port: 0, listenAddress: '127.0.0.1', channels: REGA_CHANNELS},
     interfaces: {hmip: {configPendingMode: 'hmip'}, rfd: {configPendingMode: 'bidcos'}},
