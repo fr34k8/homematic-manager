@@ -1,4 +1,4 @@
-# Handoff — 2026-09-08 (night, after the beta.6 release)
+# Handoff — 2026-09-08 (late night, after the beta.7 release)
 
 Where the 3.0 rebuild stands, so that a new session (after a usage-limit pause, on another
 machine, with no conversation history) can continue without re-deriving anything. Refreshed
@@ -18,6 +18,28 @@ about every half hour while the agent works; the timestamp above is the last ref
 
 ## State of the branch
 
+- **2026-09-08 late: `3.0.0-beta.7`, on the maintainer's instruction ("fix the bug NickHM reported
+  on beta.5, then release beta.7").** What it carries over beta.6: the two forum reports of NickHM
+  (#142, #143; `BUGS.md` B-2 and B-1). B-2 the way 2.7 had it: the device grid on BidCos-RF names
+  the receiver a device is routed through (`listBidcosInterfaces` description, else the serial,
+  `⇄` for roaming; `RadioStore.ensureGateways` reads the list alone), the Funk grid has the 2.7
+  group-header row back - one cell per interface with serial and description over `← dBm` /
+  `→ dBm` and a `◉`/`○` marker of the configured receiver that opens `setBidcosInterface` on that
+  gateway; the dialog's bold row is the configured receiver. B-1's cause: a column filter typed on
+  one interface outlived the switch - the `DataTable` now takes a `scope` (the interface), clears
+  its column filters and scroll on a change, and says "Showing 0 of 31" / "No row matches the
+  filter" with a clear button while a filter hides rows; reproduced in a component test with 31
+  groups in the real group-process shape, never on the reporter's CCU. Commits `7f10bd5` (fix),
+  `c34a161` (bump), `bba39cc` (two test expectations the full run caught); tag `v3.0.0-beta.7` on
+  `bba39cc`. Gate before the tag: lint, typecheck, `npm test` 2474 passed / 10 skipped (150
+  files), build, e2e 24 passed / 1 skipped (the temp-key test, hm-simulator 1.0.0), addon
+  container test. Push workflows (CI, Build, CCU addon) green on `bba39cc`; the tag's CI and all
+  four release workflows green; the draft `3.0.0-beta.7` has every asset with its `.cdx.json`;
+  npm has `3.0.0-beta.7` as `latest`, the `next` alias again could not be moved (E401, the
+  workflow warns) - `npm dist-tag add homematic-manager@3.0.0-beta.7 next` is the maintainer's;
+  ghcr.io has the multi-arch image. **Both the beta.6 and the beta.7 drafts are unpublished**;
+  beta.5 is still what GitHub shows as latest. The forum was not answered (the maintainer answers
+  there); the changelog names NickHM and the two issues.
 - **2026-09-08 evening: `3.0.0-beta.6`, on the maintainer's instruction of 2026-09-09 ("finish
   every open task, then release beta.6").** What it carries over beta.5: the rooms and functions UI
   (task 25), ReGa as the store of rooms and functions on a CCU (task 27, **lab-passed on the CCU3
@@ -133,18 +155,19 @@ openccu-lite's cmd/occulited>` runs the integration suite in `packages/backend/t
 
 ## After the tag (2026-09-08, late)
 
-Two forum reports against beta.5 came in while the release ran; both are in `BUGS.md`. B-2 (the
-receiver of a BidCos-RF device in the device grid) is fixed on `master` after the tag; B-1 (virtual
-devices counted, not listed) is open for want of the reporter's `listDevices` answer - it does not
-reproduce with a heating group in the component test, and the lab CCU3 has no groups. Neither is
-in beta.6.
+Two forum reports against beta.5 came in while the beta.6 release ran; both are in `BUGS.md` and
+both are fixed in beta.7 (see the top entry). Nothing is open from the forum; #140 and #141
+(Baxxy13, the CCU addon on OpenCCU: umlauts in the addon overview, no feedback after an addon
+update) are open on GitHub and untouched.
 
 ## Next steps, in order
 
-1. **The maintainer publishes `v3.0.0-beta.6`** (release checklist, step 4): check the assets and
-   their `.cdx.json`, `gh attestation verify`, tick "pre-release", publish the draft, post the
-   announcement (`docs/announcement-3.0-beta.md`, placeholders at the top). The agent never
-   publishes.
+1. **The maintainer publishes `v3.0.0-beta.7`** (release checklist, step 4) - and decides what to
+   do with the unpublished beta.6 draft (publish it too, or discard it: beta.7 carries everything
+   beta.6 had): check the assets and their `.cdx.json`, `gh attestation verify`, tick
+   "pre-release", publish the draft, move the `next` dist-tag, post the announcement
+   (`docs/announcement-3.0-beta.md`, placeholders at the top), and answer NickHM in the forum
+   thread (#142, #143 are fixed in beta.7). The agent never publishes and never posts.
 2. **Hardware that is still owed** (all in `docs/hardware-checklist.md` "not done" lists): the
    task 25 tree dialog clicked through against the CCU3 with the current addon build; task 26's
    channel-0 dialog on an HmIP channel (suppress `UNREACH` through the preview, look at the WebUI's
