@@ -98,11 +98,13 @@ describe('App shell', () => {
             'interface-item-VirtualDevices',
         ]);
 
-        // the devices of the selected interface are loaded, so its line has the count as well
+        // the devices of the selected interface are loaded, so its line has the count as well -
+        // and the duty cycle, because the device grid reads the gateway list for the receiver
+        // names (BUGS.md B-2) and the popup shows what has been read
         const line = screen
             .getByTestId('interface-item-BidCos-RF')
             .querySelector('.hmm-interface-item-line')!.textContent;
-        expect(line).toBe('xmlrpc · Port 2001 · 8 Geräte');
+        expect(line).toBe('xmlrpc · Port 2001 · 8 Geräte · Duty Cycle 1 %');
         expect(screen.getByTestId('interface-item-CUxD').querySelector('.hmm-interface-item-line')!.textContent).toBe(
             'binrpc · Port 8701',
         );

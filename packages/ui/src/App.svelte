@@ -72,9 +72,10 @@
      * What the popup puts under an interface name beyond its own state (task 21).
      *
      * Both halves are only there once something has read them: the device count as soon as the
-     * Devices tab of that interface has been open, the duty cycle once the Radio tab has read the
-     * gateways. Neither is fetched for the popup - an interface list that starts five sweeps when
-     * it is opened would be a worse popup than one that says a little less.
+     * Devices tab of that interface has been open, the duty cycle once the gateway list has been
+     * read - by the Radio tab, or by the device grid of BidCos-RF for the receiver names (BUGS.md
+     * B-2). Neither is fetched for the popup - an interface list that starts five sweeps when it
+     * is opened would be a worse popup than one that says a little less.
      */
     const interfaceDetails = $derived(
         Object.fromEntries(

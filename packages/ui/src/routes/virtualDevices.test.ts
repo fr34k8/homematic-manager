@@ -141,7 +141,8 @@ describe('the VirtualDevices interface (B-1, #143)', () => {
         await waitFor(() => {
             expect(stores.devices.devices('BidCos-RF')).toHaveLength(200);
         });
-        await fireEvent.input(addressFilter(), {target: {value: 'LEQ00001'}});
+        // LEQ0000190 .. LEQ0000199: ten of the two hundred
+        await fireEvent.input(addressFilter(), {target: {value: 'LEQ000019'}});
         await waitFor(() => {
             expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('10');
         });
