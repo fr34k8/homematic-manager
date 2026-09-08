@@ -29,8 +29,23 @@ describe('the device grid columns', () => {
             'FIRMWARE',
             'PARAMSETS',
             'FLAGS',
+            'INTERFACE',
             'RX_MODE',
         ]);
+    });
+
+    it('shows the receiver a BidCos-RF device talks through (B-2)', async () => {
+        await mountApp({hash: '#/BidCos-RF/devices'});
+        expect(rowOf('MEQ0123456').textContent).toContain('BidCoS-RF');
+    });
+
+    it('has no INTERFACE column on HmIP, which has no receivers (B-2)', async () => {
+        const {stores} = await mountApp({hash: '#/HmIP-RF/devices'});
+        await waitFor(() => {
+            expect(stores.devices.devices('HmIP-RF').length).toBeGreaterThan(0);
+        });
+        const labels = screen.getAllByRole('columnheader').map((header) => header.textContent.trim());
+        expect(labels).not.toContain('INTERFACE');
     });
 
     it('adds SUBTYPE for HmIP, as initDaemon did', async () => {

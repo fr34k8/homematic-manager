@@ -250,6 +250,19 @@
             value: (device) => decodeDeviceFlags(device.FLAGS).labels.join(' '),
         },
         {
+            // Forum report against beta.5 (BUGS.md B-2): which receiver a BidCos-RF device talks
+            // through is what a user with LAN gateways looks for first, and 2.7 had this column
+            // commented out. The value is the gateway's serial as `listDevices` reports it;
+            // `✔` behind it says ROAMING is on. BidCos-RF only: HmIP and Wired have no receivers.
+            key: 'INTERFACE',
+            label: 'INTERFACE',
+            width: 120,
+            mono: true,
+            hidden: interfaceType !== 'BidCos-RF',
+            value: (device) =>
+                `${device.INTERFACE ?? ''}${device.ROAMING === true || device.ROAMING === 1 ? ' ✔' : ''}`.trim(),
+        },
+        {
             key: 'RX_MODE',
             label: 'RX_MODE',
             width: 130,

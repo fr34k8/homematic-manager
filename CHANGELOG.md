@@ -8,7 +8,15 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
-Nothing yet.
+Two forum reports against beta.5 (NickHM), recorded in `BUGS.md`; they reached the tree after
+`v3.0.0-beta.6` was tagged and are not in that release.
+
+- **The device grid shows the receiver of a BidCos-RF device** (B-2): an `INTERFACE` column with
+  the gateway's serial and a `✔` when roaming is on, on BidCos-RF only. 2.7 had the column
+  commented out and showed it in the Funk tab alone.
+- **Open (B-1):** virtual devices counted but not listed. Not reproduced - a heating group as the
+  group process describes it is listed, and a test now guards that; the reporter's own
+  `listDevices` answer is what is needed.
 
 ## [3.0.0-beta.6] — 2026-09-08
 

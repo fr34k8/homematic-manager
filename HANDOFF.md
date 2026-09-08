@@ -131,6 +131,14 @@ openccu-lite's cmd/occulited>` runs the integration suite in `packages/backend/t
   main session on request.
 - OQ-14 decided as D-33 (2026-09-06): the npm package is `homematic-manager`, trusted publishing configured; the npmjs.com publisher entry must name `release-npm.yml`.
 
+## After the tag (2026-09-08, late)
+
+Two forum reports against beta.5 came in while the release ran; both are in `BUGS.md`. B-2 (the
+receiver of a BidCos-RF device in the device grid) is fixed on `master` after the tag; B-1 (virtual
+devices counted, not listed) is open for want of the reporter's `listDevices` answer - it does not
+reproduce with a heating group in the component test, and the lab CCU3 has no groups. Neither is
+in beta.6.
+
 ## Next steps, in order
 
 1. **The maintainer publishes `v3.0.0-beta.6`** (release checklist, step 4): check the assets and
