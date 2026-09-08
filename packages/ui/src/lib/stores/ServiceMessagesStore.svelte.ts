@@ -1,47 +1,41 @@
 import type {ServiceMessage, Transport} from '@homematic-manager/core';
 import {isAcknowledgeable} from '@homematic-manager/core';
 
-import {defaultStorage, type StorageLike} from './AppStore.svelte.js';
 import type {NoticesStore} from './NoticesStore.svelte.js';
-
-/** Where the quiet-mode choice of issue #102 is kept. */
-export const QUIET_STORAGE_KEY = 'hmm.serviceMessages.quiet';
-
-export interface ServiceMessagesStoreOptions {
-    /** `localStorage` by default; the tests pass a `Map`-backed stub. */
-    readonly storage?: StorageLike | undefined;
-}
+import {readSuppressed, writeSuppressed} from './suppression.js';
 
 /**
  * The service messages of every interface.
  *
  * The count in the tab label comes from here. 2.x popped a modal for every new message, which is
  * how it managed to close a paramset dialog the user was in the middle of (#77) - new messages now
- * land in the list and, at most, in a toast.
+ * land in the list and, at most, in a toast. (Task 26 removed the "quiet mode" of #102 that muted
+ * the toast: Homematic has no such state for a service message, and what it does have - eQ-3's
+ * suppression on the HmIP interface - lives in {@link suppressed} below.)
  */
 export class ServiceMessagesStore {
     messages = $state<ServiceMessage[]>([]);
     loading = $state(false);
     /**
-     * Quiet mode (#102): the list and the tab counter still update, only the toast is suppressed.
-     * 2.x had no way to stop the modal that popped up for every message.
+     * Task 26 (openccu-lite 28.9): per `<interface>|<channel>`, the service parameters whose
+     * messages the HmIP server suppresses - `getSuppressedServiceMessages`, read for the channels
+     * of the list on request. Only channels of an interface that offers the method appear here.
      */
-    quiet = $state(false);
+    suppressed = $state<Record<string, string[]>>({});
 
     readonly #transport: Transport;
     readonly #notices: NoticesStore;
-    readonly #storage: StorageLike | undefined;
     readonly #unsubscribe: () => void;
     /** `<interface>|<address>|<datapoint>` of everything that has already been announced. */
     #announced: string[] = [];
     /** The first list is the state of the world, not news; nothing is announced for it. */
     #seeded = false;
+    /** `<interface>|<address>` of every channel asked for its suppressed list, so an interface without the method is asked once. */
+    #asked: string[] = [];
 
-    constructor(transport: Transport, notices: NoticesStore, options: ServiceMessagesStoreOptions = {}) {
+    constructor(transport: Transport, notices: NoticesStore) {
         this.#transport = transport;
         this.#notices = notices;
-        this.#storage = options.storage === undefined ? defaultStorage() : options.storage;
-        this.quiet = this.#storage?.getItem(QUIET_STORAGE_KEY) === 'true';
         this.#unsubscribe = transport.on('serviceMessages.changed', (messages) => {
             this.apply(asList(messages));
         });
@@ -51,8 +45,7 @@ export class ServiceMessagesStore {
      * Takes a new list and announces what is new in it.
      *
      * Issue #77: 2.x opened a modal for every arriving message, which closed whatever dialog the
-     * user was in the middle of - a half-filled paramset editor included. A toast cannot do that,
-     * and quiet mode turns even the toast off.
+     * user was in the middle of - a half-filled paramset editor included. A toast cannot do that.
      */
     apply(messages: ServiceMessage[]): void {
         const known = this.#announced;
@@ -65,17 +58,9 @@ export class ServiceMessagesStore {
             this.#seeded = true;
             return;
         }
-        if (this.quiet) {
-            return;
-        }
         for (const message of fresh) {
             this.#notices.push('warn', `${message.address} ${message.datapoint}`, message.interfaceName);
         }
-    }
-
-    setQuiet(quiet: boolean): void {
-        this.quiet = quiet;
-        this.#storage?.setItem(QUIET_STORAGE_KEY, String(quiet));
     }
 
     /** The messages of an interface that `serviceMessages.ack` can actually clear. */
@@ -133,6 +118,57 @@ export class ServiceMessagesStore {
         return done;
     }
 
+    /** The suppressed parameters of a channel; `undefined` until read, or where there is no such method. */
+    suppressedOf(interfaceName: string, address: string): string[] | undefined {
+        return this.suppressed[suppressKey(interfaceName, address)];
+    }
+
+    /** Is this message's parameter currently suppressed on its channel? */
+    isSuppressed(message: ServiceMessage): boolean {
+        return this.suppressedOf(message.interfaceName, message.address)?.includes(message.datapoint) === true;
+    }
+
+    /**
+     * Reads the suppressed list of every channel in the interface's list that has not been asked
+     * yet. Called by the tab for an HmIP interface; a channel is asked once per session unless
+     * {@link suppress} changes it, because the answer only moves when this application moves it.
+     */
+    async loadSuppressed(interfaceName: string): Promise<void> {
+        const addresses = this.of(interfaceName)
+            .map((message) => message.address)
+            .filter((address, index, all) => all.indexOf(address) === index)
+            .filter((address) => !this.#asked.includes(suppressKey(interfaceName, address)));
+        await Promise.all(addresses.map((address) => this.#readSuppressed(interfaceName, address)));
+    }
+
+    /**
+     * `suppressServiceMessages(channel, datapoint, suppress)` for one message of the list, then the
+     * channel's list and the messages are read again - a suppressed `UNREACH` reports `false`, so
+     * the row is expected to go away.
+     */
+    async suppress(interfaceName: string, address: string, datapoint: string, suppress: boolean): Promise<boolean> {
+        try {
+            await writeSuppressed(this.#transport, interfaceName, address, datapoint, suppress);
+        } catch (error) {
+            this.#notices.fromError(error, `suppressServiceMessages ${address} ${datapoint}`);
+            return false;
+        }
+        await this.#readSuppressed(interfaceName, address);
+        await this.load();
+        return true;
+    }
+
+    async #readSuppressed(interfaceName: string, address: string): Promise<void> {
+        const key = suppressKey(interfaceName, address);
+        if (!this.#asked.includes(key)) {
+            this.#asked = [...this.#asked, key];
+        }
+        const list = await readSuppressed(this.#transport, interfaceName, address);
+        if (list !== undefined) {
+            this.suppressed = {...this.suppressed, [key]: list};
+        }
+    }
+
     dispose(): void {
         this.#unsubscribe();
     }
@@ -140,6 +176,10 @@ export class ServiceMessagesStore {
 
 function keyOf(message: ServiceMessage): string {
     return `${message.interfaceName}|${message.address}|${message.datapoint}`;
+}
+
+function suppressKey(interfaceName: string, address: string): string {
+    return `${interfaceName}|${address}`;
 }
 
 /**

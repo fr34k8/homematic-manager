@@ -18,6 +18,10 @@
         onconfirm: () => void;
         /** Issue #124: put this write into the change set instead of sending it now. */
         onstage?: (() => void) | undefined;
+        /** The confirm button's text; "Write" for a paramset, "Apply" for task 26's suppression. */
+        confirmLabel?: string | undefined;
+        /** The line under the table; the paramset count by default. */
+        countText?: string | undefined;
     }
 
     let {
@@ -30,6 +34,8 @@
         readBack = [],
         onconfirm,
         onstage = undefined,
+        confirmLabel = undefined,
+        countText = undefined,
     }: Props = $props();
 
     const stores = getStores();
@@ -49,12 +55,19 @@
             The exact call, with the exact struct: task 6 found that both interface processes take
             whatever they are given, so "what is really going out" is the only thing worth showing.
         -->
-        {#each preview.targets as target (target)}
-            <p class="hmm-preview-call" data-testid={`preview-call-${target}`}>
-                putParamset(<span class="hmm-mono">{target}</span>, <span class="hmm-mono">{paramset}</span>,
-                <span class="hmm-mono">{JSON.stringify(preview.values)}</span>)
-            </p>
-        {/each}
+        {#if preview.calls}
+            <!-- task 26: a preview whose calls are not putParamset lists them as they are -->
+            {#each preview.calls as call, index (call)}
+                <p class="hmm-preview-call" data-testid={`preview-call-${String(index)}`}>{call}</p>
+            {/each}
+        {:else}
+            {#each preview.targets as target (target)}
+                <p class="hmm-preview-call" data-testid={`preview-call-${target}`}>
+                    putParamset(<span class="hmm-mono">{target}</span>, <span class="hmm-mono">{paramset}</span>,
+                    <span class="hmm-mono">{JSON.stringify(preview.values)}</span>)
+                </p>
+            {/each}
+        {/if}
 
         {#if warnings.length > 0}
             <ul class="hmm-preview-warnings" data-testid="preview-warnings">
@@ -82,8 +95,12 @@
                 </tbody>
             </table>
             <p class="hmm-preview-count">
-                {t('{count} parameters will be written', {}, preview.entries.length)} ×
-                {preview.targets.length}
+                {#if countText !== undefined}
+                    {countText}
+                {:else}
+                    {t('{count} parameters will be written', {}, preview.entries.length)} ×
+                    {preview.targets.length}
+                {/if}
             </p>
         {/if}
 
@@ -149,7 +166,7 @@
             class="hmm-button"
             disabled={writing || nothing}
             data-testid="write-confirm"
-            onclick={() => onconfirm()}>{t('Write')}</button
+            onclick={() => onconfirm()}>{confirmLabel ?? t('Write')}</button
         >
     {/snippet}
 </Dialog>

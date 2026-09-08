@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {describe, expect, it} from 'vitest';
 
 import {
+    HMIP_ADDENDUM_METHOD_NAMES,
     mergeMethodHelp,
     methodsFor,
     RPC_METHOD_NAMES,
@@ -132,5 +133,43 @@ describe('mergeMethodHelp', () => {
     it('leaves the catalogue itself untouched', () => {
         mergeMethodHelp('ping', 'changed');
         expect(RPC_METHODS['ping']?.help.de).not.toBe('changed');
+    });
+});
+
+/**
+ * Task 26: the two HmIP addendum methods. They are not part of the 51 (the count above is the
+ * 2.x file, unchanged), but the console gets their signature once an interface lists them.
+ */
+describe('the HmIP addendum', () => {
+    it('is not counted among the 51 of the 2.x file, yet found by name', () => {
+        expect(RPC_METHOD_NAMES).not.toContain('suppressServiceMessages');
+        expect(HMIP_ADDENDUM_METHOD_NAMES).toEqual(['suppressServiceMessages', 'getSuppressedServiceMessages']);
+        expect(rpcMethod('suppressServiceMessages')?.params.map((param) => [param.name, param.type])).toEqual([
+            ['address', 'channel_address'],
+            ['parameter', 'value_key'],
+            ['suppress', 'bool'],
+        ]);
+        expect(rpcMethod('getSuppressedServiceMessages')?.params.map((param) => param.type)).toEqual([
+            'channel_address',
+        ]);
+        expect(rpcMethod('getSuppressedServiceMessages')?.returns).toBe('String[]');
+    });
+
+    it('has a German and an English help text, unlike the 2.x file', () => {
+        for (const name of HMIP_ADDENDUM_METHOD_NAMES) {
+            expect(rpcMethod(name)?.help.de).toContain('HmIP');
+            expect(rpcMethod(name)?.help.en).toContain('HmIP');
+        }
+    });
+
+    it('is offered only where the interface lists it, like every other method', () => {
+        expect(methodsFor(['getParamset']).map((method) => method.name)).toEqual(['getParamset']);
+        const offered = methodsFor(['suppressServiceMessages', 'getParamset']);
+        expect(offered.map((method) => method.name)).toEqual(['getParamset', 'suppressServiceMessages']);
+        expect(offered[1]?.params).toHaveLength(3);
+        // an interface's own help still wins for its language, and the English text is kept
+        const merged = mergeMethodHelp('suppressServiceMessages', 'eigener Text');
+        expect(merged.help.de).toBe('eigener Text');
+        expect(merged.help.en).toContain('HmIP');
     });
 });

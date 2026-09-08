@@ -10,6 +10,7 @@ import type {
 } from '@homematic-manager/core';
 
 import type {NoticesStore} from './NoticesStore.svelte.js';
+import {readSuppressed, writeSuppressed} from './suppression.js';
 
 /** Cache key of a description or a value set. */
 function key(interfaceName: string, address: string, paramset: string): string {
@@ -172,14 +173,7 @@ export class ParamsetStore {
      * no notice is raised for what is simply not there.
      */
     async suppressedServiceMessages(interfaceName: string, address: string): Promise<string[] | undefined> {
-        try {
-            const result = await this.#transport.request('rpc.call', interfaceName, 'getSuppressedServiceMessages', [
-                address,
-            ]);
-            return Array.isArray(result) ? result.filter((entry): entry is string => typeof entry === 'string') : [];
-        } catch {
-            return undefined;
-        }
+        return readSuppressed(this.#transport, interfaceName, address);
     }
 
     /**
@@ -194,11 +188,7 @@ export class ParamsetStore {
         suppress: boolean,
     ): Promise<boolean> {
         try {
-            await this.#transport.request('rpc.call', interfaceName, 'suppressServiceMessages', [
-                address,
-                parameter,
-                suppress,
-            ]);
+            await writeSuppressed(this.#transport, interfaceName, address, parameter, suppress);
             return true;
         } catch (error) {
             this.#notices.fromError(error, `suppressServiceMessages ${address} ${parameter || '*'}`);

@@ -49,7 +49,7 @@ console.
 - **RPC console**: a generated argument form for all 51 catalogue methods including structs
   (#27, #136), a history and the raw response.
 - **Service messages**: acknowledge one or all, the two meanings of `CONFIG_PENDING`, toasts instead
-  of 2.x's modal (#77) and a quiet mode (#102).
+  of 2.x's modal (#77), and on HmIP eQ-3's per-message suppression (task 26).
 - **Events**: the two filter boxes over core's event filter, a pause, and the per-device counter of
   #129.
 - **Teams** (#97): a BidCos smoke detector is not linked to the others, it belongs to a team - a

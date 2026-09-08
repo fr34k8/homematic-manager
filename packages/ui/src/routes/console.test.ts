@@ -1,6 +1,7 @@
 import {fireEvent, screen, waitFor, within} from '@testing-library/svelte';
 import {beforeEach, describe, expect, it} from 'vitest';
 
+import {DEMO_RPC_METHODS} from '../lib/transport/demoData.js';
 import {MockTransport} from '../lib/transport/MockTransport.js';
 import {argFields, argValue, buildParams, emptyValue, isValidJson, parseJson} from '../lib/util/rpcForm.js';
 import {mountApp} from '../testHarness.js';
@@ -20,6 +21,22 @@ describe('the generated argument form', () => {
 
     it('knows nothing about a method the catalogue does not have, and says so with an empty form', () => {
         expect(argFields('nonsenseMethod')).toEqual([]);
+    });
+
+    it('draws the HmIP addendum methods of task 26 from the catalogue, address list and all', () => {
+        expect(argFields('suppressServiceMessages').map((field) => [field.name, field.kind])).toEqual([
+            ['address', 'text'],
+            ['parameter', 'text'],
+            ['suppress', 'bool'],
+        ]);
+        expect(argFields('getSuppressedServiceMessages').map((field) => [field.name, field.kind])).toEqual([
+            ['address', 'text'],
+        ]);
+        expect(buildParams(argFields('suppressServiceMessages'), ['000A1B2C3D4E5F:0', 'UNREACH', true])).toEqual([
+            '000A1B2C3D4E5F:0',
+            'UNREACH',
+            true,
+        ]);
     });
 
     it('turns a bit field into its flags and back into the number that goes out', () => {
@@ -224,6 +241,47 @@ describe('the RPC console', () => {
 
         await fireEvent.click(screen.getByTestId('console-clear'));
         expect(stores.console.history).toEqual([]);
+    });
+
+    /**
+     * Task 26: `suppressServiceMessages` and `getSuppressedServiceMessages` arrive through
+     * `system.listMethods` on an HmIP interface; the console used to draw no inputs for them.
+     */
+    it('gives the HmIP suppression methods their argument form once the interface lists them', async () => {
+        transport.result('rpc.methods', [
+            ...DEMO_RPC_METHODS,
+            {name: 'suppressServiceMessages', params: []},
+            {name: 'getSuppressedServiceMessages', params: []},
+        ]);
+        await mountApp({transport, hash: '#/HmIP-RF/console'});
+        const select = await waitFor(() => screen.getByTestId<HTMLSelectElement>('console-method'));
+        await waitFor(() => {
+            expect([...select.options].map((option) => option.value)).toContain('suppressServiceMessages');
+        });
+
+        await fireEvent.change(select, {target: {value: 'suppressServiceMessages'}});
+        await waitFor(() => {
+            expect(screen.getByTestId('arg-suppress')).toBeTruthy();
+        });
+        // the channel address offers the interface's addresses, like every address argument
+        expect(argInput('address').getAttribute('list')).toBe('hmm-console-addresses');
+        expect(argInput('suppress').getAttribute('type')).toBe('checkbox');
+
+        await fireEvent.input(argInput('address'), {target: {value: '000A1B2C3D4E5F:0'}});
+        await fireEvent.input(argInput('parameter'), {target: {value: 'UNREACH'}});
+        await fireEvent.click(argInput('suppress'));
+        await waitFor(() => {
+            expect(screen.getByTestId('console-params').textContent).toBe(
+                'suppressServiceMessages("000A1B2C3D4E5F:0","UNREACH",true)',
+            );
+        });
+
+        await fireEvent.change(select, {target: {value: 'getSuppressedServiceMessages'}});
+        await waitFor(() => {
+            expect(screen.getByTestId('arg-address')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('arg-suppress')).toBeNull();
+        expect(screen.getByTestId('console-params').textContent).toBe('getSuppressedServiceMessages("")');
     });
 
     it('shows the help text of the method, without its markup', async () => {

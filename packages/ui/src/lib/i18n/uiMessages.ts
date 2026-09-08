@@ -224,9 +224,22 @@ export const UI_MESSAGES: MessageCatalogue = {
         en: 'Write every parameter, not only the changed ones',
     },
     'Show hidden parameters': {de: 'Ausgeblendete Parameter zeigen', en: 'Show hidden parameters'},
-    // Task 26: HmIP service-message suppression in the VALUES dialog of channel 0.
-    'Suppress {parameter}': {de: '{parameter} unterdrücken', en: 'Suppress {parameter}'},
+    // Task 26: HmIP service-message suppression - the rows in the channel-0 paramset dialog, the
+    // Apply preview underneath, and the per-row action of the service-messages tab.
     'Suppress all': {de: 'Alle unterdrücken', en: 'Suppress all'},
+    suppressed: {de: 'unterdrückt', en: 'suppressed'},
+    'not suppressed': {de: 'nicht unterdrückt', en: 'not suppressed'},
+    Suppress: {de: 'Unterdrücken', en: 'Suppress'},
+    Unsuppress: {de: 'Unterdrückung aufheben', en: 'Unsuppress'},
+    'Service message suppression': {de: 'Unterdrückung von Servicemeldungen', en: 'Service message suppression'},
+    'Nothing is sent until Apply; the preview lists every call first.': {
+        de: 'Bis „Übernehmen“ wird nichts gesendet; die Vorschau zeigt vorher jeden Aufruf.',
+        en: 'Nothing is sent until Apply; the preview lists every call first.',
+    },
+    '{count} calls will be made': {
+        de: {one: '{count} Aufruf wird gesendet', other: '{count} Aufrufe werden gesendet'},
+        en: {one: '{count} call will be made', other: '{count} calls will be made'},
+    },
     // Task 26: the ROUTING_TABLE paramset of an HmIP router, as a graph and a table.
     'Routing table': {de: 'Routing-Tabelle', en: 'Routing table'},
     'Read from the device itself; every read costs duty cycle, so it is read once when this opens.': {
@@ -302,7 +315,6 @@ export const UI_MESSAGES: MessageCatalogue = {
     'What was sent': {de: 'Gesendet', en: 'What was sent'},
 
     // The service messages tab.
-    'Quiet mode': {de: 'Ruhemodus', en: 'Quiet mode'},
     'Only STICKY_UNREACH and SABOTAGE can be acknowledged': {
         de: 'Nur STICKY_UNREACH und SABOTAGE lassen sich bestätigen',
         en: 'Only STICKY_UNREACH and SABOTAGE can be acknowledged',

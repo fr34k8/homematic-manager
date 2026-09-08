@@ -1,16 +1,20 @@
 <script lang="ts">
     import type {MasterView, Paramset, ParamsetDescription, ParamsetValue, WriteResult} from '@homematic-manager/core';
-    import {isServiceMessageDatapoint, multiApplyEligibility} from '@homematic-manager/core';
+    import {multiApplyEligibility} from '@homematic-manager/core';
+    import {untrack} from 'svelte';
 
     import Dialog from '../../lib/components/Dialog.svelte';
     import MultiSelect from '../../lib/components/MultiSelect.svelte';
     import type {MultiSelectOption} from '../../lib/components/multiSelect.js';
     import {getStores} from '../../lib/stores/context.js';
+    import {isHmipInterface} from '../../lib/stores/suppression.js';
     import {coveredParameters, detectDeviceEditors, type EditorContext} from '../../lib/util/editors/index.js';
     import {
         buildPreview,
+        buildSuppressPreview,
         formFields,
         readBack as computeReadBack,
+        serviceMessageParameters,
         type FormField,
         type ReadBackEntry,
         type WritePreview,
@@ -19,6 +23,7 @@
     import DeviceEditors from './editors/DeviceEditors.svelte';
     import ParameterRow from './ParameterRow.svelte';
     import RoutingTable from './RoutingTable.svelte';
+    import SuppressRow from './SuppressRow.svelte';
     import WritePreviewDialog from './WritePreviewDialog.svelte';
 
     interface Props {
@@ -47,28 +52,106 @@
     let readBack = $state<ReadBackEntry[]>([]);
     let loadToken = 0;
     /**
-     * Task 26 (openccu-lite 28.9): which service messages of this channel the HmIP server
-     * suppresses. Read on its own, not with the paramset: the method exists on HmIP only, and a
-     * VALUES dialog on channel 0 is where a user looks for UNREACH and LOWBAT. `undefined` = not
-     * offered here, and the section stays away.
+     * Task 26 (openccu-lite 28.9): which service messages of channel 0 the HmIP server suppresses.
+     * Read on its own, not with the paramset: the method exists on HmIP only, and the datapoints
+     * concerned (UNREACH, LOWBAT, CONFIG_PENDING, SABOTAGE, ERROR*...) live in the VALUES paramset
+     * of the maintenance channel. The MASTER dialog of that channel shows them as rows of their
+     * own under the parameters, the VALUES dialog as a checkbox on their rows; both edit a local
+     * map and send nothing until Apply, whose preview lists every call. `undefined` = not offered
+     * here (BidCos, Homegear, a channel other than 0), and nothing of this appears.
      */
     let suppressed = $state<string[] | undefined>(undefined);
-    const hmip = $derived(/hmip/i.test(interfaceName));
+    /** The checkboxes as the user left them, by parameter; only what differs from `suppressed` counts. */
+    let suppressEdits = $state<Record<string, boolean>>({});
+    /** The VALUES description of channel 0, fetched for the MASTER dialog's rows (cached in the store). */
+    let valuesDescription = $state<ParamsetDescription | undefined>(undefined);
+    let suppressPreviewOpen = $state(false);
+    let suppressPreview = $state<WritePreview | undefined>(undefined);
+    let suppressBusy = $state(false);
+    const hmip = $derived(isHmipInterface(interfaceName, stores.interfaces.typeOf(interfaceName)));
+    const suppressible = $derived(
+        open && hmip && /:0$/.test(address) && (paramset === 'MASTER' || paramset === 'VALUES'),
+    );
     $effect(() => {
-        if (!open || paramset !== 'VALUES' || !hmip || interfaceName === '' || address === '') {
+        if (!suppressible) {
             suppressed = undefined;
+            suppressEdits = {};
+            valuesDescription = undefined;
             return;
         }
-        const request = {interfaceName, address};
-        void stores.paramsets.suppressedServiceMessages(request.interfaceName, request.address).then((list) => {
-            if (request.address === address) {
-                suppressed = list;
+        const request = {interfaceName, address, paramset};
+        suppressEdits = {};
+        // untracked: `describe` reads the store's description cache, and the effect must not run
+        // again when that cache fills - it would ask the interface a second time for nothing
+        untrack(() => {
+            void stores.paramsets.suppressedServiceMessages(request.interfaceName, request.address).then((list) => {
+                if (request.address === address && request.interfaceName === interfaceName) {
+                    suppressed = list;
+                }
+            });
+            if (request.paramset === 'MASTER') {
+                void stores.paramsets.describe(request.interfaceName, request.address, 'VALUES').then((found) => {
+                    if (request.address === address && request.interfaceName === interfaceName) {
+                        valuesDescription = found;
+                    }
+                });
             }
         });
     });
-    async function toggleSuppress(parameter: string, suppress: boolean): Promise<void> {
-        if (await stores.paramsets.suppressServiceMessages(interfaceName, address, parameter, suppress)) {
+    /** The service parameters with a suppression checkbox, in the dialog's order. */
+    const serviceNames = $derived.by(() => {
+        if (suppressed === undefined) {
+            return [];
+        }
+        const source = paramset === 'VALUES' ? description : valuesDescription;
+        return source ? serviceMessageParameters(source) : [];
+    });
+    /** The rows of the MASTER dialog: every service parameter, since none of them is in that paramset. */
+    const suppressRows = $derived(paramset === 'MASTER' ? serviceNames : []);
+    function isSuppressed(name: string): boolean {
+        return suppressEdits[name] ?? suppressed?.includes(name) === true;
+    }
+    function suppressChanged(name: string): boolean {
+        return name in suppressEdits && suppressEdits[name] !== (suppressed?.includes(name) === true);
+    }
+    const suppressDirty = $derived(serviceNames.some((name) => suppressChanged(name)));
+    /** A checkbox; nothing is sent here - Apply opens the preview, and the preview sends. */
+    function editSuppress(name: string, value: boolean): void {
+        suppressEdits = {...suppressEdits, [name]: value};
+    }
+    function editSuppressAll(value: boolean): void {
+        suppressEdits = Object.fromEntries(serviceNames.map((name) => [name, value]));
+    }
+    function openSuppressPreview(): void {
+        suppressPreview = buildSuppressPreview({
+            address,
+            suppressed: suppressed ?? [],
+            edits: suppressEdits,
+            labels: {suppressed: t('suppressed'), unsuppressed: t('not suppressed')},
+        });
+        suppressPreviewOpen = true;
+    }
+    /** The confirmed calls, one per changed checkbox, then `getSuppressedServiceMessages` again. */
+    async function applySuppression(): Promise<void> {
+        const payload = suppressPreview;
+        if (!payload) {
+            return;
+        }
+        suppressBusy = true;
+        try {
+            for (const entry of payload.entries) {
+                await stores.paramsets.suppressServiceMessages(
+                    interfaceName,
+                    address,
+                    entry.param,
+                    suppressEdits[entry.param] === true,
+                );
+            }
             suppressed = await stores.paramsets.suppressedServiceMessages(interfaceName, address);
+            suppressEdits = {};
+        } finally {
+            suppressBusy = false;
+            suppressPreviewOpen = false;
         }
     }
 
@@ -76,8 +159,6 @@
     const channelType = $derived(index?.get(address)?.TYPE ?? '');
     const title = $derived(`${paramset} — ${stores.nameOf(address)} (${address})`);
     const fields = $derived(description ? formFields(description, view) : []);
-    /** Task 26: the rows that are service messages, for the suppression section below. */
-    const serviceFields = $derived(fields.filter((field) => isServiceMessageDatapoint(field.name)));
     /**
      * The device-specific editors of task 10. They are plug-ins on top of this dialog: whatever
      * they recognise they draw themselves, and exactly those rows leave the generic list - the
@@ -388,44 +469,6 @@
             {/if}
         </div>
 
-        {#if suppressed !== undefined && serviceFields.length > 0}
-            <div class="hmm-paramset-service" data-testid="paramset-service-messages">
-                <div class="hmm-paramset-service-head">
-                    <strong>{t('Service messages')}</strong>
-                    <span
-                        >{t(
-                            'A suppressed one reports a value that raises no message; the CCU shows it as inactive.',
-                        )}</span
-                    >
-                </div>
-                {#each serviceFields as field (field.name)}
-                    <label class="hmm-paramset-option">
-                        <input
-                            type="checkbox"
-                            checked={suppressed.includes(field.name)}
-                            onchange={(event) => void toggleSuppress(field.name, event.currentTarget.checked)}
-                            data-testid={`suppress-${field.name}`}
-                        />
-                        <span>{t('Suppress {parameter}', {parameter: field.name})}</span>
-                    </label>
-                {/each}
-                <div class="hmm-paramset-service-all">
-                    <button
-                        type="button"
-                        class="hmm-button"
-                        onclick={() => void toggleSuppress('', true)}
-                        data-testid="suppress-all">{t('Suppress all')}</button
-                    >
-                    <button
-                        type="button"
-                        class="hmm-button"
-                        onclick={() => void toggleSuppress('', false)}
-                        data-testid="unsuppress-all">{t('Unsuppress all')}</button
-                    >
-                </div>
-            </div>
-        {/if}
-
         {#if warnings.length > 0}
             <ul class="hmm-paramset-warnings" data-testid="paramset-warnings">
                 {#each warnings as warning (warning)}
@@ -442,6 +485,7 @@
         {/if}
         <div class="hmm-paramset-list" class:hmm-paramset-raw={paramset === 'ROUTING_TABLE'}>
             {#each shownFields as field (field.name)}
+                {@const withSuppress = serviceNames.includes(field.name)}
                 <ParameterRow
                     {field}
                     value={valueOf(field)}
@@ -451,9 +495,60 @@
                     valueLabel={(entry) => stores.meta.valueLabel(field.name, entry, channelType)}
                     onchange={(value) => change(field, value)}
                     onset={perDatapoint && field.writable ? () => void setOne(field) : undefined}
+                    suppressed={withSuppress ? isSuppressed(field.name) : undefined}
+                    onsuppress={withSuppress ? (value) => editSuppress(field.name, value) : undefined}
+                    suppressLabel={t('suppressed')}
+                    suppressTitle={t(
+                        'A suppressed one reports a value that raises no message; the CCU shows it as inactive.',
+                    )}
+                    suppressChanged={withSuppress && suppressChanged(field.name)}
+                />
+            {/each}
+            <!--
+                Task 26: in the MASTER dialog of channel 0 the service datapoints are not part of
+                the paramset, so their suppression gets rows of its own at the end of the table.
+            -->
+            {#each suppressRows as name (name)}
+                <SuppressRow
+                    {name}
+                    suppressed={isSuppressed(name)}
+                    changed={suppressChanged(name)}
+                    label={t('suppressed')}
+                    title={t('A suppressed one reports a value that raises no message; the CCU shows it as inactive.')}
+                    onchange={(value) => editSuppress(name, value)}
                 />
             {/each}
         </div>
+
+        {#if serviceNames.length > 0}
+            <!-- Task 26: the suppression is applied from here, never from a checkbox - preview first. -->
+            <div class="hmm-paramset-suppress" data-testid="paramset-service-messages">
+                <span class="hmm-paramset-suppress-hint"
+                    >{t('Service message suppression')} — {t(
+                        'Nothing is sent until Apply; the preview lists every call first.',
+                    )}</span
+                >
+                <button
+                    type="button"
+                    class="hmm-button"
+                    data-testid="suppress-all"
+                    onclick={() => editSuppressAll(true)}>{t('Suppress all')}</button
+                >
+                <button
+                    type="button"
+                    class="hmm-button"
+                    data-testid="unsuppress-all"
+                    onclick={() => editSuppressAll(false)}>{t('Unsuppress all')}</button
+                >
+                <button
+                    type="button"
+                    class="hmm-button"
+                    disabled={!suppressDirty || suppressBusy}
+                    data-testid="suppress-apply"
+                    onclick={openSuppressPreview}>{t('Apply')}</button
+                >
+            </div>
+        {/if}
 
         {#if results.length > 0}
             <ul class="hmm-paramset-results" data-testid="paramset-results">
@@ -491,6 +586,22 @@
     onconfirm={() => void write()}
 />
 
+<!--
+    Task 26: the suppression changes, previewed as the exact calls and sent only on confirmation.
+    Mounted while it is open only, so the dialog has one write preview in the DOM at a time.
+-->
+{#if suppressPreviewOpen}
+    <WritePreviewDialog
+        bind:open={suppressPreviewOpen}
+        preview={suppressPreview}
+        paramset="VALUES"
+        writing={suppressBusy}
+        confirmLabel={t('Apply')}
+        countText={t('{count} calls will be made', {}, suppressPreview?.entries.length ?? 0)}
+        onconfirm={() => void applySuppression()}
+    />
+{/if}
+
 <style>
     .hmm-paramset-top {
         display: flex;
@@ -501,25 +612,22 @@
         border-bottom: 1px solid var(--hmm-border);
     }
 
-    .hmm-paramset-service {
-        border: 1px solid var(--hmm-border-muted, var(--hmm-border));
-        border-radius: var(--hmm-radius, 4px);
-        padding: 8px 10px;
-        margin: 8px 0;
+    /* task 26: the Apply row under the table, for the suppression checkboxes above it */
+    .hmm-paramset-suppress {
         display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
-    .hmm-paramset-service-head span {
-        margin-left: 6px;
-        color: var(--hmm-fg-muted, inherit);
-        font-size: 0.9em;
-    }
-    .hmm-paramset-service-all {
-        display: flex;
+        align-items: center;
         gap: 8px;
-        margin-top: 4px;
+        flex-wrap: wrap;
+        padding-top: 6px;
+        border-top: 1px solid var(--hmm-border);
     }
+
+    .hmm-paramset-suppress-hint {
+        flex: 1 1 auto;
+        color: var(--hmm-fg-muted);
+        font-size: var(--hmm-font-size-small);
+    }
+
     /* task 26: under the routing graph the raw numbered rows stay reachable, but folded away */
     .hmm-paramset-raw {
         display: none;

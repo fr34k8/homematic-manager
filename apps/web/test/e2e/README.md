@@ -27,7 +27,7 @@ re-installed after one.
 | `paramset.spec.ts` | edit a paramset, preview it, write it - and write *only* what changed |
 | `multiApply.spec.ts` | multi-apply refuses a channel on another firmware (#98) |
 | `links.spec.ts` | add a link, edit its paramset, remove it again |
-| `serviceMessages.spec.ts` | a message arrives, is acknowledged and goes away; quiet mode (#102) |
+| `serviceMessages.spec.ts` | a message arrives, is acknowledged and goes away |
 | `events.spec.ts` | live events, the two filters, pause and catch up |
 | `console.spec.ts` | pick a method, fill the generated argument form, read the answer, see a fault |
 | `installMode.spec.ts` | open and close the install mode; name a device paired while the dialog is open (#24) |

@@ -187,8 +187,7 @@ points at 1.0.14 from 2022, so a pre-release has to be asked for explicitly:
   and killed the process. The backend reconnects instead; the RPC log and the open tab survive.
 - **Quitting waits for the backend** to de-register its callbacks at the interface processes,
   bounded to eight seconds, instead of racing a 15 s timer against `process.exit(0)`.
-- **Success pop-ups are gone** (#77, #102): writes report through toasts and an RPC log drawer, and
-  there is a persisted quiet mode that turns the toasts off.
+- **Success pop-ups are gone** (#77, #102): writes report through toasts and an RPC log drawer.
 - **Dark mode** follows the OS setting by default, with a manual switch that is remembered (D-22).
 - **Cut, copy and paste work on Windows and Linux.** 2.x built its Edit menu from macOS-only
   `selector:` strings, so those three items did nothing anywhere else.
@@ -228,7 +227,7 @@ Grouped by what a user notices; the issue numbers are the ones each answers.
 | Radio | "Heard best by" per device | #69 |
 | Console | Generated argument forms — struct rows for a paramset, bit fields, value lists — so `device:channel` is not lost and `putParamset` is usable at all | #27, #136 |
 | Add device | The QR scanner works more than once | #112 |
-| Service messages | Toasts instead of the modal pop-up, and a persisted quiet mode | #77, #102 |
+| Service messages | Toasts instead of the modal pop-up; on HmIP, eQ-3's suppression per message | #77, #102 |
 | Events | A per-device event counter, useful for duty-cycle hunting | #129 |
 | Updates | The "install update" exception is gone; the updater downloads and installs nothing without being asked | #90 |
 | Releases | Release notes are generated from the commits | #66 |

@@ -19,6 +19,18 @@
         /** Marked when the value differs from what the device answered with. */
         changed?: boolean;
         disabled?: boolean;
+        /**
+         * Task 26: on channel 0 of an HmIP interface a service datapoint has a "suppressed"
+         * checkbox at the right of its row - `getSuppressedServiceMessages` says what it holds,
+         * and the dialog's Apply button sends the change. Absent on every other row.
+         */
+        suppressed?: boolean | undefined;
+        onsuppress?: ((suppressed: boolean) => void) | undefined;
+        /** The checkbox text and its tooltip, translated by the dialog. */
+        suppressLabel?: string;
+        suppressTitle?: string | undefined;
+        /** The checkbox differs from what the interface reports - not yet applied. */
+        suppressChanged?: boolean;
     }
 
     let {
@@ -31,6 +43,11 @@
         onchange,
         changed = false,
         disabled = false,
+        suppressed = undefined,
+        onsuppress = undefined,
+        suppressLabel = '',
+        suppressTitle = undefined,
+        suppressChanged = false,
     }: Props = $props();
 
     const readOnly = $derived(disabled || !field.writable);
@@ -66,7 +83,7 @@
     }
 </script>
 
-<div class="hmm-param" class:hmm-param-changed={changed} data-testid={`param-${field.name}`}>
+<div class="hmm-param" class:hmm-param-changed={changed || suppressChanged} data-testid={`param-${field.name}`}>
     <div class="hmm-param-label">
         <span title={field.name}>{label}</span>
         <span class="hmm-param-id">{field.name}</span>
@@ -168,6 +185,17 @@
     </div>
 
     <div class="hmm-param-meta">
+        {#if onsuppress}
+            <label class="hmm-param-suppress" title={suppressTitle}>
+                <input
+                    type="checkbox"
+                    checked={suppressed === true}
+                    data-testid={`suppress-${field.name}`}
+                    onchange={(event) => onsuppress(event.currentTarget.checked)}
+                />
+                <span>{suppressLabel}</span>
+            </label>
+        {/if}
         {#if !field.writable}<span class="hmm-param-flag">read-only</span>{/if}
         {#if field.min !== undefined || field.max !== undefined}
             <span>{field.min ?? '−∞'} … {field.max ?? '∞'}</span>
@@ -250,6 +278,13 @@
 
     .hmm-param-flag {
         color: var(--hmm-warn);
+    }
+
+    .hmm-param-suppress {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--hmm-fg);
     }
 
     .hmm-param-help {

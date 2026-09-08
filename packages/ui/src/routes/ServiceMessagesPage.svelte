@@ -8,6 +8,7 @@
     import ToolbarButton from '../lib/components/ToolbarButton.svelte';
     import type {DataTableColumn} from '../lib/components/tableModel.js';
     import {getStores} from '../lib/stores/context.js';
+    import {isHmipInterface} from '../lib/stores/suppression.js';
     import {serviceMessageExplanation} from '../lib/util/deviceGrid.js';
     import {formatDateTime, formatRpcValue} from '../lib/util/format.js';
 
@@ -19,6 +20,8 @@
 
     const interfaceName = $derived(stores.app.selectedInterface);
     const isBidcos = $derived(stores.interfaces.typeOf(interfaceName).startsWith('BidCos'));
+    /** Task 26: eQ-3's suppression exists on the HmIP interface only; the action is hidden elsewhere. */
+    const hmip = $derived(!isBidcos && isHmipInterface(interfaceName, stores.interfaces.typeOf(interfaceName)));
     const messages = $derived(stores.serviceMessages.of(interfaceName));
     const acknowledgeable = $derived(stores.serviceMessages.acknowledgeable(interfaceName));
     const selectedMessages = $derived(messages.filter((message) => selected.includes(idOf(message))));
@@ -30,6 +33,25 @@
 
     function deviceTypeOf(address: string): string {
         return stores.devices.index(interfaceName)?.get(deviceAddress(address))?.TYPE ?? '';
+    }
+
+    /** The suppressed lists of the channels in view, read once per channel (`getSuppressedServiceMessages`). */
+    $effect(() => {
+        if (hmip && messages.length > 0) {
+            void stores.serviceMessages.loadSuppressed(interfaceName);
+        }
+    });
+
+    async function suppress(message: ServiceMessage, value: boolean): Promise<void> {
+        busy = true;
+        const ok = await stores.serviceMessages.suppress(interfaceName, message.address, message.datapoint, value);
+        busy = false;
+        if (ok) {
+            stores.notices.push(
+                'info',
+                `suppressServiceMessages ${message.address} ${message.datapoint} = ${value ? 'true' : 'false'}`,
+            );
+        }
     }
 
     const columns = $derived<DataTableColumn<ServiceMessage>[]>([
@@ -64,6 +86,20 @@
             },
         },
         {key: 'since', label: t('Since'), width: 170, value: (message) => formatDateTime(message.since)},
+        ...(hmip
+            ? [
+                  {
+                      key: 'suppress',
+                      label: '',
+                      width: 150,
+                      fixed: true,
+                      sortable: false,
+                      filterable: false,
+                      value: (message: ServiceMessage) =>
+                          stores.serviceMessages.isSuppressed(message) ? t('suppressed') : '',
+                  },
+              ]
+            : []),
     ]);
 
     async function acknowledge(list: readonly ServiceMessage[]): Promise<void> {
@@ -111,19 +147,6 @@
                     testId="messages-ack-all"
                     onclick={() => void acknowledge(acknowledgeable)}
                 />
-                <ToolbarButton
-                    title={t('Quiet mode')}
-                    icon="🔕"
-                    pressed={stores.serviceMessages.quiet}
-                    testId="messages-quiet"
-                    onclick={() => stores.serviceMessages.setQuiet(!stores.serviceMessages.quiet)}
-                />
-            {/snippet}
-
-            {#snippet status()}
-                {#if stores.serviceMessages.quiet}
-                    <span data-testid="messages-quiet-hint">{t('Quiet mode')}</span>
-                {/if}
             {/snippet}
 
             {#snippet cell(row, column)}
@@ -137,6 +160,22 @@
                         class="hmm-msg-name"
                         class:hmm-msg-ackable={isAcknowledgeable(row.datapoint)}
                         data-testid={`message-${row.address}-${row.datapoint}`}>{row.datapoint}</span
+                    >
+                {:else if column.key === 'suppress'}
+                    {@const suppressed = stores.serviceMessages.isSuppressed(row)}
+                    <!-- task 26: the suppression of this one parameter on its channel, HmIP only -->
+                    <button
+                        type="button"
+                        class="hmm-inline-button"
+                        disabled={busy}
+                        title={t(
+                            'A suppressed one reports a value that raises no message; the CCU shows it as inactive.',
+                        )}
+                        data-testid={`suppress-${row.address}-${row.datapoint}`}
+                        onclick={(event) => {
+                            event.stopPropagation();
+                            void suppress(row, !suppressed);
+                        }}>{suppressed ? t('Unsuppress') : t('Suppress')}</button
                     >
                 {:else}
                     {column.value
@@ -169,5 +208,24 @@
     /* The two the CCU lets an application clear; the rest go away when their cause does. */
     .hmm-msg-ackable {
         color: var(--hmm-accent);
+    }
+
+    /* The row action of task 26, styled like the PARAMSETS buttons of the devices grid. */
+    .hmm-inline-button {
+        height: 18px;
+        padding: 0 4px;
+        border: 1px solid var(--hmm-border);
+        border-radius: var(--hmm-radius);
+        background: var(--hmm-control-bg);
+        color: var(--hmm-fg-muted);
+        cursor: pointer;
+        font-size: var(--hmm-font-size-small);
+        line-height: 1;
+        vertical-align: middle;
+    }
+
+    .hmm-inline-button:hover:not(:disabled) {
+        background: var(--hmm-control-bg-hover);
+        color: var(--hmm-fg);
     }
 </style>

@@ -13,12 +13,15 @@ import {
     diffParamset,
     enumEncodingFor,
     enumList,
+    isServiceMessageDatapoint,
     isWritable,
     numericBound,
     parameterOrder,
     toDisplayValue,
     unitLabel,
 } from '@homematic-manager/core';
+
+import {suppressCallText} from '../stores/suppression.js';
 
 /**
  * The pure part of the paramset editor: which control a parameter needs, and what a write would
@@ -129,6 +132,12 @@ export interface WritePreview {
     readonly values: ParamsetWrite;
     readonly skipped: readonly SkippedParameter[];
     readonly problems: readonly ValidationProblem[];
+    /**
+     * The exact calls, one line each, where the write is not a `putParamset` at all - task 26's
+     * `suppressServiceMessages`. Absent for a paramset write, whose one call the preview prints
+     * itself from `targets` and `values`.
+     */
+    readonly calls?: readonly string[];
 }
 
 export interface PreviewOptions {
@@ -210,4 +219,51 @@ export function readBack(sent: ParamsetWrite, stored: Paramset, description: Par
         const storedText = displayValue(stored[param], description[param]);
         return {param, sent: sentText, stored: storedText, differs: sentText !== storedText};
     });
+}
+
+/**
+ * Task 26 (openccu-lite 28.9): the parameters of a `VALUES` description whose messages the HmIP
+ * server can suppress - the service datapoints of the maintenance channel, in the dialog's order.
+ * `DUTY_CYCLE` counts only where it is a boolean: on HmIP the same name is also the integer
+ * percentage of the transmitter's duty cycle, which is a measurement and not a message (core's
+ * `countsAsServiceMessage`).
+ */
+export function serviceMessageParameters(description: ParamsetDescription): string[] {
+    return parameterOrder(description).filter((name) => {
+        if (!isServiceMessageDatapoint(name)) {
+            return false;
+        }
+        return name !== 'DUTY_CYCLE' || description[name]?.TYPE === 'BOOL';
+    });
+}
+
+export interface SuppressPreviewOptions {
+    readonly address: string;
+    /** What the interface reports now (`getSuppressedServiceMessages`). */
+    readonly suppressed: readonly string[];
+    /** The checkboxes as the user left them, by parameter; absent = untouched. */
+    readonly edits: Readonly<Record<string, boolean>>;
+    /** How the two states read in the table - the dialog passes its translations. */
+    readonly labels: {readonly suppressed: string; readonly unsuppressed: string};
+}
+
+/**
+ * The suppression changes as a preview of the same shape as a paramset write: one line and one
+ * `suppressServiceMessages(address, parameter, true|false)` call per checkbox that differs from
+ * what the interface reports. A checkbox set back to its current state produces nothing - exactly
+ * like a parameter edited back to its value - so nothing is sent for it.
+ */
+export function buildSuppressPreview(options: SuppressPreviewOptions): WritePreview {
+    const changed = Object.entries(options.edits)
+        .filter(([param, suppress]) => options.suppressed.includes(param) !== suppress)
+        .sort(([a], [b]) => a.localeCompare(b));
+    const label = (suppress: boolean): string => (suppress ? options.labels.suppressed : options.labels.unsuppressed);
+    return {
+        targets: [options.address],
+        entries: changed.map(([param, suppress]) => ({param, from: label(!suppress), to: label(suppress)})),
+        values: {},
+        skipped: [],
+        problems: [],
+        calls: changed.map(([param, suppress]) => suppressCallText(options.address, param, suppress)),
+    };
 }

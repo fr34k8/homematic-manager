@@ -38,14 +38,3 @@ test('a pending message is listed, acknowledged and gone', async ({page, host, s
     await expect(row).toHaveCount(0);
     expect(sim.getValue('hmip', MAINTENANCE, 'STICKY_UNREACH')).toBe(false);
 });
-
-test('quiet mode is a toggle that survives in localStorage', async ({page, host}) => {
-    await page.goto(`${host.url}#/HmIP-RF/messages`);
-    const quiet = page.getByTestId('messages-quiet');
-    await expect(quiet).toHaveAttribute('aria-pressed', 'false');
-
-    await quiet.click();
-    await expect(quiet).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('messages-quiet-hint')).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem('hmm.serviceMessages.quiet'))).toBe('true');
-});

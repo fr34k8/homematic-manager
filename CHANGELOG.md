@@ -6,6 +6,21 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [Unreleased]
+
+- **HmIP service-message suppression, reworked after the maintainer's look at beta.5.** The
+  _Service messages_ box on top of the VALUES dialog is gone. Instead, the paramset dialog of
+  channel 0 on an HmIP interface shows a _suppressed_ checkbox per service parameter inside the
+  parameter table: in the MASTER dialog as rows of their own at the end (the parameters live in
+  the VALUES paramset), in the VALUES dialog on the datapoints' own rows. A checkbox sends nothing;
+  _Apply_ under the table opens the write preview with the exact `suppressServiceMessages`
+  calls, one per changed checkbox, and sends them on confirmation. The service-messages tab has a
+  _Suppress_ / _Unsuppress_ action per row on HmIP. The RPC console draws the argument form for
+  `suppressServiceMessages` and `getSuppressedServiceMessages` once the interface lists them.
+- **Removed: the "quiet mode" of the service-messages tab** (#102's bell button). It only muted
+  the toast for a new message and was stored in the browser; Homematic has no such state for a
+  service message, and the suppression above is what the interface really offers.
+
 ## [3.0.0-beta.5] — 2026-09-08
 
 The first beta that talks to the HmIP addendum, and a smaller change for a box.

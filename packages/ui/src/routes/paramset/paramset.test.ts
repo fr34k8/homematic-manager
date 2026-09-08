@@ -3,7 +3,14 @@ import {fireEvent, screen, waitFor, within} from '@testing-library/svelte';
 import {beforeEach, describe, expect, it} from 'vitest';
 
 import {MockTransport} from '../../lib/transport/MockTransport.js';
-import {buildPreview, fieldKind, formFields, displayValue} from '../../lib/util/paramsetForm.js';
+import {
+    buildPreview,
+    buildSuppressPreview,
+    fieldKind,
+    formFields,
+    displayValue,
+    serviceMessageParameters,
+} from '../../lib/util/paramsetForm.js';
 import {mountApp} from '../../testHarness.js';
 
 const description: ParamsetDescription = {
@@ -383,5 +390,179 @@ describe('the paramset dialog', () => {
         await waitFor(() => {
             expect(screen.getByTestId('paramset-failed')).toBeTruthy();
         });
+    });
+});
+
+/**
+ * Task 26 (openccu-lite 28.9): the suppression of channel 0's service messages on an HmIP
+ * interface - rows in the table, a checkbox each, and an Apply button whose preview lists the
+ * exact `suppressServiceMessages` calls. Nothing goes out when a checkbox is toggled.
+ */
+describe('service-message suppression in the channel-0 dialog', () => {
+    let transport: MockTransport;
+    let suppressedNow: string[];
+
+    function rpcCalls(): ReadonlyArray<readonly unknown[]> {
+        return transport.calls.filter((call) => call.method === 'rpc.call').map((call) => call.params);
+    }
+
+    /** The write preview that is open - the paramset's own one stays in the DOM, closed. */
+    function openPreview(): HTMLElement {
+        const dialog = screen.getAllByTestId<HTMLDialogElement>('write-preview').find((element) => element.open);
+        expect(dialog, 'no open write preview').toBeDefined();
+        return dialog!;
+    }
+
+    async function openHmip(paramset: 'MASTER' | 'VALUES'): Promise<void> {
+        await mountApp({transport, hash: '#/HmIP-RF/devices'});
+        const parent = document.querySelector<HTMLElement>('[data-row-id="000A1B2C3D4E5F"]')!;
+        await fireEvent.click(within(parent).getByRole('button', {name: 'Expand row'}));
+        await fireEvent.click(screen.getByTestId(`paramset-000A1B2C3D4E5F:0-${paramset}`));
+        await waitFor(() => {
+            expect(screen.getByTestId('suppress-LOWBAT')).toBeTruthy();
+        });
+    }
+
+    beforeEach(() => {
+        transport = new MockTransport({demo: true});
+        suppressedNow = ['UNREACH'];
+        transport.respond('rpc.call', (_interfaceName, method, params) => {
+            if (method === 'suppressServiceMessages') {
+                const [, parameter, suppress] = params;
+                const name = typeof parameter === 'string' ? parameter : '';
+                suppressedNow = suppressedNow.filter((entry) => entry !== name);
+                if (suppress === true) {
+                    suppressedNow.push(name);
+                }
+                return true;
+            }
+            return method === 'getSuppressedServiceMessages' ? [...suppressedNow] : '';
+        });
+    });
+
+    it('lists the service parameters of a VALUES description, DUTY_CYCLE only where it is a boolean', () => {
+        expect(
+            serviceMessageParameters({
+                UNREACH: {TYPE: 'BOOL', OPERATIONS: 5, TAB_ORDER: 2},
+                LOWBAT: {TYPE: 'BOOL', OPERATIONS: 5, TAB_ORDER: 1},
+                DUTY_CYCLE: {TYPE: 'INTEGER', OPERATIONS: 5, TAB_ORDER: 3},
+                ERROR_CODE: {TYPE: 'INTEGER', OPERATIONS: 5, TAB_ORDER: 4},
+                RSSI_DEVICE: {TYPE: 'INTEGER', OPERATIONS: 5, TAB_ORDER: 5},
+            }),
+        ).toEqual(['LOWBAT', 'UNREACH', 'ERROR_CODE']);
+        expect(serviceMessageParameters({DUTY_CYCLE: {TYPE: 'BOOL', OPERATIONS: 5}})).toEqual(['DUTY_CYCLE']);
+    });
+
+    it('previews one call per checkbox that differs from the interface, and nothing for the rest', () => {
+        const preview = buildSuppressPreview({
+            address: '000A1B2C3D4E5F:0',
+            suppressed: ['UNREACH'],
+            edits: {UNREACH: true, LOWBAT: true, STICKY_UNREACH: false, CONFIG_PENDING: true},
+            labels: {suppressed: 'on', unsuppressed: 'off'},
+        });
+        expect(preview.targets).toEqual(['000A1B2C3D4E5F:0']);
+        expect(preview.entries).toEqual([
+            {param: 'CONFIG_PENDING', from: 'off', to: 'on'},
+            {param: 'LOWBAT', from: 'off', to: 'on'},
+        ]);
+        expect(preview.calls).toEqual([
+            'suppressServiceMessages(000A1B2C3D4E5F:0, "CONFIG_PENDING", true)',
+            'suppressServiceMessages(000A1B2C3D4E5F:0, "LOWBAT", true)',
+        ]);
+        expect(preview.values).toEqual({});
+        // unsuppressing one that is suppressed is a call as well
+        expect(
+            buildSuppressPreview({
+                address: 'A:0',
+                suppressed: ['UNREACH'],
+                edits: {UNREACH: false},
+                labels: {suppressed: 'on', unsuppressed: 'off'},
+            }).calls,
+        ).toEqual(['suppressServiceMessages(A:0, "UNREACH", false)']);
+    });
+
+    it('draws the service parameters as rows of the MASTER dialog, read from the VALUES description', async () => {
+        await openHmip('MASTER');
+        // the maintenance channel's MASTER paramset of the demo has no parameters; the rows are the
+        // service datapoints of its VALUES paramset, at the end of the table
+        expect(screen.getByTestId('suppress-row-UNREACH')).toBeTruthy();
+        expect(screen.getByTestId('suppress-row-STICKY_UNREACH')).toBeTruthy();
+        expect(screen.getByTestId<HTMLInputElement>('suppress-UNREACH').checked).toBe(true);
+        expect(screen.getByTestId<HTMLInputElement>('suppress-LOWBAT').checked).toBe(false);
+        expect(rpcCalls()).toEqual([['HmIP-RF', 'getSuppressedServiceMessages', ['000A1B2C3D4E5F:0']]]);
+        expect(screen.getByTestId<HTMLButtonElement>('suppress-apply').disabled).toBe(true);
+    });
+
+    it('sends nothing on a toggle; Apply previews the exact calls and confirmation sends them', async () => {
+        await openHmip('MASTER');
+
+        await fireEvent.click(screen.getByTestId('suppress-LOWBAT'));
+        await fireEvent.click(screen.getByTestId('suppress-UNREACH'));
+        // toggling back and forth is not a change
+        await fireEvent.click(screen.getByTestId('suppress-UNREACH'));
+        expect(rpcCalls()).toHaveLength(1);
+        expect(screen.getByTestId<HTMLButtonElement>('suppress-apply').disabled).toBe(false);
+
+        await fireEvent.click(screen.getByTestId('suppress-apply'));
+        // the paramset's own (closed) preview is in the DOM as well; the open one is the suppression's
+        const preview = await waitFor(() => openPreview());
+        expect(within(preview).getByTestId('preview-call-0').textContent).toBe(
+            'suppressServiceMessages(000A1B2C3D4E5F:0, "LOWBAT", true)',
+        );
+        expect(within(preview).queryByTestId('preview-call-1')).toBeNull();
+        expect(within(preview).getByTestId('preview-LOWBAT')).toBeTruthy();
+        expect(within(preview).queryByTestId('write-stage')).toBeNull();
+        expect(rpcCalls()).toHaveLength(1);
+
+        await fireEvent.click(within(preview).getByTestId('write-confirm'));
+        await waitFor(() => {
+            expect(rpcCalls()).toEqual([
+                ['HmIP-RF', 'getSuppressedServiceMessages', ['000A1B2C3D4E5F:0']],
+                ['HmIP-RF', 'suppressServiceMessages', ['000A1B2C3D4E5F:0', 'LOWBAT', true]],
+                ['HmIP-RF', 'getSuppressedServiceMessages', ['000A1B2C3D4E5F:0']],
+            ]);
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId<HTMLButtonElement>('suppress-apply').disabled).toBe(true);
+        });
+        expect(screen.getByTestId<HTMLInputElement>('suppress-LOWBAT').checked).toBe(true);
+    });
+
+    it('lets "Suppress all" tick every row, still sending nothing until Apply', async () => {
+        await openHmip('MASTER');
+        await fireEvent.click(screen.getByTestId('suppress-all'));
+        expect(screen.getByTestId<HTMLInputElement>('suppress-LOWBAT').checked).toBe(true);
+        expect(screen.getByTestId<HTMLInputElement>('suppress-STICKY_UNREACH').checked).toBe(true);
+        expect(rpcCalls()).toHaveLength(1);
+        await fireEvent.click(screen.getByTestId('unsuppress-all'));
+        expect(screen.getByTestId<HTMLInputElement>('suppress-UNREACH').checked).toBe(false);
+        await fireEvent.click(screen.getByTestId('suppress-apply'));
+        const preview = await waitFor(() => openPreview());
+        expect(within(preview).getByTestId('preview-call-0').textContent).toBe(
+            'suppressServiceMessages(000A1B2C3D4E5F:0, "UNREACH", false)',
+        );
+    });
+
+    it('puts the checkbox on the datapoint rows themselves in the VALUES dialog', async () => {
+        await openHmip('VALUES');
+        const row = screen.getByTestId('param-UNREACH');
+        expect(within(row).getByTestId('suppress-UNREACH')).toBeTruthy();
+        expect(within(row).getByTestId<HTMLInputElement>('suppress-UNREACH').checked).toBe(true);
+        expect(screen.queryByTestId('suppress-row-UNREACH')).toBeNull();
+        // no box on top of the dialog any more (the maintainer's first point)
+        expect(screen.queryByTestId('suppress-UNREACH')?.closest('[data-testid="param-UNREACH"]')).not.toBeNull();
+    });
+
+    it('shows none of it on BidCos, and asks the interface nothing', async () => {
+        await mountApp({transport, hash: '#/BidCos-RF/devices'});
+        const parent = document.querySelector<HTMLElement>('[data-row-id="MEQ0123456"]')!;
+        await fireEvent.click(within(parent).getByRole('button', {name: 'Expand row'}));
+        await fireEvent.click(screen.getByTestId('paramset-MEQ0123456:0-VALUES'));
+        await waitFor(() => {
+            expect(screen.getByTestId('param-UNREACH')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('suppress-UNREACH')).toBeNull();
+        expect(screen.queryByTestId('paramset-service-messages')).toBeNull();
+        expect(rpcCalls()).toEqual([]);
     });
 });

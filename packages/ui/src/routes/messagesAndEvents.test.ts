@@ -2,10 +2,9 @@ import type {ServiceMessage} from '@homematic-manager/core';
 import {fireEvent, screen, waitFor, within} from '@testing-library/svelte';
 import {beforeEach, describe, expect, it} from 'vitest';
 
-import {QUIET_STORAGE_KEY} from '../lib/stores/ServiceMessagesStore.svelte.js';
 import {DEMO_SERVICE_MESSAGES} from '../lib/transport/demoData.js';
 import {MockTransport} from '../lib/transport/MockTransport.js';
-import {MemoryStorage, mountApp} from '../testHarness.js';
+import {mountApp} from '../testHarness.js';
 
 const sabotage: ServiceMessage = {
     interfaceName: 'BidCos-RF',
@@ -85,27 +84,71 @@ describe('the service messages tab', () => {
         expect(document.querySelector('dialog[open]')).toBeNull();
     });
 
-    it('keeps quiet when quiet mode is on, and remembers the choice (#102)', async () => {
-        const storage = new MemoryStorage();
-        const {stores} = await mountApp({transport, hash: '#/BidCos-RF/messages', storage});
-
-        await fireEvent.click(screen.getByTestId('messages-quiet'));
-        expect(storage.map.get(QUIET_STORAGE_KEY)).toBe('true');
-        expect(screen.getByTestId('messages-quiet-hint')).toBeTruthy();
-
-        transport.emit('serviceMessages.changed', [...DEMO_SERVICE_MESSAGES, sabotage]);
-        await waitFor(() => {
-            expect(stores.serviceMessages.of('BidCos-RF')).toHaveLength(3);
+    /**
+     * Task 26 (openccu-lite 28.9): eQ-3's suppression, HmIP only. The row offers it once the
+     * channel's suppressed list is known, the click is the three-argument call, and the list and
+     * the messages are read again afterwards. BidCos has no such method and no such button.
+     */
+    it('suppresses a message from its row on an HmIP interface, and reads the state back', async () => {
+        const lowbat: ServiceMessage = {
+            interfaceName: 'HmIP-RF',
+            address: '000A1B2C3D4E5F:0',
+            datapoint: 'LOWBAT',
+            value: true,
+            since: 0,
+        };
+        transport.result('serviceMessages.list', [lowbat]);
+        const suppressedNow: string[] = [];
+        transport.respond('rpc.call', (_interfaceName, method, params) => {
+            if (method === 'suppressServiceMessages') {
+                const parameter = params[1];
+                suppressedNow.push(typeof parameter === 'string' ? parameter : '');
+                return true;
+            }
+            return method === 'getSuppressedServiceMessages' ? [...suppressedNow] : '';
         });
-        // The list and the tab counter still moved; only the toast was suppressed.
-        expect(stores.notices.items).toHaveLength(0);
+        const {stores} = await mountApp({transport, hash: '#/HmIP-RF/messages'});
+
+        const button = await waitFor(() => screen.getByTestId<HTMLButtonElement>('suppress-000A1B2C3D4E5F:0-LOWBAT'));
+        expect(transport.calls.filter((call) => call.method === 'rpc.call').map((call) => call.params)).toEqual([
+            ['HmIP-RF', 'getSuppressedServiceMessages', ['000A1B2C3D4E5F:0']],
+        ]);
+        expect(stores.serviceMessages.isSuppressed(lowbat)).toBe(false);
+
+        await fireEvent.click(button);
+        await waitFor(() => {
+            expect(stores.serviceMessages.isSuppressed(lowbat)).toBe(true);
+        });
+        expect(transport.calls.filter((call) => call.method === 'rpc.call').map((call) => call.params)).toEqual([
+            ['HmIP-RF', 'getSuppressedServiceMessages', ['000A1B2C3D4E5F:0']],
+            ['HmIP-RF', 'suppressServiceMessages', ['000A1B2C3D4E5F:0', 'LOWBAT', true]],
+            ['HmIP-RF', 'getSuppressedServiceMessages', ['000A1B2C3D4E5F:0']],
+        ]);
+        // the list is read again: a suppressed UNREACH or LOWBAT reports false and leaves it
+        expect(transport.countOf('serviceMessages.list')).toBeGreaterThan(1);
+        // the same button now lifts the suppression
+        await fireEvent.click(screen.getByTestId('suppress-000A1B2C3D4E5F:0-LOWBAT'));
+        await waitFor(() => {
+            expect(transport.lastCall('rpc.call')).toEqual([
+                'HmIP-RF',
+                'getSuppressedServiceMessages',
+                ['000A1B2C3D4E5F:0'],
+            ]);
+        });
+        expect(
+            transport.calls.filter(
+                (call) => call.method === 'rpc.call' && call.params[1] === 'suppressServiceMessages',
+            ),
+        ).toHaveLength(2);
     });
 
-    it('starts quiet when the last session left it quiet', async () => {
-        const storage = new MemoryStorage();
-        storage.setItem(QUIET_STORAGE_KEY, 'true');
-        const {stores} = await mountApp({transport, hash: '#/BidCos-RF/messages', storage});
-        expect(stores.serviceMessages.quiet).toBe(true);
+    it('offers no suppression on BidCos, where the interface has no such method', async () => {
+        await mountApp({transport, hash: '#/BidCos-RF/messages'});
+        expect(screen.getByTestId('message-LEQ0456789:0-LOWBAT')).toBeTruthy();
+        expect(screen.queryByTestId('suppress-LEQ0456789:0-LOWBAT')).toBeNull();
+        expect(transport.countOf('rpc.call')).toBe(0);
+        // the quiet mode of #102 is gone with task 26: a service message has no such state
+        expect(screen.queryByTestId('messages-quiet')).toBeNull();
     });
 
     it('survives an rfd that answers "" instead of an empty list', async () => {

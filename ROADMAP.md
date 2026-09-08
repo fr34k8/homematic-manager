@@ -785,8 +785,40 @@ neighbours and next hops on a ring, everything routed through them outside, hops
 the router's edges, static routes dashed — with the full table underneath
 (`lib/util/routingTable.ts`: `parseRoutingTable`, `routingGraph`; `RoutingTable.svelte`). The
 raw numbered rows stay in the dialog, folded away. Read once when the dialog opens, as the
-addendum's duty-cycle warning asks. Not yet seen with a real router. Open: the console's
-signature hint.
+addendum's duty-cycle warning asks. Not yet seen with a real router.
+
+**Reworked 2026-09-08 after the maintainer's look at beta.5** (four points, done as given):
+
+1. The *Service messages* box on top of the dialog is gone. The suppression checkboxes sit
+   inside the parameter table of the channel-0 dialog on an HmIP interface: in the **MASTER**
+   dialog as rows of their own at the end of the table (`SuppressRow.svelte`, same three
+   columns as `ParameterRow`; the names come from the channel's VALUES description, because
+   `UNREACH`, `LOWBAT`, `CONFIG_PENDING`, `SABOTAGE`, `ERROR*`… are VALUES datapoints - core's
+   `isServiceMessageDatapoint`, `DUTY_CYCLE` only where boolean, `serviceMessageParameters` in
+   `lib/util/paramsetForm.ts`), in the **VALUES** dialog as a *suppressed* checkbox at the right
+   of the datapoints' own rows (`ParameterRow`'s `onsuppress`). Fed by
+   `getSuppressedServiceMessages`; channel 0 only, HmIP only.
+2. A checkbox sends nothing. *Suppress all* / *Unsuppress all* only tick the boxes; **Apply**
+   under the table builds `buildSuppressPreview` - the `WritePreview` shape with a `calls` list -
+   and opens the existing `WritePreviewDialog`, which prints the exact
+   `suppressServiceMessages(<address>, "<parameter>", true|false)` lines, one per changed
+   checkbox, with the from/to table underneath. Confirmation sends them one by one through
+   `ParamsetStore.suppressServiceMessages`, then `getSuppressedServiceMessages` is read again.
+3. The RPC console: the form comes from the core catalogue (`rpcMethod`), and the two addendum
+   methods were not in the 2.x file, so the console drew no inputs. `HMIP_ADDENDUM_METHODS` in
+   `packages/core/src/rpc/methods.ts` adds their signatures (channel address with the address
+   datalist, `parameter` as a `value_key`, `suppress` as a boolean) with German and English help;
+   `rpcMethod` consults it, `RPC_METHOD_NAMES` stays the 51 of the 2.x file, and the methods are
+   still offered only where `system.listMethods` names them.
+4. The service-messages tab has a *Suppress* / *Unsuppress* action per row on HmIP
+   (`ServiceMessagesStore.suppress`, `loadSuppressed` reads each channel of the list once), hidden
+   on BidCos. The **"quiet mode" is removed**: it was the bell button of #102, a UI-only flag in
+   `localStorage` (`hmm.serviceMessages.quiet`) that muted the toast for a new service message and
+   nothing else - no backend or core part. Button, store state, string, component test and e2e
+   test are gone; `ServiceMessagesStore` no longer takes a storage.
+
+Still not seen against a real HmIP server: the demo transport answers the two methods with a
+stub, and the component tests mock them.
 
 ## 27. Taxonomy for ReGa as well, and 127.0.0.1 as a callback listener
 

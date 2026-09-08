@@ -857,9 +857,61 @@ export const RPC_METHODS: Readonly<Record<string, RpcMethod>> = {
 /** The method names of the catalogue, in specification order. */
 export const RPC_METHOD_NAMES: readonly string[] = Object.keys(RPC_METHODS);
 
+/**
+ * Task 26 (openccu-lite 28.9): the methods of eQ-3's *Homematic IP Legacy API (XML-RPC) Addendum*
+ * that the 2.x file never had. They exist on the HmIP interface only, and they are never offered
+ * on their own: an interface has to list them in `system.listMethods` first (see {@link methodsFor}),
+ * so a BidCos console does not get calls that can only fail. What the addendum adds is the
+ * signature - without it the console drew no argument form for them at all.
+ */
+export const HMIP_ADDENDUM_METHODS: Readonly<Record<string, RpcMethod>> = {
+    suppressServiceMessages: {
+        name: 'suppressServiceMessages',
+        params: [
+            {
+                name: 'address',
+                type: 'channel_address',
+            },
+            {
+                name: 'parameter',
+                type: 'value_key',
+            },
+            {
+                name: 'suppress',
+                type: 'bool',
+            },
+        ],
+        returns: 'void',
+        help: {
+            de: 'Unterdrückt die Servicemeldung eines Parameters mit dem Service-Flag (nur HmIP). Der Parameter address ist die Kanaladresse, parameter der Name eines Parameters mit dem Service-Flag in seiner Beschreibung oder „“ für alle Service-Parameter des Kanals. Mit suppress=true meldet die Schnittstelle einen Wert, der keine Meldung auslöst (UNREACH wird immer false); suppress=false hebt die Unterdrückung wieder auf.',
+            en: 'Suppresses the service message of a parameter with the Service flag (HmIP only). The parameter address is the channel address, parameter the name of a parameter carrying the Service flag in its description, or "" for every service parameter of the channel. With suppress=true the interface reports a value that raises no message (UNREACH is always false); suppress=false lifts the suppression again.',
+        },
+    },
+    getSuppressedServiceMessages: {
+        name: 'getSuppressedServiceMessages',
+        params: [
+            {
+                name: 'address',
+                type: 'channel_address',
+            },
+        ],
+        returns: 'String[]',
+        help: {
+            de: 'Gibt die Namen der Parameter zurück, deren Servicemeldungen für den Kanal address zurzeit unterdrückt sind (nur HmIP, siehe suppressServiceMessages).',
+            en: 'Returns the names of the parameters whose service messages are currently suppressed for the channel address (HmIP only, see suppressServiceMessages).',
+        },
+    },
+};
+
+/** The names of the addendum, for tests and for a UI that wants to know what is HmIP-only. */
+export const HMIP_ADDENDUM_METHOD_NAMES: readonly string[] = Object.keys(HMIP_ADDENDUM_METHODS);
+
 /** The catalogue entry of a method, or `undefined` for one nobody documented. */
 export function rpcMethod(name: string): RpcMethod | undefined {
-    return Object.prototype.hasOwnProperty.call(RPC_METHODS, name) ? RPC_METHODS[name] : undefined;
+    if (Object.prototype.hasOwnProperty.call(RPC_METHODS, name)) {
+        return RPC_METHODS[name];
+    }
+    return Object.prototype.hasOwnProperty.call(HMIP_ADDENDUM_METHODS, name) ? HMIP_ADDENDUM_METHODS[name] : undefined;
 }
 
 /** An entry for a method the catalogue does not know: no arguments, no help, name only. */
