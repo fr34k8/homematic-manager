@@ -6,10 +6,11 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
-## [Unreleased]
+## [3.0.0-beta.8] — 2026-09-09
 
 Two reports from Baxxy13 against the CCU addon on OpenCCU (#140, #141), both in the addon's
-packaging scripts, and the oldest open wish of the tracker (#69) in the Funk tab.
+packaging scripts, the oldest open wish of the tracker (#69) in the Funk tab, and CCU-Jack
+confirmed as a user-defined interface (#135).
 
 - **Assign the best receiver** (#69). The Funk tab has a button next to `setBidcosInterface` that
   proposes, for every BidCos-RF device, the interface that receives it best - from the levels the
@@ -60,6 +61,8 @@ packaging scripts, and the oldest open wish of the tracker (#69) in the Funk tab
   and Tcl's system encoding on the lab boxes, the lost answer in the container with the real
   installer flow. The first update from beta.7 to the release that carries this still goes through
   beta.7's `update_script`, which is the old one - the popup appears from the update _after_ that.
+- The best-receiver dialog has only met the mock transport: the lab has one BidCos-RF receiver
+  per box, so no CCU with a LAN gateway has confirmed the proposals yet.
 - Everything under beta.7's "Known issues" still applies.
 
 ## [3.0.0-beta.7] — 2026-09-08
@@ -488,7 +491,7 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
-[unreleased]: https://github.com/hobbyquaker/homematic-manager/compare/v3.0.0-beta.7...master
+[3.0.0-beta.8]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.8
 [3.0.0-beta.7]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.7
 [3.0.0-beta.6]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.6
 [3.0.0-beta.5]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.5
