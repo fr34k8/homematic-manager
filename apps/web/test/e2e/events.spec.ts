@@ -4,8 +4,10 @@
  * spec raises real events in the simulator and then filters for them.
  *
  * The grid does not start empty. `init` makes the interface process answer with `newDevices`, and
- * that is an RPC event like any other - 2.7 listed it too. The counts below are therefore relative
- * to whatever the connection itself produced.
+ * that is an RPC event like any other - 2.7 listed it too - and it can land after the table is
+ * already visible. Every count below is therefore taken behind a filter that the connection's own
+ * rows cannot match: a count taken before that row and compared after it was off by one on a
+ * loaded worker.
  */
 
 import {HMIP_DIMMER, expect, simulatorReady, test} from './fixtures.js';
@@ -21,16 +23,21 @@ test('an event from the interface process arrives and the filters narrow it down
     await page.goto(`${host.url}#/HmIP-RF/events`);
     await expect(page.getByTestId('events-table')).toBeVisible();
     const rows = page.locator('[data-row-kind="row"]');
-    const seeded = await rows.count();
+
+    // The `newDevices` of the connection has no address, so narrowed to the dimmer the grid holds
+    // only what this spec raises, whenever that row arrives.
+    await page.getByTestId('events-filter-address').fill(HMIP_DIMMER);
+    await expect(rows).toHaveCount(0);
 
     sim.fireEvent('hmip', CHANNEL, 'STATE', true);
     sim.fireEvent('hmip', MAINTENANCE, 'RSSI_DEVICE', -55);
 
-    await expect(rows).toHaveCount(seeded + 2);
+    await expect(rows).toHaveCount(2);
     await expect(page.getByTestId('events-table')).toContainText('STATE');
     await expect(page.getByTestId('events-table')).toContainText('RSSI_DEVICE');
 
     // Filters are plain search inputs, matched as a case-insensitive substring, no debounce.
+    await page.getByTestId('events-filter-address').fill('');
     await page.getByTestId('events-filter-datapoint').fill('rssi');
     await expect(rows).toHaveCount(1);
     await expect(page.getByTestId('events-table')).toContainText('RSSI_DEVICE');
