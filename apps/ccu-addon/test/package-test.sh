@@ -31,7 +31,7 @@ trap 'rm -rf "$TMP"' EXIT
 STUB="$ADDON_SRC/test/stub.tcl"
 
 mkdir -p "$TMP/usr_local/addons" "$TMP/config/addons/www" "$TMP/state"
-tar xzf "$PKG" -C "$TMP/usr_local/addons" hmm
+tar xzf "$PKG" -C "$TMP/usr_local/addons" hmm hmm.cfg
 ADDON="$TMP/usr_local/addons/hmm"
 ln -sfn "$ADDON/www" "$TMP/config/addons/www/hmm"
 cp "$ADDON/etc/default.env" "$ADDON/etc/hmm.env"
@@ -95,6 +95,30 @@ case "$out" in
     *'"VERSION_ADDON"'*) pass "service.cgi reports the version" ;;
     *) fail "service.cgi reports the version" "$out" ;;
 esac
+
+echo "what the Zusatzsoftware page shows (#140)"
+# cp_software.cgi reads `rc.d/hmm info` through a Tcl pipe in iso8859-1 and writes the lines into
+# its Latin-1 page as they are, and the Systemsteuerung page does the same with hm_addons.cfg: a
+# UTF-8 umlaut arrives as "GerÃ¤te". Both have to be ASCII, umlauts as HTML entities.
+info="$(sh "$ADDON/rc.d/hmm" info 2>/dev/null)"
+case "$info" in
+    *'Name: Homematic Manager'*) pass "rc.d/hmm info names the addon" ;;
+    *) fail "rc.d/hmm info names the addon" "$info" ;;
+esac
+case "$info" in
+    *'Ger&auml;te, Verkn&uuml;pfungen'*) pass "the Info line spells its umlauts as entities" ;;
+    *) fail "the Info line spells its umlauts as entities" "$info" ;;
+esac
+if printf '%s' "$info" | LC_ALL=C grep -q '[^ -~]'; then
+    fail "the info output is plain ASCII" "$(printf '%s' "$info" | LC_ALL=C grep '[^ -~]')"
+else
+    pass "the info output is plain ASCII"
+fi
+if LC_ALL=C grep -q '[^ -~]' "$TMP/usr_local/addons/hmm.cfg"; then
+    fail "hmm.cfg is plain ASCII" "$(cat "$TMP/usr_local/addons/hmm.cfg")"
+else
+    pass "hmm.cfg is plain ASCII"
+fi
 
 echo "the generated metadata is minified (OQ-13)"
 if head -c 200 "$ADDON/app/data/manifest.json" | grep -q '^{"'; then

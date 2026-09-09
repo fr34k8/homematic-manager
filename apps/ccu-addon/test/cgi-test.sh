@@ -384,6 +384,33 @@ else
     fail "no tcl construct newer than 8.2 in the shipped scripts" "$(printf '%b' "$modern")"
 fi
 
+echo "what the Zusatzsoftware page shows (#140)"
+# cp_software.cgi reads `rc.d/hmm info` through a Tcl pipe in iso8859-1 and writes the lines into
+# its Latin-1 page as they are, and the Systemsteuerung page does the same with hm_addons.cfg: a
+# UTF-8 umlaut arrives as "GerÃ¤te". Both have to be ASCII, umlauts as HTML entities.
+info="$(sh files/hmm/rc.d/hmm info 2>/dev/null)"
+case "$info" in
+    *'Ger&auml;te, Verkn&uuml;pfungen'*) pass "the Info line spells its umlauts as entities" ;;
+    *) fail "the Info line spells its umlauts as entities" "$info" ;;
+esac
+if printf '%s' "$info" | LC_ALL=C grep -q '[^ -~]'; then
+    fail "rc.d/hmm info is plain ASCII" "$(printf '%s' "$info" | LC_ALL=C grep '[^ -~]')"
+else
+    pass "rc.d/hmm info is plain ASCII"
+fi
+if LC_ALL=C grep -q '[^ -~]' files/hmm.cfg; then
+    fail "hmm.cfg is plain ASCII" "$(cat files/hmm.cfg)"
+else
+    pass "hmm.cfg is plain ASCII"
+fi
+# an unknown command (cp_software.cgi also asks for info.de and info.en) must print nothing on
+# stdout: every line of it would be parsed as a Key: value pair
+if [ -z "$(sh files/hmm/rc.d/hmm info.de 2>/dev/null)" ]; then
+    pass "info.de stays quiet on stdout"
+else
+    fail "info.de stays quiet on stdout" "$(sh files/hmm/rc.d/hmm info.de 2>/dev/null)"
+fi
+
 echo "the shell scripts are POSIX sh (busybox ash runs them)"
 for script in files/update_script files/hmm/rc.d/hmm; do
     if sh -n "$script" 2>/dev/null; then

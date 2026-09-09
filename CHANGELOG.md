@@ -6,6 +6,19 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [Unreleased]
+
+Two reports from Baxxy13 against the CCU addon on OpenCCU (#140, #141), both in the addon's
+packaging scripts; the app itself is untouched.
+
+- **The Zusatzsoftware page shows the addon's umlauts as `GerÃ¤te`** (#140, `BUGS.md` B-3). The
+  WebUI reads an addon's `rc.d/<name> info` lines through a Tcl pipe whose system encoding is
+  Latin-1 on the CCU3 and OpenCCU alike and prints them into its Latin-1 page as they are, so the
+  UTF-8 umlauts of the `Info:` line - and of the description in `hm_addons.cfg`, which the
+  Systemsteuerung page renders the same way - came out as two characters each. Both now spell
+  their umlauts as HTML entities (`Ger&auml;te`), which every encoding survives; the package test
+  and the container test check that nothing outside ASCII is in either.
+
 ## [3.0.0-beta.7] — 2026-09-08
 
 Two reports from the first tester of beta.5 (NickHM, in the forum thread of the announcement and
@@ -432,7 +445,7 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
-[unreleased]: https://github.com/hobbyquaker/homematic-manager/compare/v3.0.0-beta.6...master
+[unreleased]: https://github.com/hobbyquaker/homematic-manager/compare/v3.0.0-beta.7...master
 [3.0.0-beta.7]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.7
 [3.0.0-beta.6]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.6
 [3.0.0-beta.5]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.5

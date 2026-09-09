@@ -200,7 +200,12 @@ case "$1" in
         ;;
 
     info)
-        echo "Info: <div>Homematic Manager - Geräte, Verknüpfungen, Parameter - <a target=\"_blank\" href=\"https://github.com/hobbyquaker/homematic-manager\">github.com/hobbyquaker/homematic-manager</a></div>"
+        # HTML entities, not umlauts (#140): cp_software.cgi reads these lines through a Tcl pipe
+        # whose system encoding is iso8859-1 on the CCU3 and on OpenCCU alike, and writes them into
+        # the WebUI's Latin-1 page as they are - a UTF-8 "ä" arrives as "Ã¤", and a Latin-1 byte
+        # would break the day some firmware runs Tcl in a UTF-8 locale. An entity survives both.
+        # The same goes for hmm.cfg, whose description the Systemsteuerung page renders.
+        echo "Info: <div>Homematic Manager - Ger&auml;te, Verkn&uuml;pfungen, Parameter - <a target=\"_blank\" href=\"https://github.com/hobbyquaker/homematic-manager\">github.com/hobbyquaker/homematic-manager</a></div>"
         echo "Name: Homematic Manager"
         echo "Version: $VERSION_ADDON"
         echo "Update: /addons/$ADDON/update_check.cgi"
