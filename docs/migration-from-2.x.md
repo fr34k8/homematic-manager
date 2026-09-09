@@ -224,7 +224,7 @@ Grouped by what a user notices; the issue numbers are the ones each answers.
 | Links | Several links removed in one action | #80 |
 | Links | The link name is where it belongs | #82 |
 | Radio | Roaming: no interface is falsely marked active, and the assignment is read out of the device's own `INTERFACE` and re-read after `setBidcosInterface` | #122 |
-| Radio | "Heard best by" per device | #69 |
+| Radio | "Heard best by" per device, and "assign the best receiver": a dry run over every BidCos-RF device with a margin and a tick per device, one `setBidcosInterface` each on confirm | #69 |
 | Console | Generated argument forms — struct rows for a paramset, bit fields, value lists — so `device:channel` is not lost and `putParamset` is usable at all | #27, #136 |
 | Add device | The QR scanner works more than once | #112 |
 | Service messages | Toasts instead of the modal pop-up; on HmIP, eQ-3's suppression per message | #77, #102 |
@@ -246,9 +246,12 @@ Planned but not in this rebuild yet:
 - ReGa inbox auto-confirm (#54) and service-message acknowledgement in ReGa (#94) — both need ReGa,
   which is optional, so both have to degrade;
 - smoke-detector teams (#97);
-- automatic best-interface assignment (#69 shows the information, it does not act on it);
-- CCU-Jack as a user-defined interface (#135) — user-defined interfaces exist, but CCU-Jack's RPC
-  surface has not been verified;
+- automatic best-interface assignment (#69) — in since the release after 3.0.0-beta.7 as a dry run
+  the user confirms (the table above), never as an unattended write;
+- CCU-Jack as a user-defined interface (#135) — verified on 2026-09-09 against a CCU-Jack built
+  from its `master` with virtual devices and no CCU behind it (host, port `2121`, XML-RPC, path
+  `/RPC3`: device list, paramsets, `setValue` and its event, `ping`); not yet reported by a user
+  with a CCU-Jack on a CCU;
 - the extended set of device-specific editors: universal light effects, RGBW/dual-white, alarm panel,
   the ESI energy meter, door locks.
 

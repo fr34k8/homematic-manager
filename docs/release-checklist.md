@@ -263,7 +263,7 @@ changelog section; the triage that produced this table is
 | 59 | `setInterface` / roaming — answered in 2018; 3.0 reads the assignment out of the device's own `INTERFACE` (#122). |
 | 60 | Homegear hang after a parameter change (2018 beta) — not reproducible; the write path was rebuilt, please retest with 3.0. |
 | 123 | HVL addon devices — HVL is a dead project, out of scope (D-19). |
-| 135 | CCU-Jack — the mechanism exists as a user-defined interface (CCU-Jack serves XML-RPC on `/RPC3` of port 2121); no CCU-Jack was available to verify it against. See `docs/upstream/`. |
+| 135 | CCU-Jack — the mechanism exists as a user-defined interface (CCU-Jack serves XML-RPC on `/RPC3` of port 2121). Verified 2026-09-09 against a CCU-Jack built from source with virtual devices and no CCU (device list, paramsets, `setValue` and its event, `ping`); waits for a report from someone with a CCU-Jack on a CCU. See `docs/upstream/`. |
 | 68 | Windows code signing — SignPath application; the step is prepared in `release-electron.yml`. Keep open until it is signed. |
 
 **Pull requests** — thank the author, then close:

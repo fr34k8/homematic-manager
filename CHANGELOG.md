@@ -47,6 +47,13 @@ packaging scripts, and the oldest open wish of the tracker (#69) in the Funk tab
   through a stand-in for `cp_software.cgi`: against the beta.6 package every one of those requests
   died with an empty reply, against this one they are answered.
 
+- **CCU-Jack as a user-defined interface works** (#135). Verified for the first time, against a
+  CCU-Jack built from its `master` with two virtual devices and no CCU behind it: host, port 2121,
+  XML-RPC, path `/RPC3` - `init` with the callback, the `newDevices` callback, the device list,
+  paramset descriptions and values, `setValue` and the event it raises, `ping` and its `PONG`; the
+  watchdog keeps the interface connected. No code changed for it; `docs/migration-from-2.x.md`
+  names the five fields.
+
 ### Known issues
 
 - Neither addon fix has been on a CCU yet: the encoding was reproduced from the WebUI's own `cp_software.cgi`
