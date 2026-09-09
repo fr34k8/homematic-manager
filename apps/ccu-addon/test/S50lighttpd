@@ -18,7 +18,7 @@ CONF=/etc/lighttpd/lighttpd-ccu.conf
 LOG=/tmp/S50lighttpd.log
 
 start() {
-    echo -n "Starting lighttpd: "
+    printf '%s' "Starting lighttpd: "
     if start-stop-daemon -S -q -b -m -p $PIDFILE_ANGEL --exec /usr/sbin/lighttpd-angel -- -f $CONF -D; then
         echo "OK"
     else
@@ -26,7 +26,7 @@ start() {
     fi
 }
 stop() {
-    echo -n "Stopping lighttpd: "
+    printf '%s' "Stopping lighttpd: "
     start-stop-daemon -K -q -p $PIDFILE_ANGEL
     rm -f $PIDFILE_ANGEL
     # the angel forwards the TERM and lighttpd removes its pidfile on the way out
@@ -38,7 +38,7 @@ stop() {
     [ ! -f $PIDFILE ] && echo "OK" || echo "ERROR"
 }
 reload() {
-    echo -n "Reloading lighttpd: "
+    printf '%s' "Reloading lighttpd: "
     start-stop-daemon -K -s USR1 -q -p $PIDFILE_ANGEL
     [ -f $PIDFILE ] && echo "OK" || echo "ERROR"
 }
