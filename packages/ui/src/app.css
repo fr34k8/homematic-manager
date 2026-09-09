@@ -84,6 +84,10 @@
        each side; `ICON_COLUMN_WIDTH` in `lib/components/metrics.ts` is that sum. */
     --hmm-row-height: 30px;
     --hmm-device-image-size: 20px;
+    /* The receiver marker of the Funk grid, the same arithmetic: `MARK_COLUMN_WIDTH` is this plus
+       the cell's padding. At 30 px the 22 px button overflowed its track and the browser drew the
+       ellipsis of `text-overflow` beside it, in every row (#148). */
+    --hmm-mark-size: 22px;
     --hmm-header-height: 36px;
     --hmm-radius: 3px;
 

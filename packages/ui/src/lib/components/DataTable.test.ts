@@ -388,6 +388,26 @@ describe('filters and the scope (BUGS.md B-1)', () => {
     });
 });
 
+/**
+ * Issue #148: the receiver marker of the Funk grid is a 22 px button in a track that was 30 px
+ * wide, so the cell overflowed and the browser drew the ellipsis of `text-overflow` behind every
+ * marker - "ein überflüssiger Punkt in der Ansicht", in every row. A fixed column carries a
+ * picture, a glyph or a control and has nothing to abbreviate, so its cells clip.
+ */
+describe('cells of a fixed column (#148)', () => {
+    it('marks them so that they do not abbreviate', () => {
+        const withIcon: DataTableColumn<Row>[] = [
+            {key: 'icon', label: '', width: 32, fixed: true, sortable: false, filterable: false, value: () => '◉'},
+            ...columns,
+        ];
+        render(DataTable, {props: {...base, columns: withIcon, rows: makeRows(3)}});
+
+        const cells = [...rowsInDom()[0]!.querySelectorAll('[role="gridcell"]')];
+        expect(cells[0]!.classList.contains('hmm-td-fixed')).toBe(true);
+        expect(cells[1]!.classList.contains('hmm-td-fixed')).toBe(false);
+    });
+});
+
 describe('column tracks at 1280 px', () => {
     const deviceColumns: DataTableColumn<Row>[] = [
         {key: 'icon', label: '', width: 24, fixed: true, sortable: false, filterable: false, value: () => ''},

@@ -6,6 +6,15 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [Unreleased]
+
+- **The Funk grid no longer draws a dot behind every receiver marker** (#148). The marker column
+  was 30 px wide for a 22 px button, so the cell overflowed and the browser abbreviated it with an
+  ellipsis - of which one dot was visible, in every row of both marker columns. The track is now
+  the marker plus the cell's padding (`--hmm-mark-size`, the arithmetic the picture column already
+  used), and a cell of a fixed column - a picture, a glyph, a control, never running text - clips
+  instead of abbreviating.
+
 ## [3.0.0-beta.8] — 2026-09-09
 
 Two reports from Baxxy13 against the CCU addon on OpenCCU (#140, #141), both in the addon's

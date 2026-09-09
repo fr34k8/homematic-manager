@@ -4,7 +4,7 @@
 
     import DataTable from '../lib/components/DataTable.svelte';
     import DeviceImage from '../lib/components/DeviceImage.svelte';
-    import {ICON_COLUMN_WIDTH} from '../lib/components/metrics.js';
+    import {ICON_COLUMN_WIDTH, MARK_COLUMN_WIDTH} from '../lib/components/metrics.js';
     import RssiCell from '../lib/components/RssiCell.svelte';
     import ToolbarButton from '../lib/components/ToolbarButton.svelte';
     import type {DataTableColumn, DataTableColumnGroup} from '../lib/components/tableModel.js';
@@ -142,7 +142,10 @@
                 // HmIP; in 3.0 the Funk tab is BidCos-RF's alone, see `tabsForInterface`.)
                 key: `set:${gateway.ADDRESS}`,
                 label: '',
-                width: 30,
+                // The mark is 22 px wide and a cell has 6 px of padding on each side (#148: at
+                // 30 px the button overflowed its track and the browser drew an ellipsis next to
+                // it), the same arithmetic as `ICON_COLUMN_WIDTH`.
+                width: MARK_COLUMN_WIDTH,
                 fixed: true,
                 align: 'center' as const,
                 sortable: false,
@@ -340,7 +343,7 @@
 
     /* The 2.x radio button, drawn as a glyph: filled for the configured receiver. */
     .hmm-receiver-mark {
-        width: 22px;
+        width: var(--hmm-mark-size);
         height: 18px;
         padding: 0;
         border: none;

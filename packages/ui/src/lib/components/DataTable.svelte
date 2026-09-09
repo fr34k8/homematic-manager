@@ -523,6 +523,7 @@
                                 {#each flatRow.depth > 0 ? visibleSubColumns : visibleColumns as column (column.key)}
                                     <div
                                         class="hmm-td"
+                                        class:hmm-td-fixed={column.fixed === true}
                                         class:hmm-mono={column.mono === true && flatRow.kind === 'row'}
                                         role="gridcell"
                                         style:grid-column={layout.track[column.key]}
@@ -742,6 +743,16 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    /*
+     * Issue #148: a fixed column holds a picture, a glyph or a control, never running text, and a
+     * control a pixel wider than its track made the browser draw the ellipsis of `text-overflow`
+     * beside it - the "überflüssiger Punkt" behind every receiver marker of the Funk grid, in
+     * every row. There is nothing to abbreviate in such a cell, so it clips instead.
+     */
+    .hmm-td-fixed {
+        text-overflow: clip;
     }
 
     .hmm-td-expander,

@@ -8,7 +8,7 @@
 import {describe, expect, it} from 'vitest';
 
 import appCss from '../../app.css?raw';
-import {DEVICE_IMAGE_SIZE, ICON_COLUMN_WIDTH, ROW_HEIGHT} from './metrics.js';
+import {DEVICE_IMAGE_SIZE, ICON_COLUMN_WIDTH, MARK_COLUMN_WIDTH, MARK_SIZE, ROW_HEIGHT} from './metrics.js';
 
 function pixels(token: string): number {
     const match = new RegExp(`${token}:\\s*(\\d+)px;`).exec(appCss);
@@ -39,5 +39,18 @@ describe('the grid metrics', () => {
     /** A grid cell clips, so the track is the picture plus the cell's 6 px of padding per side. */
     it('makes the picture column wide enough that the cell does not cut the picture off', () => {
         expect(ICON_COLUMN_WIDTH).toBe(DEVICE_IMAGE_SIZE + 12);
+    });
+
+    it('takes the receiver marker from --hmm-mark-size', () => {
+        expect(MARK_SIZE).toBe(pixels('--hmm-mark-size'));
+    });
+
+    /**
+     * Issue #148: the marker column was 30 px for a 22 px button, so the cell overflowed and the
+     * browser drew an ellipsis behind every marker of the Funk grid.
+     */
+    it('makes the marker column wide enough that the marker does not overflow its cell', () => {
+        expect(MARK_COLUMN_WIDTH).toBe(MARK_SIZE + 12);
+        expect(MARK_COLUMN_WIDTH).toBeGreaterThan(MARK_SIZE);
     });
 });

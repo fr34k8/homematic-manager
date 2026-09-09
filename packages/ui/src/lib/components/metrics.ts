@@ -26,3 +26,16 @@ export const DEVICE_IMAGE_SIZE = 20;
  * is what the 24 px track of the 16 px picture did before task 22.
  */
 export const ICON_COLUMN_WIDTH = DEVICE_IMAGE_SIZE + 12;
+
+/** `--hmm-mark-size`. The receiver marker (`◉` / `○`) of the Funk grid. */
+export const MARK_SIZE = 22;
+
+/**
+ * The width of that marker's column.
+ *
+ * Issue #148: at 30 px the 22 px button did not fit between the cell's 6 px of padding, so the
+ * browser abbreviated the cell and drew the first dot of an ellipsis next to every marker - the
+ * "überflüssiger Punkt" of the report. The cell no longer abbreviates (`.hmm-td-fixed`), and the
+ * track is the marker plus the padding, exactly like {@link ICON_COLUMN_WIDTH}.
+ */
+export const MARK_COLUMN_WIDTH = MARK_SIZE + 12;
