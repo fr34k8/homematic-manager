@@ -674,6 +674,15 @@ export interface ApiMethods {
     'unreach.reset': {params: [interfaceName?: string, address?: string]; result: null};
 
     'serviceMessages.list': {params: [interfaceName?: string]; result: ServiceMessage[]};
+    /**
+     * Issue #146: asks the interface processes again and answers with the fresh list.
+     *
+     * {@link 'serviceMessages.list'} reads the backend's cache, which is filled by the events and
+     * by a poll every five minutes - so the refresh button of the tab returned the same list it
+     * already showed and looked like a button without a function. This is the call that makes the
+     * round trip: `getServiceMessages` per BidCos interface, the `:0` sweep on HmIP.
+     */
+    'serviceMessages.refresh': {params: [interfaceName?: string]; result: ServiceMessage[]};
     /** Acknowledge by writing the datapoint (STICKY_UNREACH etc.). */
     'serviceMessages.ack': {params: [interfaceName: string, address: string, datapoint: string]; result: null};
 

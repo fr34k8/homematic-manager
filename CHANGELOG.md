@@ -8,6 +8,15 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+- **The refresh button of the service-message tab reads the CCU again** (#146). It asked
+  `serviceMessages.list`, which the backend answers out of its cache - that cache is filled by the
+  events and by a poll every five minutes, so the button could not change anything about the list
+  it was looking at. There is a `serviceMessages.refresh` now that makes the round trip
+  (`getServiceMessages` per BidCos interface, the `:0` sweep on HmIP) and answers with the fresh
+  list. Both refresh buttons - the Funk tab's as well - turn while they work and cannot be pressed
+  twice, so an action that takes a moment is visible; the Funk one re-reads the device list too,
+  because which receiver a device is configured for is part of its description.
+
 - **The Funk grid no longer draws a dot behind every receiver marker** (#148). The marker column
   was 30 px wide for a 22 px button, so the cell overflowed and the browser abbreviated it with an
   ellipsis - of which one dot was visible, in every row of both marker columns. The track is now

@@ -126,11 +126,16 @@
             testId="messages-table"
         >
             {#snippet toolbar()}
+                <!--
+                    #146: `load()` answers from the backend's cache - the button has to make the
+                    round trip to the interface processes, and has to show that it is making it.
+                -->
                 <ToolbarButton
                     title={t('Refresh')}
                     icon="⟳"
+                    busy={stores.serviceMessages.loading}
                     testId="messages-refresh"
-                    onclick={() => void stores.serviceMessages.load()}
+                    onclick={() => void stores.serviceMessages.refresh(interfaceName)}
                 />
                 <ToolbarButton
                     title={t('Acknowledge service messages')}

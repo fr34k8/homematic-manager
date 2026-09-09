@@ -8,6 +8,12 @@
         /** Why the button is disabled - shown in the tooltip so "greyed out" is never a mystery. */
         reason?: string | undefined;
         pressed?: boolean | undefined;
+        /**
+         * The action this button started is still running: it turns, and it cannot be pressed
+         * again. Issue #146 - a refresh that reads a CCU takes a moment, and without a sign that
+         * anything happened the button reads as one without a function.
+         */
+        busy?: boolean;
         onclick?: (() => void) | undefined;
         testId?: string | undefined;
     }
@@ -18,6 +24,7 @@
         disabled = false,
         reason = undefined,
         pressed = undefined,
+        busy = false,
         onclick = undefined,
         testId = undefined,
     }: Props = $props();
@@ -30,11 +37,12 @@
     title={disabled && reason !== undefined ? `${title} — ${reason}` : title}
     aria-label={title}
     aria-pressed={pressed}
+    aria-busy={busy ? 'true' : undefined}
     data-testid={testId}
-    {disabled}
+    disabled={disabled || busy}
     onclick={() => onclick?.()}
 >
-    <span aria-hidden="true">{icon}</span>
+    <span class="hmm-toolbar-icon" class:hmm-toolbar-icon-busy={busy} aria-hidden="true">{icon}</span>
 </button>
 
 <style>
@@ -59,6 +67,33 @@
     .hmm-toolbar-button:disabled {
         opacity: 0.4;
         cursor: default;
+    }
+
+    /* Issue #146: while the action runs the icon turns, so a refresh that takes a second is
+       visibly a refresh. `prefers-reduced-motion` gets the dimmed button without the spin. */
+    .hmm-toolbar-icon {
+        display: inline-block;
+        line-height: 1;
+    }
+
+    .hmm-toolbar-icon-busy {
+        animation: hmm-toolbar-spin 1s linear infinite;
+    }
+
+    @keyframes hmm-toolbar-spin {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .hmm-toolbar-icon-busy {
+            animation: none;
+        }
     }
 
     .hmm-toolbar-button-pressed {

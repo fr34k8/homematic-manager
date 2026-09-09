@@ -526,6 +526,8 @@ export class Backend {
                 return this.#resetUnreach(p[0], p[1]);
             case 'serviceMessages.list':
                 return this.#serviceMessages(p[0]);
+            case 'serviceMessages.refresh':
+                return this.#refreshAllServiceMessages(p[0]);
             case 'serviceMessages.ack':
                 return this.#acknowledge(p[0], p[1], p[2]);
 
@@ -1203,6 +1205,32 @@ export class Backend {
     }
 
     /**
+     * Issue #146: what the refresh button of the service-message tab asks for.
+     *
+     * The list itself comes out of the cache, which the events and a five-minute poll keep up to
+     * date; pressing refresh re-read that cache and therefore changed nothing at all - "Refresh
+     * Button ohne Funktion". This makes the round trip the button promises: `getServiceMessages`
+     * on every connected interface that has the method, and the `:0` sweep on HmIP, which is where
+     * its messages come from. Failures are notices, as everywhere else here - an interface that
+     * does not answer must not turn the button into an error dialog.
+     */
+    async #refreshAllServiceMessages(interfaceName?: string): Promise<ServiceMessage[]> {
+        const names = (this.#manager?.names() ?? []).filter(
+            (name) =>
+                (interfaceName === undefined || name === interfaceName) &&
+                this.#manager?.isConnected(name) === true,
+        );
+        for (const name of names) {
+            if (name === 'HmIP-RF') {
+                await this.sweepHmip(name);
+            } else {
+                await this.#refreshServiceMessages(name);
+            }
+        }
+        return this.#serviceMessages(interfaceName);
+    }
+
+    /**
      * Does it make sense to ask this interface for its service messages?
      *
      * The built-in answer comes from the core's table: hmipserver has no `getServiceMessages` (the
@@ -1594,6 +1622,7 @@ export const API_METHOD_NAMES: readonly ApiMethodName[] = [
     'unreach.list',
     'unreach.reset',
     'serviceMessages.list',
+    'serviceMessages.refresh',
     'serviceMessages.ack',
     'events.recent',
     'events.clear',

@@ -207,6 +207,13 @@ export class MockTransport implements Transport {
                 ? DEMO_SERVICE_MESSAGES
                 : DEMO_SERVICE_MESSAGES.filter((message) => message.interfaceName === interfaceName),
         );
+        // #146: the same answer, but the call the refresh button makes is its own method - the
+        // demo has no interface process to read again.
+        this.respond('serviceMessages.refresh', (interfaceName) =>
+            interfaceName === undefined
+                ? DEMO_SERVICE_MESSAGES
+                : DEMO_SERVICE_MESSAGES.filter((message) => message.interfaceName === interfaceName),
+        );
         this.result('serviceMessages.ack', null);
         this.result('rega.confirmInbox', []);
         this.respond('teams.list', (interfaceName) => (interfaceName === 'BidCos-RF' ? DEMO_TEAMS : []));

@@ -191,8 +191,18 @@
         return stores.devices.index(interfaceName)?.get(address)?.ADDRESS ?? address;
     }
 
+    /**
+     * #146: the levels, the gateway list, the interface states and the unreach counters - and the
+     * device list, because `INTERFACE` (which receiver a device is configured for) is part of the
+     * description and changes outside this app too.
+     */
     async function refresh(): Promise<void> {
-        await Promise.all([stores.radio.load(interfaceName), stores.interfaces.load(), stores.unreach.load()]);
+        await Promise.all([
+            stores.radio.load(interfaceName),
+            stores.devices.load(interfaceName, {refresh: true}),
+            stores.interfaces.load(),
+            stores.unreach.load(),
+        ]);
     }
 
     $effect(() => {
@@ -249,7 +259,14 @@
             testId="radio-table"
         >
             {#snippet toolbar()}
-                <ToolbarButton title={t('Refresh')} icon="⟳" testId="radio-refresh" onclick={() => void refresh()} />
+                <!-- #146: the button turns while `rssiInfo` and the device list are being read. -->
+                <ToolbarButton
+                    title={t('Refresh')}
+                    icon="⟳"
+                    busy={stores.radio.loading || stores.devices.isLoading(interfaceName)}
+                    testId="radio-refresh"
+                    onclick={() => void refresh()}
+                />
                 <ToolbarButton
                     title="setBidcosInterface"
                     icon="⇄"

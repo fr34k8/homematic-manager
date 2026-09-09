@@ -1017,6 +1017,51 @@ describe('radio and service messages', () => {
         await h.backend.stop();
     });
 
+    /**
+     * Issue #146: the refresh button of the service-message tab asked `serviceMessages.list`,
+     * which answers from the cache the events and the five-minute poll fill - so it changed
+     * nothing and read as a button without a function. `serviceMessages.refresh` makes the round
+     * trip: `getServiceMessages` per BidCos interface, the `:0` sweep on HmIP.
+     */
+    it('reads the interfaces again on serviceMessages.refresh (#146)', async () => {
+        let messages: RpcValue = [['LEQ1:0', 'STICKY_UNREACH', true]];
+        const h = await harness({
+            answers: {
+                'BidCos-RF': (method, params) =>
+                    method === 'getServiceMessages' ? messages : (defaultAnswers['BidCos-RF'] as Answer)(method, params),
+            },
+        });
+        expect(await h.backend.request('serviceMessages.list', 'BidCos-RF')).toHaveLength(1);
+
+        // the interface has nothing to report any more; the cache still has the old message
+        messages = [];
+        h.calls.length = 0;
+        expect(await h.backend.request('serviceMessages.list', 'BidCos-RF')).toHaveLength(1);
+        expect(h.calls.some((call) => call.method === 'getServiceMessages')).toBe(false);
+
+        expect(await h.backend.request('serviceMessages.refresh', 'BidCos-RF')).toEqual([]);
+        expect(h.calls.some((call) => call.interfaceName === 'BidCos-RF' && call.method === 'getServiceMessages')).toBe(
+            true,
+        );
+        expect(await h.backend.request('serviceMessages.list', 'BidCos-RF')).toEqual([]);
+        await h.backend.stop();
+    });
+
+    it('sweeps the HmIP maintenance channels on serviceMessages.refresh (#146)', async () => {
+        const h = await harness({
+            answers: {
+                'HmIP-RF': (method, params) =>
+                    method === 'getParamset' && params[1] === 'VALUES'
+                        ? {RSSI_DEVICE: -50, STICKY_UNREACH: true}
+                        : (defaultAnswers['HmIP-RF'] as Answer)(method, params),
+            },
+        });
+        expect(await h.backend.request('serviceMessages.refresh', 'HmIP-RF')).toEqual([
+            expect.objectContaining({address: 'ABC1:0', datapoint: 'STICKY_UNREACH'}),
+        ]);
+        await h.backend.stop();
+    });
+
     it('sweeps the HmIP maintenance channels for RSSI and service messages', async () => {
         const h = await harness({
             answers: {

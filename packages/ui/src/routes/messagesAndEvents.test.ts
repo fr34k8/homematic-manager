@@ -30,6 +30,36 @@ describe('the service messages tab', () => {
         expect(row?.textContent).toContain('true');
     });
 
+    /**
+     * Issue #146: the button asked `serviceMessages.list`, which the backend answers from its
+     * cache - the interfaces themselves are read by an event or by the five-minute poll, so
+     * nothing about the list could change and the button looked dead. It now asks for the round
+     * trip, and it turns while it waits.
+     */
+    it('reads the interfaces again when refresh is pressed, and says that it is working', async () => {
+        let answer: (value: ServiceMessage[]) => void = () => undefined;
+        transport.respond(
+            'serviceMessages.refresh',
+            () => new Promise<ServiceMessage[]>((resolve) => (answer = resolve)),
+        );
+        await mountApp({transport, hash: '#/BidCos-RF/messages'});
+        const button = screen.getByTestId<HTMLButtonElement>('messages-refresh');
+        expect(button.disabled).toBe(false);
+
+        await fireEvent.click(button);
+        expect(transport.lastCall('serviceMessages.refresh')).toEqual(['BidCos-RF']);
+        await waitFor(() => {
+            expect(screen.getByTestId('messages-refresh').getAttribute('aria-busy')).toBe('true');
+        });
+        expect(screen.getByTestId<HTMLButtonElement>('messages-refresh').disabled).toBe(true);
+
+        answer([sabotage]);
+        await waitFor(() => {
+            expect(screen.getByTestId('messages-refresh').getAttribute('aria-busy')).toBeNull();
+        });
+        expect(document.querySelector('[data-row-id="GEQ0567890:0/SABOTAGE"]')).not.toBeNull();
+    });
+
     it('acknowledges only what the CCU lets an application acknowledge', async () => {
         await mountApp({transport, hash: '#/BidCos-RF/messages'});
 

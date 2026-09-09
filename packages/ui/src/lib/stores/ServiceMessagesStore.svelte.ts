@@ -87,6 +87,23 @@ export class ServiceMessagesStore {
         }
     }
 
+    /**
+     * Issue #146: what the refresh button asks for - the interfaces are read again, not the
+     * backend's cache. {@link load} answers from that cache, which the events and a five-minute
+     * poll fill, so pressing refresh showed the list it already had and looked like a button
+     * without a function.
+     */
+    async refresh(interfaceName?: string): Promise<void> {
+        this.loading = true;
+        try {
+            this.apply(asList(await this.#transport.request('serviceMessages.refresh', interfaceName)));
+        } catch (error) {
+            this.#notices.fromError(error, 'serviceMessages.refresh');
+        } finally {
+            this.loading = false;
+        }
+    }
+
     /** Acknowledges one message by writing its datapoint; the backend answers with the new list. */
     async acknowledge(interfaceName: string, address: string, datapoint: string): Promise<boolean> {
         try {
