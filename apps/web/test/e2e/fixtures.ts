@@ -370,7 +370,11 @@ export const test = base.extend<E2eFixtures>({
     host: async ({}, use) => {
         const host = await startForTest({
             simulator: true,
-            simulatorOptions: SIMULATOR_FIXTURE,
+            // A copy per test: hm-simulator keeps the `devices` it is given and pairs into them
+            // (`scriptNewDevices`), so the device paired in installMode.spec.ts would otherwise sit
+            // in every later test of the same worker - receiver.spec.ts counted it as a second
+            // BidCos-RF device whenever both landed in one worker.
+            simulatorOptions: structuredClone(SIMULATOR_FIXTURE),
             // English, so the assertions read as what a user sees rather than as translation keys;
             // `settings.spec.ts` is the one that exercises the language switch itself.
             connection: {rega: true, language: 'en'},
