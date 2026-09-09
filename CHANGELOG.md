@@ -8,6 +8,13 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+- **On the CCU the interface processes are told to call back on `127.0.0.1`** (#144). Running as
+  the addon, the app registered its callback server under the box's LAN address - the one address
+  that changes, while an `init` registration outlives the change in the interface process's
+  handler list, and the one address that stands out in that list, where every other local
+  subscriber is on the loopback. A callback address configured by hand still wins, and nothing
+  changes for an installation that talks to a CCU over the network.
+
 - **The tooltips of the toolbar buttons are the app's own** (#145). They were the browser's
   `title`, which means the browser decides how long the pointer has to rest: four to five seconds
   on the reporter's macOS against a few hundred milliseconds elsewhere - and on a **disabled**

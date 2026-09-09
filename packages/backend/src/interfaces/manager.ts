@@ -32,6 +32,9 @@ import {localIPv4Addresses, probePort, withTimeout} from '../util/net.js';
 /** How often the watchdog looks at every interface. 2.x used the same 15 s. */
 export const WATCHDOG_INTERVAL_MS = 15_000;
 
+/** Where an interface process on this very box calls back (#144). */
+export const LOOPBACK_IP = '127.0.0.1';
+
 /** How long `stop()` waits for the de-registering `init(url, '')` calls. */
 export const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -148,14 +151,25 @@ export class InterfaceManager {
         });
     }
 
-    /** The address the interface processes are told to call back on. */
+    /**
+     * The address the interface processes are told to call back on.
+     *
+     * Issue #144: on the CCU itself (`local`, which is what the addon sets) that is `127.0.0.1`.
+     * The first LAN address of the box worked, but it is the wrong answer twice over: it is the
+     * one address that changes - a new lease, another network - while `init` registrations survive
+     * such a change in the interface process's handler list, and every other local subscriber on a
+     * CCU registers on the loopback, which is what a look at that list expects to see.
+     */
     get callbackIp(): string {
         const configured = this.#options.connection.callback.ip;
         if (configured !== '') {
             return configured;
         }
+        if (this.#options.connection.local === true) {
+            return LOOPBACK_IP;
+        }
         const addresses = (this.#options.localAddresses ?? (() => localIPv4Addresses()))();
-        return addresses[0] ?? '127.0.0.1';
+        return addresses[0] ?? LOOPBACK_IP;
     }
 
     /** D-31: are the subscriptions currently dropped because nobody is looking? */

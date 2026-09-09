@@ -266,6 +266,33 @@ describe('InterfaceManager.start', () => {
         const h = harness({connection: {callback: {ip: '', xmlrpcPort: 0, binrpcPort: 0}}});
         expect(h.manager.callbackIp).toBeTypeOf('string');
     });
+
+    /**
+     * Issue #144: on the CCU itself - the addon, which starts with `--local --ccu 127.0.0.1` - the
+     * interface processes are on the loopback and so are we. The box's LAN address worked, but it
+     * is the one address that changes, while an `init` registration survives the change in the
+     * interface process's handler list, and every other local subscriber on a CCU registers on
+     * 127.0.0.1.
+     */
+    it('calls back on the loopback when it runs on the CCU itself (#144)', async () => {
+        const h = harness({
+            connection: {host: '127.0.0.1', local: true, callback: {ip: '', xmlrpcPort: 0, binrpcPort: 0}},
+        });
+        expect(h.manager.callbackIp).toBe('127.0.0.1');
+
+        await h.manager.start();
+        expect(h.clients.calls.filter((call) => call.method === 'init').map((call) => call.params[0])).toEqual([
+            'xmlrpc_bin://127.0.0.1:2043',
+            'http://127.0.0.1:2042',
+        ]);
+    });
+
+    it('keeps a configured callback address even on the CCU (#144)', () => {
+        const h = harness({
+            connection: {host: '127.0.0.1', local: true, callback: {ip: '10.0.0.9', xmlrpcPort: 0, binrpcPort: 0}},
+        });
+        expect(h.manager.callbackIp).toBe('10.0.0.9');
+    });
 });
 
 describe('the watchdog', () => {
