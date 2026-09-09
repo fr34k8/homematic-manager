@@ -135,8 +135,26 @@ jobs:
         run: npm run sbom
 
       # TODO (D-9): Windows signing through SignPath, once the OSS project application is
-      # accepted. Until then the Windows assets are unsigned and SmartScreen warns on first run;
-      # apps/electron/README.md documents the "More info -> Run anyway" workaround.
+      # accepted (#68). Until then the Windows assets are unsigned and SmartScreen warns on first
+      # run; apps/electron/README.md documents the "More info -> Run anyway" workaround.
+      #
+      # Two things to settle before the block below goes live (2026-09-09): SignPath's action takes
+      # a workflow artifact, so the installers have to be uploaded first (the `stage` step); and
+      # signing *after* electron-builder has packaged changes the .exe that latest.yml and the
+      # .blockmap were computed from, so electron-updater would refuse the signed installer's
+      # sha512 - either regenerate latest.yml from the signed files before the assets are attached,
+      # or sign inside electron-builder (its `win.sign` hook runs per executable, before the
+      # installer's checksums are taken). The SBOM step also hashes the installers and would move
+      # behind the signing.
+      #
+      # - name: Stage the Windows installers for SignPath
+      #   if: matrix.os == 'windows-latest'
+      #   id: stage
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: windows-unsigned
+      #     path: apps/electron/dist-electron/*.exe
+      #     if-no-files-found: error
       #
       # - name: Sign the Windows assets (SignPath)
       #   if: matrix.os == 'windows-latest'
