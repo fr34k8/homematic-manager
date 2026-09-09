@@ -66,7 +66,7 @@ describe('the service messages tab', () => {
         // LOWBAT goes away when the battery is changed; STICKY_UNREACH can be written.
         await fireEvent.click(document.querySelector('[data-row-id="LEQ0456789:0/LOWBAT"]')!);
         expect(screen.getByTestId<HTMLButtonElement>('messages-ack').disabled).toBe(true);
-        expect(screen.getByTestId('messages-ack').getAttribute('title')).toContain('STICKY_UNREACH');
+        expect(screen.getByTestId('messages-ack-tooltip').getAttribute('data-tooltip')).toContain('STICKY_UNREACH');
 
         await fireEvent.click(document.querySelector('[data-row-id="KEQ0345678:0/STICKY_UNREACH"]')!);
         expect(screen.getByTestId<HTMLButtonElement>('messages-ack').disabled).toBe(false);

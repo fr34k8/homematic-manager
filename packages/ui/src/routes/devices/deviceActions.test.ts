@@ -31,12 +31,20 @@ describe('the devices toolbar', () => {
         transport = new MockTransport({demo: true});
     });
 
+    /**
+     * #145: what the button would say when the pointer rests on it. Since 3.0.0-beta.9 that is
+     * the app's own tooltip, not the browser's `title` - a disabled button never got one of those.
+     */
+    function tooltipOf(id: string): string {
+        return screen.getByTestId(`${id}-tooltip`).getAttribute('data-tooltip') ?? '';
+    }
+
     it('disables everything while nothing is selected, and says why', async () => {
         await mountApp({transport, hash: '#/BidCos-RF/devices'});
         for (const id of ['devices-rename', 'devices-delete', 'devices-replace', 'devices-usage-1']) {
             expect(screen.getByTestId<HTMLButtonElement>(id).disabled, id).toBe(true);
         }
-        expect(screen.getByTestId('devices-delete').getAttribute('title')).toContain('Gerät auswählen');
+        expect(tooltipOf('devices-delete')).toContain('Gerät auswählen');
     });
 
     it('enables the device actions for a device, but not reportValueUsage', async () => {
@@ -54,7 +62,7 @@ describe('the devices toolbar', () => {
         await select('BidCoS-RF');
 
         expect(screen.getByTestId<HTMLButtonElement>('devices-delete').disabled).toBe(true);
-        expect(screen.getByTestId('devices-delete').getAttribute('title')).toContain('DontDelete');
+        expect(tooltipOf('devices-delete')).toContain('DontDelete');
         // Renaming the CCU's own device is still allowed, as it was in 2.x.
         expect(screen.getByTestId<HTMLButtonElement>('devices-rename').disabled).toBe(false);
     });
@@ -77,7 +85,7 @@ describe('the devices toolbar', () => {
         await select('0011D3C9A1B2C3');
 
         expect(screen.getByTestId<HTMLButtonElement>('devices-restore').disabled).toBe(true);
-        expect(screen.getByTestId('devices-restore').getAttribute('title')).toContain('BidCos');
+        expect(tooltipOf('devices-restore')).toContain('BidCos');
     });
 
     it('sends restoreConfigToDevice and clearConfigCache for the selected device', async () => {

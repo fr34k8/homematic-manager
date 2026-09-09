@@ -139,8 +139,10 @@ describe('assigning the selection', () => {
     it('is off without a selection and says so; off with a reason when the store is read-only', async () => {
         await mountApp({transport, hash: '#/BidCos-RF/devices'});
         const button = screen.getByTestId<HTMLButtonElement>('devices-assign-room');
+        // #145: the app draws the tooltip now, so the text is on the anchor, not on the button
+        const tip = (): string => screen.getByTestId('devices-assign-room-tooltip').getAttribute('data-tooltip') ?? '';
         expect(button.disabled).toBe(true);
-        expect(button.title).toContain('Zeilen auswählen');
+        expect(tip()).toContain('Zeilen auswählen');
 
         await select('MEQ0123456');
         expect(button.disabled).toBe(false);
@@ -153,7 +155,7 @@ describe('assigning the selection', () => {
             objects: 0,
         });
         await waitFor(() => expect(button.disabled).toBe(true));
-        expect(button.title).toContain('keine Änderungen');
+        expect(tip()).toContain('keine Änderungen');
     });
 
     it('puts a multi-selection into a room with one request, and the rows follow', async () => {

@@ -406,6 +406,9 @@ describe('the best receiver (#69)', () => {
         });
         const button = screen.getByTestId<HTMLButtonElement>('radio-best-receivers');
         expect(button.disabled).toBe(true);
-        expect(button.title).toContain('Nur eine Schnittstelle');
+        // #145: the reason is in the app's own tooltip since the `title` attribute went
+        expect(screen.getByTestId('radio-best-receivers-tooltip').getAttribute('data-tooltip')).toContain(
+            'Nur eine Schnittstelle',
+        );
     });
 });

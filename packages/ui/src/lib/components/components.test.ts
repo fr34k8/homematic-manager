@@ -1,5 +1,5 @@
 import type {InterfaceState, WriteLogEntry} from '@homematic-manager/core';
-import {fireEvent, render, screen} from '@testing-library/svelte';
+import {fireEvent, render, screen, waitFor} from '@testing-library/svelte';
 import {describe, expect, it, vi} from 'vitest';
 
 import type {Notice} from '../stores/NoticesStore.svelte.js';
@@ -267,21 +267,72 @@ describe('Tabs', () => {
 describe('Toolbar and ToolbarButton', () => {
     it('renders its buttons and a trailing area', () => {
         const onclick = vi.fn();
-        render(ToolbarButton, {props: {title: 'Refresh', icon: '⟳', onclick}});
-        expect(screen.getByRole('button', {name: 'Refresh'}).getAttribute('title')).toBe('Refresh');
+        render(ToolbarButton, {props: {title: 'Refresh', icon: '⟳', onclick, testId: 'refresh'}});
+        expect(screen.getByRole('button', {name: 'Refresh'})).toBeTruthy();
+        expect(screen.getByTestId('refresh-tooltip').getAttribute('data-tooltip')).toBe('Refresh');
+        // #145: the browser's own tooltip is gone, or the two would fight over the same pointer.
+        expect(screen.getByRole('button', {name: 'Refresh'}).getAttribute('title')).toBeNull();
     });
 
     it('explains in the tooltip why a button is disabled', async () => {
         const onclick = vi.fn();
         render(ToolbarButton, {
-            props: {title: 'Delete device', disabled: true, reason: 'This function arrives with task 8.', onclick},
+            props: {
+                title: 'Delete device',
+                disabled: true,
+                reason: 'This function arrives with task 8.',
+                onclick,
+                testId: 'delete',
+            },
         });
         const button = screen.getByRole<HTMLButtonElement>('button', {name: 'Delete device'});
-        expect(button.getAttribute('title')).toBe('Delete device — This function arrives with task 8.');
-        // `disabled` is what stops the click; jsdom's `fireEvent.click` dispatches the event
-        // regardless of it, so the attribute is what this asserts on.
+        expect(screen.getByTestId('delete-tooltip').getAttribute('data-tooltip')).toBe(
+            'Delete device — This function arrives with task 8.',
+        );
+        // `disabled` is what stops the click; `fireEvent.click` dispatches the event regardless of
+        // it, so the attribute is what this asserts on.
         expect(button.disabled).toBe(true);
         expect(onclick).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Issue #145: 4 to 5 seconds for a `title` tooltip on macOS, and none at all on a disabled
+     * button - a disabled control dispatches no pointer events, so the very text that says why it
+     * is disabled was the one that never showed. The tooltip is the app's own now: the anchor
+     * around the button takes the pointer, and the wait is a fixed short one.
+     */
+    it('shows its own tooltip after a short delay, on a disabled button as well', async () => {
+        render(ToolbarButton, {
+            props: {
+                title: 'Delete device',
+                disabled: true,
+                reason: 'Select a device',
+                testId: 'delete',
+            },
+        });
+        expect(screen.queryByRole('tooltip')).toBeNull();
+
+        await fireEvent.pointerEnter(screen.getByTestId('delete-tooltip'));
+        const tip = await screen.findByRole('tooltip');
+        expect(tip.textContent).toBe('Delete device — Select a device');
+
+        await fireEvent.pointerLeave(screen.getByTestId('delete-tooltip'));
+        await waitFor(() => {
+            expect(screen.queryByRole('tooltip')).toBeNull();
+        });
+    });
+
+    it('shows the tooltip at once when the button is reached with the keyboard', async () => {
+        render(ToolbarButton, {props: {title: 'RPC log', testId: 'rpclog'}});
+
+        screen.getByRole('button', {name: 'RPC log'}).focus();
+        await fireEvent.focusIn(screen.getByTestId('rpclog-tooltip'));
+        expect((await screen.findByRole('tooltip')).textContent).toBe('RPC log');
+
+        await fireEvent.focusOut(screen.getByTestId('rpclog-tooltip'));
+        await waitFor(() => {
+            expect(screen.queryByRole('tooltip')).toBeNull();
+        });
     });
 
     it('can be a toggle', () => {

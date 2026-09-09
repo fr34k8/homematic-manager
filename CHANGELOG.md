@@ -8,6 +8,15 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+- **The tooltips of the toolbar buttons are the app's own** (#145). They were the browser's
+  `title`, which means the browser decides how long the pointer has to rest: four to five seconds
+  on the reporter's macOS against a few hundred milliseconds elsewhere - and on a **disabled**
+  button there was no tooltip at all, because a disabled control dispatches no pointer events. The
+  text that never appeared was therefore exactly the one that matters most: the reason a button is
+  greyed out. A toolbar button now draws its own tooltip after 300 ms, at once when it is reached
+  with the keyboard, on disabled buttons as well, positioned so no toolbar can clip it and closed
+  by Escape, a click or the pointer leaving.
+
 - **The room and the function filter belong to the interface they were set on** (#143). B-1 gave
   the column filters of a grid to their interface in 3.0.0-beta.7; the two selects above the
   device grid still outlived a switch, and they are applied to the rows before the table sees
