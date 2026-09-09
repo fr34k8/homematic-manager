@@ -1028,7 +1028,9 @@ describe('radio and service messages', () => {
         const h = await harness({
             answers: {
                 'BidCos-RF': (method, params) =>
-                    method === 'getServiceMessages' ? messages : (defaultAnswers['BidCos-RF'] as Answer)(method, params),
+                    method === 'getServiceMessages'
+                        ? messages
+                        : (defaultAnswers['BidCos-RF'] as Answer)(method, params),
             },
         });
         expect(await h.backend.request('serviceMessages.list', 'BidCos-RF')).toHaveLength(1);

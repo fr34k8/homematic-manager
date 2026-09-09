@@ -1217,8 +1217,7 @@ export class Backend {
     async #refreshAllServiceMessages(interfaceName?: string): Promise<ServiceMessage[]> {
         const names = (this.#manager?.names() ?? []).filter(
             (name) =>
-                (interfaceName === undefined || name === interfaceName) &&
-                this.#manager?.isConnected(name) === true,
+                (interfaceName === undefined || name === interfaceName) && this.#manager?.isConnected(name) === true,
         );
         for (const name of names) {
             if (name === 'HmIP-RF') {

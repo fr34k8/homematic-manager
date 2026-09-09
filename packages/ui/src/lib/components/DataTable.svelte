@@ -750,7 +750,7 @@
     }
 
     /*
-     * Issue #148: a fixed column holds a picture, a glyph or a control, never running text, and a
+     * Issue 148: a fixed column holds a picture, a glyph or a control, never running text, and a
      * control a pixel wider than its track made the browser draw the ellipsis of `text-overflow`
      * beside it - the "überflüssiger Punkt" behind every receiver marker of the Funk grid, in
      * every row. There is nothing to abbreviate in such a cell, so it clips instead.
