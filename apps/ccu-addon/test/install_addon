@@ -1,0 +1,24 @@
+#!/bin/sh
+#
+# What OpenCCU's /bin/install_addon does with the package the WebUI has uploaded to
+# /usr/local/tmp/new_addon.tar.gz: unpack it into a temporary directory below /usr/local/tmp, run
+# the package's update_script from in there with its output discarded, remove the directory again
+# and exit with update_script's code (0 installed, 10 reboot required, 13 wrong platform; 101-106
+# are the installer's own codes for a missing or broken archive). The CCU3 firmware does the same
+# inside a chroot at shutdown; that path is replayed by hand in container-test.sh.
+
+ARCHIVE=/usr/local/tmp/new_addon.tar.gz
+
+[ -f $ARCHIVE ] || exit 101
+UPDATEDIR="$(mktemp -d -p /usr/local/tmp)"
+umask 022
+tar -C "$UPDATEDIR" --no-same-owner --no-same-permissions -xf $ARCHIVE || exit 102
+rm -f $ARCHIVE || exit 103
+[ -x "$UPDATEDIR/update_script" ] || exit 104
+
+(cd "$UPDATEDIR" && ./update_script HM-RASPBERRYMATIC 2>/dev/null >/dev/null)
+RESULT=$?
+
+rm -rf "$UPDATEDIR"
+sync
+exit $RESULT

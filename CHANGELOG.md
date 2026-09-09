@@ -18,6 +18,29 @@ packaging scripts; the app itself is untouched.
   Systemsteuerung page renders the same way - came out as two characters each. Both now spell
   their umlauts as HTML entities (`Ger&auml;te`), which every encoding survives; the package test
   and the container test check that nothing outside ASCII is in either.
+- **The WebUI now reports an addon update as finished** (#141, `BUGS.md` B-4). On OpenCCU the
+  WebUI runs `/bin/install_addon` inside its own `cp_software.cgi` request and shows its
+  "installation successful" popup only when that has returned. The addon's `update_script` ran
+  `/etc/init.d/S50lighttpd restart` on every install - even an update whose proxy rule was byte
+  for byte the same - and that restart cut the very connection the popup goes out on: the browser
+  never heard back and the Zusatzsoftware dialog sat there until an F5. The rule is now compared
+  with the installed one and lighttpd is left alone when nothing changed; when the rule is new or
+  changed, lighttpd is told with `S50lighttpd reload` - a graceful restart on both firmwares
+  (SIGUSR1 with `server.graceful-restart-bg` on OpenCCU, SIGHUP to lighttpd-angel on the CCU3
+  firmware), so the running request finishes and the new rule is live at once - and where an init
+  script has no `reload`, with a detached restart a few seconds later. The uninstall, which the
+  WebUI runs the same way, does the same. The container test now runs lighttpd the way OpenCCU
+  does (under lighttpd-angel, with its `S50lighttpd`) and drives the install and the uninstall
+  through a stand-in for `cp_software.cgi`: against the beta.6 package every one of those requests
+  died with an empty reply, against this one they are answered.
+
+### Known issues
+
+- Neither fix has been on a CCU yet: the encoding was reproduced from the WebUI's own `cp_software.cgi`
+  and Tcl's system encoding on the lab boxes, the lost answer in the container with the real
+  installer flow. The first update from beta.7 to the release that carries this still goes through
+  beta.7's `update_script`, which is the old one - the popup appears from the update *after* that.
+- Everything under beta.7's "Known issues" still applies.
 
 ## [3.0.0-beta.7] — 2026-09-08
 

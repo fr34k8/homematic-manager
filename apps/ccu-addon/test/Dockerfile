@@ -43,6 +43,16 @@ RUN mkdir -p /usr/local/addons /usr/local/tmp /usr/local/etc/config/rc.d \
 
 COPY lighttpd-ccu.conf /etc/lighttpd/lighttpd-ccu.conf
 
+# The firmware around the addon: OpenCCU's way of running lighttpd (under lighttpd-angel, with a
+# `reload` that is a graceful restart), its /bin/install_addon, and a stand-in for the WebUI's
+# cp_software.cgi that runs both from inside a request - which is how the WebUI does it, and what
+# an addon that restarts lighttpd during its install breaks (#141).
+COPY S50lighttpd /etc/init.d/S50lighttpd
+COPY install_addon /bin/install_addon
+COPY webui-install.cgi /www/config/webui-install.cgi
+RUN chmod 755 /etc/init.d/S50lighttpd /bin/install_addon /www/config/webui-install.cgi \
+    && ln -sfn /etc/config/addons/www /www/addons
+
 # busybox last: /bin/sh becomes ash, the shell both firmwares run update_script and rc.d with, and
 # start-stop-daemon, logger, od, dd, tail and wc come from the same binary - the applets the addon
 # scripts call, with the busybox semantics they have on a CCU. Doing this after apt keeps the

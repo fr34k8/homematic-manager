@@ -193,8 +193,11 @@ the CGIs, which lighttpd runs itself. Verified on **lighttpd 1.4.50** (CCU3 firm
 (OpenCCU).
 
 Both firmwares include `/usr/local/etc/config/lighttpd/*.conf` — OpenCCU always, **the CCU3 firmware
-since 3.61.5**. The install restarts lighttpd once after writing the file; the uninstall removes it
-and restarts lighttpd again.
+since 3.61.5**. The install writes the file and, when it is new or changed, tells lighttpd with
+`/etc/init.d/S50lighttpd reload` — a graceful restart on both firmwares, never a `restart`: the
+install runs *inside* the WebUI's own request, and a restart would cut the connection the WebUI's
+"installation successful" popup goes out on (#141). An update that leaves the rule as it was does
+not touch lighttpd at all. The uninstall removes the file and reloads the same way.
 
 ## Where things live
 
@@ -221,8 +224,9 @@ file the desktop app writes into its `userData` directory and the npm install wr
 
 **Update**: upload the new package the same way. The update stops the service, replaces
 `/usr/local/addons/hmm` wholesale, **keeps** `etc/hmm.env`, **keeps the profile and the token**,
-rewrites the lighttpd rule and starts the service again — exit code 0, no reboot, on either
-firmware. The Zusatzsoftware page shows the newest release through `update_check.cgi`.
+rewrites the lighttpd rule (and reloads lighttpd only when it changed) and starts the service again
+— exit code 0, no reboot, on either firmware, and the WebUI reports the installation as successful.
+The Zusatzsoftware page shows the newest release through `update_check.cgi`.
 
 **Uninstall** through the WebUI stops the service and removes the addon directory, both symlinks,
 the lighttpd rule, the monit link and the Systemsteuerung entry. It **keeps `/usr/local/hmm`**: the
@@ -274,7 +278,7 @@ settings but the definition of "we are the addon".
 | --- | --- |
 | The button opens a page saying the session is invalid | The WebUI session expired. Reload the WebUI and open the addon again. |
 | The button opens a 503 page | The service is not running: `service.cgi?…&cmd=log`, or `/usr/local/addons/hmm/var/hmm.log`. Start it with the _Neu starten_ button. |
-| The UI loads but stays disconnected | The WebSocket did not get through. `grep hmm /var/log/messages`, and check that `/usr/local/etc/config/lighttpd/hmm.conf` exists and lighttpd was restarted after the install (`/etc/init.d/S50lighttpd restart`). **CCU3 firmware older than 3.61.5 does not read that directory at all.** |
+| The UI loads but stays disconnected | The WebSocket did not get through. `grep hmm /var/log/messages`, and check that `/usr/local/etc/config/lighttpd/hmm.conf` exists and lighttpd has read it (`/etc/init.d/S50lighttpd reload`). **CCU3 firmware older than 3.61.5 does not read that directory at all.** |
 | No devices, interfaces marked red | The interface processes answer on the CCU's loopback only (D-28). `netstat -tlnp` should show 32001 / 32010; a CCU in safe mode or with `HM_MODE` other than `NORMAL` starts neither them nor addons. |
 | Device pictures are missing | They come from the CCU's own `/config/img/devices/`; the app falls back to the pictures that ship in `app/data/icons/`. |
 | `BidCos-Wired` shows as "not present" | `hs485d` only runs on a CCU that has a BidCos-Wired gateway, and the default interface list enables it anyway. Its port refuses the connection, so the app says so once, marks the interface as not present in the header and retries at most every five minutes. Nothing is wrong; untick BidCos-Wired in the settings dialog to be rid of the entry. |

@@ -1,0 +1,67 @@
+#!/bin/sh
+#
+# The CCU's /etc/init.d/S50lighttpd, as far as an addon can see it: lighttpd runs under
+# lighttpd-angel, started with start-stop-daemon, and the script knows start, stop, restart and
+# reload. `reload` is OpenCCU's - SIGUSR1 to the angel, which forwards it to lighttpd, where
+# server.graceful-restart-bg makes it an immediate graceful restart: the new server takes the
+# listeners over at once and running requests finish on the old one. The CCU3 firmware's reload
+# sends SIGHUP instead, which lighttpd-angel turns into a graceful shutdown and a fresh start; both
+# scripts answer an unknown action with a usage line and exit 1.
+#
+# Every action is appended to /tmp/S50lighttpd.log, so the container test can tell a reload from a
+# restart from nothing at all. /tmp/S50lighttpd-no-reload makes `reload` behave like a script that
+# does not have it - the case the addon's delayed-restart fallback is for.
+
+PIDFILE=/run/lighttpd.pid
+PIDFILE_ANGEL=/run/lighttpd-angel.pid
+CONF=/etc/lighttpd/lighttpd-ccu.conf
+LOG=/tmp/S50lighttpd.log
+
+start() {
+    echo -n "Starting lighttpd: "
+    if start-stop-daemon -S -q -b -m -p $PIDFILE_ANGEL --exec /usr/sbin/lighttpd-angel -- -f $CONF -D; then
+        echo "OK"
+    else
+        echo "ERROR"
+    fi
+}
+stop() {
+    echo -n "Stopping lighttpd: "
+    start-stop-daemon -K -q -p $PIDFILE_ANGEL
+    rm -f $PIDFILE_ANGEL
+    # the angel forwards the TERM and lighttpd removes its pidfile on the way out
+    i=0
+    while [ -f $PIDFILE ] && [ $i -lt 5 ]; do
+        sleep 1
+        i=$((i + 1))
+    done
+    [ ! -f $PIDFILE ] && echo "OK" || echo "ERROR"
+}
+reload() {
+    echo -n "Reloading lighttpd: "
+    start-stop-daemon -K -s USR1 -q -p $PIDFILE_ANGEL
+    [ -f $PIDFILE ] && echo "OK" || echo "ERROR"
+}
+
+echo "$1" >> $LOG
+case "$1" in
+    start) start ;;
+    stop) stop ;;
+    restart)
+        stop
+        start
+        ;;
+    reload)
+        if [ -f /tmp/S50lighttpd-no-reload ]; then
+            echo "Usage: $0 {start|stop|restart}"
+            exit 1
+        fi
+        reload
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|reload}"
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -3,7 +3,10 @@
 # Replays the firmware's addon installation in a container and drives the installed addon through a
 # real lighttpd, the way ccu-addon-howto/docs/08-testing.md describes it: install, update,
 # uninstall, the WebUI session check, the proxy rule and - the one that decides whether this addon
-# can work at all - a WebSocket upgrade through lighttpd (D-25, D-28).
+# can work at all - a WebSocket upgrade through lighttpd (D-25, D-28). The install and the
+# uninstall go the way the WebUI drives them: from inside a request of that same lighttpd, which
+# is running under lighttpd-angel with OpenCCU's S50lighttpd, and the answer has to come back
+# (#141).
 #
 #   apps/ccu-addon/test/container-test.sh [package.tar.gz] [--idle]
 #
@@ -67,6 +70,14 @@ absent() {
         *) pass "$1" ;;
     esac
 }
+none() {
+    # none <description> <actual>: passes when there is nothing
+    if [ -z "$(printf '%s' "$2" | tr -d ' \n')" ]; then
+        pass "$1"
+    else
+        fail "$1" "$2"
+    fi
+}
 
 dex() { docker exec "$NAME" sh -c "$1" 2>&1; }
 
@@ -83,20 +94,42 @@ docker run -d --init --name "$NAME" -v "$PKG:/dist/$(basename "$PKG"):ro" \
     -v "$ADDON_SRC/test/ws-probe.mjs:/opt/ws-probe.mjs:ro" \
     -v "$ADDON_SRC/test/ccu-auth-stub.mjs:/opt/ccu-auth-stub.mjs:ro" "$IMAGE" >/dev/null
 
-# the firmware's own web root: /www/addons is a symlink to /etc/config/addons/www
-dex 'mkdir -p /www && ln -sfn /etc/config/addons/www /www/addons' >/dev/null
 # the stub ReGa treats this session id as live
 dex "printf '%s\n' $SID > /tmp/valid-sids" >/dev/null
 
-# Exactly what OpenCCU's /bin/install_addon does with an uploaded archive.
+# The package where the WebUI's upload puts it, then the firmware's installer - by hand, the way
+# the CCU3 firmware's S00InstallAddon and a self-updater run it ...
 install_addon() {
-    dex "dir=\$(mktemp -d -p /usr/local/tmp) && tar -C \$dir --no-same-owner --no-same-permissions -xzf /dist/$(basename "$PKG") && cd \$dir && ./update_script HM-RASPBERRYMATIC; rc=\$?; cd /; rm -rf \$dir; echo \"exit \$rc\""
+    dex "cp /dist/$(basename "$PKG") /usr/local/tmp/new_addon.tar.gz && /bin/install_addon; echo \"exit \$?\""
 }
+# ... and through the WebUI, which execs it inside its own cp_software.cgi request and answers
+# only when it has returned. The answer is the whole point: an addon that restarts lighttpd on
+# the way leaves the browser without one, and the WebUI in its dialog until an F5 (#141).
+webui() {
+    # webui <install|uninstall>
+    if [ "$1" = install ]; then
+        dex "cp /dist/$(basename "$PKG") /usr/local/tmp/new_addon.tar.gz" >/dev/null
+    fi
+    dex "curl -s --max-time 600 -w ' curl=%{exitcode}' 'http://127.0.0.1/config/webui-install.cgi?cmd=$1'"
+}
+# what the init script was asked to do since the last look
+lighttpd_actions() { dex 'cat /tmp/S50lighttpd.log 2>/dev/null; : > /tmp/S50lighttpd.log' | tr '\n' ' '; }
 
 echo
-echo "fresh install"
-out="$(install_addon)"
-check "update_script exits 10 on a fresh install (the WebUI then offers a reboot)" "exit 10" "$out"
+echo "the CCU's lighttpd, up before anything is installed"
+dex '/etc/init.d/S50lighttpd start' >/dev/null
+sleep 1
+check "lighttpd runs under lighttpd-angel, started by S50lighttpd" "OK" "$(dex 'test -f /run/lighttpd.pid && test -f /run/lighttpd-angel.pid && echo OK')"
+LIGHTTPD_PID="$(dex 'cat /run/lighttpd.pid')"
+check "and the WebUI stand-in answers through it" "unknown command" "$(dex "curl -s http://127.0.0.1/config/webui-install.cgi")"
+lighttpd_actions >/dev/null
+
+echo
+echo "fresh install, through the WebUI"
+out="$(webui install)"
+check "the WebUI's request is answered - with update_script's 10, a fresh install (#141)" "installed rc=10 curl=0" "$out"
+check "lighttpd was told about the new rule with a reload, not a restart" "reload" "$(lighttpd_actions)"
+check "and is the same server as before" "$LIGHTTPD_PID" "$(dex 'cat /run/lighttpd.pid')"
 check "the rc.d link exists" "/usr/local/addons/hmm/rc.d/hmm" "$(dex 'readlink /usr/local/etc/config/rc.d/hmm')"
 check "the www symlink exists" "/usr/local/addons/hmm/www" "$(dex 'readlink /usr/local/etc/config/addons/www/hmm')"
 check "the Systemsteuerung entry was written" "/addons/hmm/settings.cgi" "$(dex 'cat /usr/local/etc/config/hm_addons.cfg')"
@@ -112,10 +145,16 @@ check "the pidfile is inside the addon tree, where the CCU3 install chroot can s
 absent "and nothing was written to /var/run" "hmm.pid" "$(dex 'ls /var/run 2>/dev/null')"
 
 echo
-echo "the CCU's lighttpd in front of it"
-dex 'lighttpd -f /etc/lighttpd/lighttpd-ccu.conf' >/dev/null
-sleep 1
-check "lighttpd started with the addon's rule" "OK" "$(dex 'test -f /run/lighttpd.pid && echo OK')"
+echo "the Zusatzsoftware page (rc.d/hmm info)"
+# cp_software.cgi reads these lines through a Tcl pipe in iso8859-1 and writes them into its
+# Latin-1 page as they are; an umlaut in UTF-8 came out as "GerÃ¤te" (#140)
+out="$(dex '/usr/local/etc/config/rc.d/hmm info')"
+check "info names the addon" "Name: Homematic Manager" "$out"
+check "and its Update and Config-Url lines" "Update: /addons/hmm/update_check.cgi" "$out"
+check "the Info line spells its umlauts as HTML entities" "Ger&auml;te, Verkn&uuml;pfungen" "$out"
+absent "and has no byte outside ASCII (#140)" "non-ascii" "$(dex "/usr/local/etc/config/rc.d/hmm info | LC_ALL=C grep -q '[^ -~]' && echo non-ascii")"
+absent "neither has the Systemsteuerung entry" "non-ascii" "$(dex "LC_ALL=C grep -q '[^ -~]' /usr/local/etc/config/hm_addons.cfg && echo non-ascii")"
+check "which describes the addon with entities too" "Ger&auml;te" "$(dex 'cat /usr/local/etc/config/hm_addons.cfg')"
 
 # wait for the backend: it starts a real Backend, which looks for interface processes that are not
 # here, so give it a moment to be listening anyway
@@ -265,11 +304,14 @@ out="$(dex "curl -so /dev/null -w '%{http_code}' http://127.0.0.1/addons/hmm/")"
 check "back in token mode the UI is served without a login again" "200" "$out"
 
 echo
-echo "update over the running installation"
+echo "update over the running installation, through the WebUI"
 dex "echo '{\"marker\":\"kept\"}' > /usr/local/hmm/marker.json" >/dev/null
 TOKEN_BEFORE="$(dex 'cat /usr/local/hmm/token')"
-out="$(install_addon)"
-check "update_script exits 0 on an update" "exit 0" "$out"
+lighttpd_actions >/dev/null
+out="$(webui install)"
+check "the WebUI's request is answered - with update_script's 0, an update (#141)" "installed rc=0 curl=0" "$out"
+none "the rule was unchanged, so lighttpd was left alone entirely" "$(lighttpd_actions)"
+check "and is still the same server" "$LIGHTTPD_PID" "$(dex 'cat /run/lighttpd.pid')"
 check "the profile survived the update" "kept" "$(dex 'cat /usr/local/hmm/marker.json')"
 check "and so did the token, so an open browser tab keeps working" "$TOKEN_BEFORE" "$(dex 'cat /usr/local/hmm/token')"
 check "the service is running again" "running" "$(dex '/usr/local/etc/config/rc.d/hmm status')"
@@ -302,20 +344,57 @@ done
 out="$(dex "curl -so /dev/null -w '%{http_code}' -b '$COOKIE' http://127.0.0.1/addons/hmm/")"
 check "and it serves the UI again" "200" "$out"
 dex 'rm -f /etc/init.d/S00InstallAddon' >/dev/null
+none "the CCU3 path never touches lighttpd (the boot reads the rule)" "$(lighttpd_actions)"
 
 echo
-echo "uninstall"
-out="$(dex '/usr/local/etc/config/rc.d/hmm uninstall')"
+echo "an update after the port was moved in etc/hmm.env"
+dex "sed -i 's/^#*HMM_PORT=.*/HMM_PORT=8091/' /usr/local/addons/hmm/etc/hmm.env" >/dev/null
+out="$(webui install)"
+check "the WebUI's request is answered" "installed rc=0 curl=0" "$out"
+check "the rule carries the new port" '"port" => 8091' "$(dex 'cat /usr/local/etc/config/lighttpd/hmm.conf')"
+check "and lighttpd was told with a reload" "reload" "$(lighttpd_actions)"
+absent "not a restart" "restart" "$(lighttpd_actions)"
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    dex "curl -sf -o /dev/null -b '$COOKIE' http://127.0.0.1:8091/addons/hmm/" >/dev/null && break
+    sleep 1
+done
+out="$(dex "curl -so /dev/null -w '%{http_code}' -b '$COOKIE' http://127.0.0.1/addons/hmm/")"
+check "the UI is served through the reloaded rule on the new port" "200" "$out"
+
+echo
+echo "uninstall, through the WebUI, on a firmware whose S50lighttpd has no reload"
+# the fallback: the restart is detached and delayed, so the WebUI's request is still answered
+dex 'touch /tmp/S50lighttpd-no-reload' >/dev/null
+lighttpd_actions >/dev/null
+out="$(webui uninstall)"
+check "the WebUI's request is answered (#141)" "uninstalled rc=0 curl=0" "$out"
 check "the addon directory is gone" "gone" "$(dex 'test -d /usr/local/addons/hmm || echo gone')"
 check "the lighttpd rule is gone" "gone" "$(dex 'test -f /usr/local/etc/config/lighttpd/hmm.conf || echo gone')"
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    case "$(dex 'cat /tmp/S50lighttpd.log')" in
+        *restart*) break ;;
+    esac
+    sleep 1
+done
+check "reload was tried first, then the delayed restart" "reload restart" "$(lighttpd_actions)"
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ "$(dex 'cat /run/lighttpd.pid 2>/dev/null')" != "$LIGHTTPD_PID" ] && dex 'test -f /run/lighttpd.pid' >/dev/null && break
+    sleep 1
+done
+absent "which brought a new lighttpd up" "$LIGHTTPD_PID" "$(dex 'cat /run/lighttpd.pid')"
+out="$(dex "curl -so /dev/null -w '%{http_code}' http://127.0.0.1/addons/hmm/")"
+check "that no longer proxies /addons/hmm/" "404" "$out"
+dex 'rm -f /tmp/S50lighttpd-no-reload' >/dev/null
 check "the www symlink is gone" "gone" "$(dex 'test -e /usr/local/etc/config/addons/www/hmm || echo gone')"
 absent "the Systemsteuerung entry is gone" "settings.cgi" "$(dex 'cat /usr/local/etc/config/hm_addons.cfg')"
 check "the profile is kept, as an uninstall should" "kept" "$(dex 'cat /usr/local/hmm/marker.json')"
 
 echo
 echo "reinstall and purge"
+lighttpd_actions >/dev/null
 out="$(install_addon)"
 check "a reinstall over the kept profile is a fresh install again" "exit 10" "$out"
+check "and puts the rule back with a reload" "reload" "$(lighttpd_actions)"
 check "and it picks the old profile back up" "kept" "$(dex 'cat /usr/local/hmm/marker.json')"
 dex '/usr/local/etc/config/rc.d/hmm uninstall purge' >/dev/null
 check "uninstall purge removes the profile too" "gone" "$(dex 'test -d /usr/local/hmm || echo gone')"

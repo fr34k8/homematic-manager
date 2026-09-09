@@ -197,8 +197,14 @@ UI and the CGIs share one `/addons/hmm/` prefix — everything is proxied to the
 three CGIs, which lighttpd runs itself.
 
 Both firmwares include `/usr/local/etc/config/lighttpd/*.conf` (OpenCCU always, the CCU3 firmware
-since 3.61.5). `update_script` restarts lighttpd once after writing the file, and the uninstall
-removes it and restarts lighttpd again.
+since 3.61.5). `update_script` writes the file and, when it is new or changed, tells lighttpd with
+`/etc/init.d/S50lighttpd reload` — a graceful restart on both firmwares (SIGUSR1 with
+`server.graceful-restart-bg` on OpenCCU, SIGHUP to lighttpd-angel on the CCU3 firmware), never a
+`restart`: the install runs *inside* the WebUI's own `cp_software.cgi` request, and a restart cuts
+the connection the "installation successful" popup goes out on, leaving the WebUI in its dialog
+until an F5 (#141). An update whose rule is unchanged does not touch lighttpd at all; where an
+init script has no `reload`, the restart is detached and delayed until the answer is out. The
+uninstall removes the file and reloads the same way.
 
 ## Service, update, uninstall
 
@@ -278,7 +284,7 @@ touched by it.
 | --- | --- |
 | The button opens a page saying the session is invalid | The WebUI session expired. Reload the WebUI and open the addon again. |
 | The button opens a 503 page | The service is not running: `service.cgi?…&cmd=log`, or `/usr/local/addons/hmm/var/hmm.log`. Start it with the _Neu starten_ button. |
-| The UI loads but stays disconnected | The WebSocket did not get through. `grep hmm /var/log/messages`, and check that `/usr/local/etc/config/lighttpd/hmm.conf` exists and lighttpd was restarted after the install (`/etc/init.d/S50lighttpd restart`). CCU3 firmware older than 3.61.5 does not read that directory at all. |
+| The UI loads but stays disconnected | The WebSocket did not get through. `grep hmm /var/log/messages`, and check that `/usr/local/etc/config/lighttpd/hmm.conf` exists and lighttpd has read it (`/etc/init.d/S50lighttpd reload`). CCU3 firmware older than 3.61.5 does not read that directory at all. |
 | No devices, interfaces marked red | The interface processes answer on the CCU's loopback only (D-28). `netstat -tlnp` should show 32001 / 32010; a CCU in safe mode or with `HM_MODE` other than `NORMAL` starts neither them nor addons. |
 | Device pictures are missing | They come from the CCU's own `/config/img/devices/`; the app falls back to the pictures that ship in `app/data/icons/`. |
 | `BidCos-Wired ... init failed` every 15 seconds in the log | `hs485d` only runs on a CCU that has a BidCos-Wired gateway. Untick BidCos-Wired in the app's settings dialog and the retries stop. |

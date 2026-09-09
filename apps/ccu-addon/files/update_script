@@ -150,11 +150,20 @@ touch $CONF_DIR/hm_addons.cfg
 $ADDON_DIR/bin/update_addon $ADDON $ADDON.cfg
 
 # The lighttpd rule that puts the UI (and its WebSocket) under /addons/hmm/. The port is the one in
-# etc/hmm.env, so a user who moves the port and re-runs this gets a matching rule.
+# etc/hmm.env, so a user who moves the port and re-runs this gets a matching rule. Rendered next to
+# the installed file and compared: on an update it is nearly always the same file, and then lighttpd
+# is not told anything at all (see LighttpdReload below - #141).
 HMM_PORT=8090
 # shellcheck disable=SC1090
 . $ADDON_DIR/etc/hmm.env
-sed "s/@PORT@/$HMM_PORT/g" $ADDON_DIR/etc/lighttpd.conf > $LIGHTTPD_CONF
+sed "s/@PORT@/$HMM_PORT/g" $ADDON_DIR/etc/lighttpd.conf > $LIGHTTPD_CONF.new
+RULE_CHANGED=1
+if cmp -s $LIGHTTPD_CONF.new $LIGHTTPD_CONF 2>/dev/null; then
+    RULE_CHANGED=0
+    rm -f $LIGHTTPD_CONF.new
+else
+    mv $LIGHTTPD_CONF.new $LIGHTTPD_CONF
+fi
 
 # monit exists on OpenCCU, not on the CCU3 firmware
 if [ -x /usr/bin/monit ]; then
@@ -164,13 +173,30 @@ fi
 
 sync
 
-# On OpenCCU the install is live: lighttpd has to pick the new rule up once, and nothing else
-# would start the service - not on an update (the WebUI does not reboot on exit code 0) and not on
-# a fresh install either, where the reboot the WebUI offers for exit code 10 may be declined.
+# Tells lighttpd about a rule file that changed - through `reload`, never `restart`. This script
+# runs *inside a request of the CCU's own lighttpd*: the WebUI's cp_software.cgi execs
+# /bin/install_addon and prints its "installation successful" popup only when that has returned. A
+# restart here tears down the very connection that popup goes out on; the browser never hears back
+# and the WebUI sits in its dialog until an F5 (#141, reported on OpenCCU). `reload` is a graceful
+# restart on both firmwares: SIGUSR1 to lighttpd with server.graceful-restart-bg on OpenCCU (the new
+# server takes over at once, running requests finish on the old one), SIGHUP to lighttpd-angel on
+# the CCU3 firmware. Where an init script has no `reload`, the restart is detached and delayed until
+# the installer's answer is out. The twin of this function is in rc.d/hmm, for `uninstall`.
+LighttpdReload() {
+    [ -x /etc/init.d/S50lighttpd ] || return 0
+    if ! /etc/init.d/S50lighttpd reload >/dev/null 2>&1; then
+        nohup sh -c 'sleep 5; /etc/init.d/S50lighttpd restart' >/dev/null 2>&1 &
+    fi
+}
+
+# On OpenCCU the install is live: lighttpd has to pick a new or changed rule up, and nothing else
+# would start the service - not on an update (exit code 0, the WebUI shows its "successful" popup
+# and stays up) and not on a fresh install either, where OpenCCU reboots on exit code 10 but a
+# firmware without that convention (openccu-lite asks first) may not.
 # `cd /` first: the OpenCCU installer deletes this working directory the moment this script returns.
 if [ ! -f /etc/init.d/S00InstallAddon ]; then
     cd /
-    [ -x /etc/init.d/S50lighttpd ] && /etc/init.d/S50lighttpd restart >/dev/null 2>&1
+    [ "$RULE_CHANGED" = 1 ] && LighttpdReload
     $CONF_DIR/rc.d/$ADDON start >/dev/null 2>&1
 elif [ "$WAS_RUNNING" = 1 ]; then
     # The CCU3 firmware, driven by hand on a running box. Its installer wraps this script in a

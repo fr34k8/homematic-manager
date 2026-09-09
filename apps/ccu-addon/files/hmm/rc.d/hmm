@@ -67,6 +67,24 @@ Token() {
     cat $TOKEN_FILE
 }
 
+# Tells the CCU's lighttpd about a rule file that changed or went away - through `reload`, never
+# `restart`. Both callers - update_script and `uninstall` below - run *inside a request of that
+# lighttpd*: the WebUI's cp_software.cgi execs /bin/install_addon (which runs update_script) and
+# `rc.d/hmm uninstall`, and prints its "done" popup only when they return. A restart tears down the
+# very connection that popup goes out on; the browser never hears back and the WebUI sits in its
+# dialog until an F5 (#141). `reload` is a graceful restart on both firmwares: SIGUSR1 to lighttpd
+# with server.graceful-restart-bg on OpenCCU (the new server takes over at once, running requests
+# finish on the old one), SIGHUP to lighttpd-angel on the CCU3 firmware (graceful shutdown, then a
+# fresh start). Where an init script has no `reload`, the restart is detached and delayed until the
+# installer's answer is out. The twin of this function lives in update_script, which must not
+# depend on the rc.d script of the version it replaces.
+LighttpdReload() {
+    [ -x /etc/init.d/S50lighttpd ] || return 0
+    if ! /etc/init.d/S50lighttpd reload >/dev/null 2>&1; then
+        nohup sh -c 'sleep 5; /etc/init.d/S50lighttpd restart' >/dev/null 2>&1 &
+    fi
+}
+
 Start() {
     if Running; then
         echo "$ADDON already running"
@@ -225,7 +243,7 @@ case "$1" in
         fi
         if [ -f $LIGHTTPD_CONF ]; then
             rm -f $LIGHTTPD_CONF
-            [ -x /etc/init.d/S50lighttpd ] && /etc/init.d/S50lighttpd restart >/dev/null 2>&1
+            LighttpdReload
         fi
         rm -f $CONF_DIR/rc.d/$ADDON
         rm -rf $WWW_DIR
