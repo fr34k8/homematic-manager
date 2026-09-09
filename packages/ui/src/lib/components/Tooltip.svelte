@@ -80,10 +80,12 @@
 </script>
 
 <!--
-    A span, not a button: it only listens. `focusin`/`focusout` bubble out of the control inside
+    A span, not a button: it only listens, and it must not become a tab stop or a second control -
+    the interactive thing is the button inside it, which keeps its own role and label. `focusin`/`focusout` bubble out of the control inside
     it, so the keyboard gets the tooltip without a delay, and Escape closes it the way it closes
     every other transient thing in this app.
 -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <span
     class="hmm-tooltip-anchor"
     bind:this={anchor}
