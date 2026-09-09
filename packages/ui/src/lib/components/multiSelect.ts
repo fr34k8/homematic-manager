@@ -13,3 +13,17 @@ export function filterOptions(options: readonly MultiSelectOption[], filter: str
     }
     return options.filter((option) => option.label.toLowerCase().includes(needle));
 }
+
+/**
+ * The index the highlight moves to: `delta` steps from `from`, skipping disabled entries and
+ * stopping at the ends rather than wrapping (a long list is read top to bottom). Added for the
+ * keyboard navigation openccu-lite's port of this widget needed (its task 40); one kit.
+ */
+export function step(options: readonly MultiSelectOption[], from: number, delta: number): number {
+    for (let i = from + delta; i >= 0 && i < options.length; i += delta) {
+        if (options[i]?.disabled !== true) {
+            return i;
+        }
+    }
+    return from;
+}

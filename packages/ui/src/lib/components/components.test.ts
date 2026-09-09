@@ -11,7 +11,7 @@ import Dialog from './Dialog.svelte';
 import LanguageSwitch from './LanguageSwitch.svelte';
 import Loader from './Loader.svelte';
 import MultiSelect from './MultiSelect.svelte';
-import {filterOptions} from './multiSelect.js';
+import {filterOptions, step} from './multiSelect.js';
 import Notices from './Notices.svelte';
 import RpcLogPanel from './RpcLogPanel.svelte';
 import RpcProgress from './RpcProgress.svelte';
@@ -80,6 +80,33 @@ describe('MultiSelect', () => {
     it('filters the options', () => {
         expect(filterOptions(options, 'hmip').map((option) => option.value)).toEqual(['HmIP-RF']);
         expect(filterOptions(options, '  ')).toHaveLength(3);
+    });
+
+    it('steps the highlight over disabled entries and stops at the ends', () => {
+        expect(step(options, 0, 1)).toBe(1);
+        expect(step(options, 1, 1)).toBe(1); // CUxD is disabled, and it is the last entry
+        expect(step(options, 0, -1)).toBe(0);
+    });
+
+    it('walks the list with the arrow keys, chooses with Enter and closes on Escape', async () => {
+        const onchange = vi.fn();
+        render(MultiSelect, {props: {options, selected: [], multiple: false, placeholder: 'Select', onchange}});
+        const trigger = screen.getByRole('button', {name: /Select/});
+        await fireEvent.click(trigger);
+        const filter = screen.getByLabelText('Filter');
+        expect(document.activeElement).toBe(filter);
+        await fireEvent.keyDown(filter, {key: 'ArrowDown'});
+        expect(filter.getAttribute('aria-activedescendant')).toMatch(/-1$/);
+        await fireEvent.keyDown(filter, {key: 'Enter'});
+        expect(onchange).toHaveBeenCalledWith(['HmIP-RF']);
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(document.activeElement).toBe(trigger);
+
+        await fireEvent.click(trigger);
+        await fireEvent.keyDown(screen.getByLabelText('Filter'), {key: 'Escape'});
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(onchange).toHaveBeenCalledOnce();
+        expect(document.activeElement).toBe(trigger);
     });
 
     it('opens, filters, checks and unchecks all', async () => {

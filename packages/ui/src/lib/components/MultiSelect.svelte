@@ -1,5 +1,5 @@
 <script lang="ts">
-    import {filterOptions, type MultiSelectOption} from './multiSelect.js';
+    import {filterOptions, step, type MultiSelectOption} from './multiSelect.js';
 
     interface Props {
         options: MultiSelectOption[];
@@ -36,9 +36,16 @@
     let open = $state(false);
     let filter = $state('');
     let root = $state<HTMLDivElement | undefined>(undefined);
+    let trigger = $state<HTMLButtonElement | undefined>(undefined);
+    let list = $state<HTMLUListElement | undefined>(undefined);
+    // the keyboard's row (openccu-lite's port of this widget brought it back, one kit): ↑/↓ move
+    // it, Enter chooses it, aria-activedescendant names it
+    let highlight = $state(0);
+    const uid = `hmm-multiselect-${Math.random().toString(36).slice(2, 8)}`;
 
     const selectedSet = $derived(new Set(selected));
     const shown = $derived(filterOptions(options, filter));
+    const activeId = $derived(open && shown[highlight] ? `${uid}-${highlight}` : undefined);
     const buttonText = $derived.by(() => {
         if (selected.length === 0) {
             return placeholder;
@@ -57,13 +64,27 @@
         onchange?.(next);
     }
 
+    function show(): void {
+        const first = shown.findIndex((option) => selectedSet.has(option.value));
+        highlight = first < 0 ? 0 : first;
+        open = true;
+    }
+
+    /** Closes; `refocus` puts the focus back on the trigger (Escape, a choice). */
+    function hide(refocus: boolean): void {
+        open = false;
+        if (refocus) {
+            trigger?.focus();
+        }
+    }
+
     function toggle(option: MultiSelectOption): void {
         if (option.disabled === true) {
             return;
         }
         if (!multiple) {
             apply([option.value]);
-            open = false;
+            hide(true);
             return;
         }
         apply(
@@ -91,26 +112,95 @@
             open = false;
         }
     }
+
+    // the filter narrows the list; the highlight goes back to its top
+    $effect(() => {
+        void filter;
+        highlight = 0;
+    });
+    // the highlighted row stays in view while the arrow keys walk a long list
+    $effect(() => {
+        if (!open || !list) {
+            return;
+        }
+        const row = list.querySelector<HTMLElement>(`#${uid}-${highlight}`);
+        if (typeof row?.scrollIntoView === 'function') {
+            row.scrollIntoView({block: 'nearest'});
+        }
+    });
+
+    /** Keys on the filter input: ↑/↓ move the highlight, Enter chooses, Escape closes without
+     *  choosing and returns the focus to the trigger, Tab closes. */
+    function onKey(event: KeyboardEvent): void {
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                highlight = step(shown, highlight, 1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                highlight = step(shown, highlight, -1);
+                break;
+            case 'Enter': {
+                event.preventDefault();
+                const option = shown[highlight];
+                if (option) {
+                    toggle(option);
+                }
+                break;
+            }
+            case 'Escape':
+                event.preventDefault();
+                event.stopPropagation();
+                hide(true);
+                break;
+            case 'Tab':
+                hide(false);
+                break;
+            default:
+        }
+    }
+
+    // ↓ on the closed trigger opens, as a native select does
+    function onTriggerKey(event: KeyboardEvent): void {
+        if (!open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+            event.preventDefault();
+            show();
+        }
+    }
+
+    function onWindowKey(event: KeyboardEvent): void {
+        if (event.key === 'Escape' && open) {
+            hide(true);
+        }
+    }
+
+    function autofocus(element: HTMLInputElement): void {
+        element.focus();
+    }
 </script>
 
-<svelte:window onmousedown={onWindowPointerDown} />
+<svelte:window onmousedown={onWindowPointerDown} onkeydown={onWindowKey} />
 
 <div class="hmm-multiselect" bind:this={root} data-testid={testId}>
     <button
         type="button"
         class="hmm-button hmm-multiselect-button"
+        bind:this={trigger}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={`${uid}-list`}
         aria-label={label}
         {disabled}
-        onclick={() => (open = !open)}
+        onclick={() => (open ? hide(true) : show())}
+        onkeydown={onTriggerKey}
     >
         <span class="hmm-multiselect-text">{buttonText}</span>
         <span class="hmm-multiselect-arrow" aria-hidden="true">▾</span>
     </button>
 
     {#if open}
-        <div class="hmm-multiselect-menu" role="listbox" aria-multiselectable={multiple}>
+        <div class="hmm-multiselect-menu">
             <div class="hmm-multiselect-head">
                 <input
                     class="hmm-input hmm-multiselect-filter"
@@ -118,22 +208,32 @@
                     bind:value={filter}
                     placeholder={filterLabel}
                     aria-label={filterLabel}
+                    aria-controls={`${uid}-list`}
+                    aria-activedescendant={activeId}
+                    autocomplete="off"
+                    use:autofocus
+                    onkeydown={onKey}
                 />
                 {#if multiple}
                     <button type="button" class="hmm-multiselect-link" onclick={checkAll}>{checkAllLabel}</button>
                     <button type="button" class="hmm-multiselect-link" onclick={uncheckAll}>{uncheckAllLabel}</button>
                 {/if}
             </div>
-            <ul class="hmm-multiselect-list">
-                {#each shown as option (option.value)}
+            <ul class="hmm-multiselect-list" role="listbox" aria-multiselectable={multiple} id={`${uid}-list`} aria-label={label} bind:this={list}>
+                {#each shown as option, i (option.value)}
                     <li>
                         <button
                             type="button"
+                            id={`${uid}-${i}`}
                             class="hmm-multiselect-option"
                             class:hmm-multiselect-selected={selectedSet.has(option.value)}
+                            class:hmm-multiselect-highlight={i === highlight}
                             role="option"
                             aria-selected={selectedSet.has(option.value)}
                             disabled={option.disabled === true}
+                            tabindex="-1"
+                            onmousedown={(event) => event.preventDefault()}
+                            onmousemove={() => (highlight = i)}
                             onclick={() => toggle(option)}
                         >
                             {#if multiple}
@@ -234,7 +334,8 @@
         cursor: pointer;
     }
 
-    .hmm-multiselect-option:hover:not(:disabled) {
+    .hmm-multiselect-option:hover:not(:disabled),
+    .hmm-multiselect-highlight:not(:disabled) {
         background: var(--hmm-row-hover);
     }
 
