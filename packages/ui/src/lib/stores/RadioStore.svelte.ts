@@ -1,5 +1,11 @@
-import type {BidcosInterfaceInfo, RssiPair, Transport} from '@homematic-manager/core';
-import {deviceAddress, RssiStore} from '@homematic-manager/core';
+import type {
+    BidcosInterfaceInfo,
+    ReceiverCandidate,
+    ReceiverProposal,
+    RssiPair,
+    Transport,
+} from '@homematic-manager/core';
+import {deviceAddress, proposeReceivers, RssiStore} from '@homematic-manager/core';
 
 import type {NoticesStore} from './NoticesStore.svelte.js';
 
@@ -76,6 +82,21 @@ export class RadioStore {
     bestGatewayFor(interfaceName: string, address: string): {address: string; rx?: number; tx?: number} | undefined {
         void this.#version;
         return this.#stores[interfaceName]?.bestInterfaceFor(address, this.gatewayAddresses(interfaceName));
+    }
+
+    /**
+     * The dry run of #69: for every device with a receiver, which interface hears it best and
+     * whether that is worth a `setBidcosInterface`. Nothing is written; the dialog that shows the
+     * list writes one device at a time through {@link setBidcosInterface} once the user confirms.
+     */
+    proposeReceivers(
+        interfaceName: string,
+        devices: readonly ReceiverCandidate[],
+        marginDb?: number,
+    ): ReceiverProposal[] {
+        void this.#version;
+        const store = this.#stores[interfaceName];
+        return store ? proposeReceivers(devices, this.gatewayAddresses(interfaceName), store, {marginDb}) : [];
     }
 
     /**

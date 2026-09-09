@@ -256,3 +256,107 @@ function channel(value: number): number {
 function hex(value: number): string {
     return `0${value.toString(16)}`.slice(-2);
 }
+
+/**
+ * Why a device is, or is not, proposed for another receiver (#69).
+ *
+ * - `switch`: another interface receives the device better than the configured one by at least
+ *   the margin.
+ * - `marginal`: another interface receives it better, but by less than the margin - one sample
+ *   apart, which `rssiInfo` values are between two reads.
+ * - `unheard`: the configured receiver has no measurement of the device at all while another
+ *   interface has one; that can mean the device never reaches its receiver, or that rfd has not
+ *   heard it since a restart.
+ * - `keep`: the configured receiver hears it best, or at least as well as any other.
+ * - `unmeasured`: no interface has a measurement.
+ * - `roaming`: the device roams, so the CCU picks its receiver itself; nothing to assign.
+ */
+export type ReceiverVerdict = 'switch' | 'marginal' | 'unheard' | 'keep' | 'unmeasured' | 'roaming';
+
+/** One row of the "assign the best receiver" proposal (#69). */
+export interface ReceiverProposal {
+    readonly address: string;
+    /** The serial of the receiver the device is configured for. */
+    readonly configured: string;
+    /** What the configured receiver receives from the device, in dBm. */
+    readonly configuredTx: number | undefined;
+    /** The interface that receives the device best; `undefined` without a measurement. */
+    readonly best: string | undefined;
+    readonly bestTx: number | undefined;
+    /** `bestTx - configuredTx` where both are known. */
+    readonly gain: number | undefined;
+    readonly verdict: ReceiverVerdict;
+}
+
+/**
+ * The margin a better interface has to clear before a switch is proposed, in dB. The values of
+ * `rssiInfo` are the last measurement rfd holds, and two reads of the same link differ by a few dB
+ * without anything having moved; 6 dB is roughly a quartering of the received power and clears
+ * that noise.
+ */
+export const DEFAULT_RECEIVER_MARGIN_DB = 6;
+
+const VERDICT_ORDER: readonly ReceiverVerdict[] = ['switch', 'marginal', 'unheard', 'keep', 'unmeasured', 'roaming'];
+
+/** The fields of a device description the proposal reads. */
+export interface ReceiverCandidate {
+    readonly ADDRESS: string;
+    readonly PARENT?: string | undefined;
+    readonly INTERFACE?: string | undefined;
+    readonly ROAMING?: boolean | number | undefined;
+}
+
+/**
+ * The dry run behind issue #69: for every BidCos-RF device with a receiver, which interface hears
+ * it best and whether that is worth a `setBidcosInterface`. Nothing is written here - the list
+ * is what the user confirms, device by device, before anything is. Channels and devices without
+ * an `INTERFACE` (HmIP, Wired, groups) are not in the answer at all. Sorted by verdict in the
+ * order of {@link ReceiverVerdict}, then by gain, then by address.
+ */
+export function proposeReceivers(
+    devices: readonly ReceiverCandidate[],
+    interfaceAddresses: readonly string[],
+    store: Pick<RssiStore, 'get' | 'bestInterfaceFor'>,
+    options: {readonly marginDb?: number | undefined} = {},
+): ReceiverProposal[] {
+    const margin = Math.max(0, options.marginDb ?? DEFAULT_RECEIVER_MARGIN_DB);
+    const proposals: ReceiverProposal[] = [];
+    for (const device of devices) {
+        const configured = device.INTERFACE ?? '';
+        if (configured === '' || (device.PARENT ?? '') !== '') {
+            continue;
+        }
+        const configuredTx = store.get(device.ADDRESS, configured)?.tx;
+        const best = store.bestInterfaceFor(device.ADDRESS, interfaceAddresses);
+        const gain = best?.tx !== undefined && configuredTx !== undefined ? best.tx - configuredTx : undefined;
+        let verdict: ReceiverVerdict;
+        if (device.ROAMING === true || device.ROAMING === 1) {
+            verdict = 'roaming';
+        } else if (best === undefined) {
+            verdict = 'unmeasured';
+        } else if (best.address === configured) {
+            verdict = 'keep';
+        } else if (gain === undefined) {
+            verdict = 'unheard';
+        } else if (gain <= 0) {
+            verdict = 'keep';
+        } else {
+            verdict = gain >= margin ? 'switch' : 'marginal';
+        }
+        proposals.push({
+            address: device.ADDRESS,
+            configured,
+            configuredTx,
+            best: best?.address,
+            bestTx: best?.tx,
+            gain,
+            verdict,
+        });
+    }
+    return proposals.sort(
+        (a, b) =>
+            VERDICT_ORDER.indexOf(a.verdict) - VERDICT_ORDER.indexOf(b.verdict) ||
+            (b.gain ?? Number.NEGATIVE_INFINITY) - (a.gain ?? Number.NEGATIVE_INFINITY) ||
+            a.address.localeCompare(b.address),
+    );
+}

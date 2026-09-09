@@ -10,6 +10,7 @@
     import type {DataTableColumn, DataTableColumnGroup} from '../lib/components/tableModel.js';
     import {getStores} from '../lib/stores/context.js';
 
+    import BestReceiverDialog from './radio/BestReceiverDialog.svelte';
     import SetInterfaceDialog from './radio/SetInterfaceDialog.svelte';
 
     const stores = getStores();
@@ -19,6 +20,7 @@
     let selected = $state<string[]>([]);
     let expanded = $state<string[]>([]);
     let setInterfaceOpen = $state(false);
+    let bestReceiverOpen = $state(false);
     let setInterfaceAddress = $state('');
     /** The gateway the dialog opens on when a marker in the grid was clicked; `''` for the device's own. */
     let setInterfacePreset = $state('');
@@ -254,6 +256,14 @@
                     onclick={() => openSetInterface(one)}
                 />
                 <ToolbarButton
+                    title={t('Assign the best receiver')}
+                    icon="⇶"
+                    disabled={gateways.length < 2}
+                    reason={t('Only one interface')}
+                    testId="radio-best-receivers"
+                    onclick={() => (bestReceiverOpen = true)}
+                />
+                <ToolbarButton
                     title={t('Reset the unreach counters')}
                     icon="⟲"
                     disabled={stores.unreach.of(interfaceName).length === 0}
@@ -307,6 +317,7 @@
 </div>
 
 <SetInterfaceDialog bind:open={setInterfaceOpen} address={setInterfaceAddress} preset={setInterfacePreset} />
+<BestReceiverDialog bind:open={bestReceiverOpen} />
 
 <style>
     .hmm-page {

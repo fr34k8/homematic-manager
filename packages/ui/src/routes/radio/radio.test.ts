@@ -1,3 +1,4 @@
+import type {RssiInfo} from '@homematic-manager/core';
 import {fireEvent, render, screen, waitFor, within} from '@testing-library/svelte';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 
@@ -266,5 +267,145 @@ describe('setBidcosInterface', () => {
             expect(stores.notices.items.at(-1)?.message).toContain('Failure');
         });
         expect(screen.getByTestId('set-interface-dialog').hasAttribute('open')).toBe(true);
+    });
+});
+
+describe('the best receiver (#69)', () => {
+    let transport: MockTransport;
+    const gateways = [
+        {ADDRESS: 'BidCoS-RF', TYPE: 'CCU2', DESCRIPTION: 'CCU2-Coprocessor', DEFAULT: true},
+        {ADDRESS: 'OEQ0328853', TYPE: 'HMLGW2', DESCRIPTION: 'Keller'},
+    ];
+    // every demo device is configured for BidCoS-RF; the gateway in the cellar hears some better
+    const rssi: RssiInfo = {
+        // 12 dB better on the gateway: a clear switch
+        MEQ0123456: {'BidCoS-RF': [-80, -84], OEQ0328853: [-70, -72]},
+        // 3 dB better: within the noise of two reads
+        JEQ0234567: {'BidCoS-RF': [-80, -75], OEQ0328853: [-70, -72]},
+        // the coprocessor hears it best
+        KEQ0345678: {'BidCoS-RF': [-50, -52], OEQ0328853: [-70, -72]},
+        // the configured receiver has no level of it, the gateway has
+        LEQ0456789: {'BidCoS-RF': [-112, 65_536], OEQ0328853: [-70, -72]},
+        // nothing at all
+        GEQ0567890: {'BidCoS-RF': [65_536, 65_536]},
+    };
+
+    beforeEach(() => {
+        transport = new MockTransport({demo: true});
+        transport.result('bidcos.interfaces', gateways);
+        transport.result('rssi.get', rssi);
+        transport.result('bidcos.setInterface', null);
+    });
+
+    async function openDialog(): Promise<Awaited<ReturnType<typeof mountApp>>> {
+        const mounted = await mountApp({transport, hash: '#/BidCos-RF/rssi'});
+        await waitFor(() => {
+            expect(screen.getByTestId('receiver-MEQ0123456-OEQ0328853')).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByTestId('radio-best-receivers'));
+        await waitFor(() => {
+            expect(screen.getByTestId('best-receiver-confirm')).toBeTruthy();
+        });
+        return mounted;
+    }
+
+    // the demo profile chooses German (D-36), so the texts asserted here are the German ones
+    it('is a dry run: the clear switch ticked, the marginal and the unheard one unticked with their reason, the rest counted', async () => {
+        await openDialog();
+
+        const clear = screen.getByTestId('best-receiver-row-MEQ0123456');
+        expect(clear.getAttribute('data-verdict')).toBe('switch');
+        expect(screen.getByTestId<HTMLInputElement>('best-receiver-check-MEQ0123456').checked).toBe(true);
+        expect(screen.getByTestId('best-receiver-gain-MEQ0123456').textContent.trim()).toBe('+12 dB');
+        // the receivers are named as listBidcosInterfaces describes them (B-2)
+        expect(clear.textContent).toContain('CCU2-Coprocessor');
+        expect(clear.textContent).toContain('Keller');
+
+        const marginal = screen.getByTestId('best-receiver-row-JEQ0234567');
+        expect(marginal.getAttribute('data-verdict')).toBe('marginal');
+        expect(screen.getByTestId<HTMLInputElement>('best-receiver-check-JEQ0234567').checked).toBe(false);
+        expect(marginal.textContent).toContain('Unter dem Mindestabstand');
+
+        const unheard = screen.getByTestId('best-receiver-row-LEQ0456789');
+        expect(unheard.getAttribute('data-verdict')).toBe('unheard');
+        expect(screen.getByTestId<HTMLInputElement>('best-receiver-check-LEQ0456789').checked).toBe(false);
+        expect(unheard.textContent).toContain('Vom konfigurierten Empfänger nicht gehört');
+        expect(screen.getByTestId('best-receiver-gain-LEQ0456789').textContent.trim()).toBe('—');
+
+        // the one on its best receiver and the one without a measurement are a line of counts
+        expect(screen.queryByTestId('best-receiver-row-KEQ0345678')).toBeNull();
+        expect(screen.queryByTestId('best-receiver-row-GEQ0567890')).toBeNull();
+        expect(screen.getByTestId('best-receiver-rest').textContent).toContain(
+            'Nicht aufgeführt: 1 auf ihrem besten Empfänger, 1 ohne Messwert, 0 mit Roaming',
+        );
+        expect(screen.getByTestId('best-receiver-confirm').textContent).toBe('Zuweisen (1)');
+        // nothing was written by opening it
+        expect(transport.countOf('bidcos.setInterface')).toBe(0);
+    });
+
+    it('writes one setBidcosInterface per ticked device with roaming off, re-reads, and closes', async () => {
+        await openDialog();
+        await fireEvent.click(screen.getByTestId('best-receiver-check-JEQ0234567'));
+        expect(screen.getByTestId('best-receiver-confirm').textContent).toBe('Zuweisen (2)');
+        const devicesBefore = transport.countOf('devices.list');
+        const rssiBefore = transport.countOf('rssi.get');
+
+        await fireEvent.click(screen.getByTestId('best-receiver-confirm'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('best-receiver-dialog').hasAttribute('open')).toBe(false);
+        });
+        const writes = transport.calls
+            .filter((call) => call.method === 'bidcos.setInterface')
+            .map((call) => call.params);
+        expect(writes).toEqual([
+            ['BidCos-RF', 'MEQ0123456', 'OEQ0328853', false],
+            ['BidCos-RF', 'JEQ0234567', 'OEQ0328853', false],
+        ]);
+        expect(transport.countOf('devices.list')).toBeGreaterThan(devicesBefore);
+        expect(transport.countOf('rssi.get')).toBeGreaterThan(rssiBefore);
+    });
+
+    it('lets the margin decide: at 3 dB the marginal device switches, at 20 dB nothing is a clear switch', async () => {
+        await openDialog();
+        await fireEvent.input(screen.getByTestId('best-receiver-margin'), {target: {value: '3'}});
+        await waitFor(() => {
+            expect(screen.getByTestId('best-receiver-row-JEQ0234567').getAttribute('data-verdict')).toBe('switch');
+        });
+        expect(screen.getByTestId<HTMLInputElement>('best-receiver-check-JEQ0234567').checked).toBe(true);
+        expect(screen.getByTestId('best-receiver-confirm').textContent).toBe('Zuweisen (2)');
+
+        await fireEvent.input(screen.getByTestId('best-receiver-margin'), {target: {value: '20'}});
+        await waitFor(() => {
+            expect(screen.getByTestId('best-receiver-row-MEQ0123456').getAttribute('data-verdict')).toBe('marginal');
+        });
+        expect(screen.getByTestId('best-receiver-confirm').textContent).toBe('Zuweisen (0)');
+        expect(screen.getByTestId<HTMLButtonElement>('best-receiver-confirm').disabled).toBe(true);
+    });
+
+    it('keeps the dialog open when a write is refused', async () => {
+        transport.fail('bidcos.setInterface', {message: 'Failure', kind: 'rpc', faultCode: -1});
+        const {stores} = await openDialog();
+        await fireEvent.click(screen.getByTestId('best-receiver-confirm'));
+
+        await waitFor(() => {
+            expect(stores.notices.items.at(-1)?.message).toContain('Failure');
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId<HTMLButtonElement>('best-receiver-confirm').disabled).toBe(false);
+        });
+        expect(screen.getByTestId('best-receiver-dialog').hasAttribute('open')).toBe(true);
+        expect(screen.getByTestId('best-receiver-row-MEQ0123456')).toBeTruthy();
+    });
+
+    it('has nothing to propose with a single interface', async () => {
+        transport = new MockTransport({demo: true});
+        await mountApp({transport, hash: '#/BidCos-RF/rssi'});
+        await waitFor(() => {
+            expect(screen.getByTestId('receiver-MEQ0123456-BidCoS-RF')).toBeTruthy();
+        });
+        const button = screen.getByTestId<HTMLButtonElement>('radio-best-receivers');
+        expect(button.disabled).toBe(true);
+        expect(button.title).toContain('Nur eine Schnittstelle');
     });
 });

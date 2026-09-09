@@ -78,7 +78,7 @@ Sechs Tabs, dieselben wie in 2.7 (die englischen Bezeichnungen in Klammern):
 | --- | --- |
 | **Geräte** (Devices) | Geräteliste mit aufklappbarer Kanalliste, Gerätebildern, dekodierten Flags, RX-Mode und Firmware-Spalte mit Update-Knopf. Kontextmenü: umbenennen (Gerät, `:0`, optional alle Kanäle), löschen, ersetzen, Konfiguration reparieren, `reportValueUsage` über eine ganze Auswahl, Paramset-Editoren |
 | **Verknüpfungen** (Links) | Direktverknüpfungen als Tabelle mit beiden Gerätebildern, Anlegen über die Rollenmatrix, Löschen mehrerer Verknüpfungen auf einmal, `setLinkInfo`, kurz/lang auslösen (nur BidCos-RF), und der Verknüpfungs-Editor mit den Easy-Mode-Profilen und einer Expertenansicht |
-| **Funk** (RSSI) | Gateway-Liste mit Sende-/Empfangswerten je Gegenstelle, die HmIP-Matrix aus `RSSI_DEVICE`/`RSSI_PEER`, „am besten gehört von“ und `setBidcosInterface` |
+| **Funk** (RSSI) | Gateway-Liste mit Sende-/Empfangswerten je Gegenstelle, die HmIP-Matrix aus `RSSI_DEVICE`/`RSSI_PEER`, „am besten gehört von“, `setBidcosInterface` und „Besten Empfänger zuweisen“ - ein Probelauf über alle BidCos-RF-Geräte mit Mindestabstand und Häkchen je Gerät (#69) |
 | **Servicemeldungen** (Service messages) | Liste mit Einzel- und Sammelquittierung (quittierbar sind nur `STICKY_UNREACH` und `SABOTAGE`), Toasts statt modaler Fenster, abschaltbar („leiser Modus“) |
 | **Events** | Live-Mitschnitt der XML-RPC-Events mit zwei Filterfeldern, Pause und Zähler je Gerät |
 | **RPC-Konsole** (RPC console) | 51 RPC-Methoden mit generiertem Argumentformular — Struct-Zeilen für ein Paramset, Bitfeld-Ankreuzfelder, Auswahllisten, die Adressen der Schnittstelle als Datalist — der exakte Aufruf über dem Formular, ein Verlauf und die rohe Antwort samt Faults |

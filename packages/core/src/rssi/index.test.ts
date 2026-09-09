@@ -2,8 +2,10 @@ import {describe, expect, it} from 'vitest';
 
 import {
     bidcosInterfaceLabel,
+    DEFAULT_RECEIVER_MARGIN_DB,
     normaliseRssiInfo,
     normaliseRssiValue,
+    proposeReceivers,
     receiverLabel,
     RSSI_UNKNOWN,
     rssiClass,
@@ -224,5 +226,89 @@ describe('the names of the BidCos interfaces (BUGS.md B-2)', () => {
         expect(receiverLabel({INTERFACE: 'PEQ1098001'}, [])).toBe('PEQ1098001');
         expect(receiverLabel({}, gateways)).toBe('');
         expect(receiverLabel({INTERFACE: ''}, gateways)).toBe('');
+    });
+});
+
+describe('the best-receiver proposal (#69)', () => {
+    // three interfaces: the coprocessor, a LAN gateway everything is heard well by, one that hears little
+    const gateways = ['BidCoS-RF', 'LEQ-LGW-01', 'LEQ-LGW-02'];
+    const store = new RssiStore();
+    store.applyRssiInfo({
+        // 12 dB better on the gateway: a clear switch
+        MEQ0000001: {'BidCoS-RF': [-80, -84], 'LEQ-LGW-01': [-70, -72]},
+        // 3 dB better on the gateway: within the noise of two reads
+        MEQ0000002: {'BidCoS-RF': [-80, -75], 'LEQ-LGW-01': [-70, -72]},
+        // the configured one is the best
+        MEQ0000003: {'BidCoS-RF': [-50, -52], 'LEQ-LGW-01': [-70, -72]},
+        // the configured receiver has nothing, another one has
+        MEQ0000004: {'BidCoS-RF': [RSSI_UNKNOWN, RSSI_UNKNOWN], 'LEQ-LGW-01': [-70, -72]},
+        // nothing at all
+        MEQ0000005: {'BidCoS-RF': [RSSI_UNKNOWN, RSSI_UNKNOWN]},
+        // the same value on both: the configured one stays
+        MEQ0000006: {'BidCoS-RF': [-70, -72], 'LEQ-LGW-01': [-70, -72]},
+        // roams, and would otherwise be a switch
+        MEQ0000007: {'BidCoS-RF': [-90, -95], 'LEQ-LGW-01': [-60, -60]},
+    });
+    const devices = [
+        {ADDRESS: 'MEQ0000001', INTERFACE: 'BidCoS-RF'},
+        {ADDRESS: 'MEQ0000001:1', PARENT: 'MEQ0000001', INTERFACE: 'BidCoS-RF'},
+        {ADDRESS: 'MEQ0000002', INTERFACE: 'BidCoS-RF'},
+        {ADDRESS: 'MEQ0000003', INTERFACE: 'BidCoS-RF'},
+        {ADDRESS: 'MEQ0000004', INTERFACE: 'BidCoS-RF'},
+        {ADDRESS: 'MEQ0000005', INTERFACE: 'BidCoS-RF'},
+        {ADDRESS: 'MEQ0000006', INTERFACE: 'BidCoS-RF'},
+        {ADDRESS: 'MEQ0000007', INTERFACE: 'BidCoS-RF', ROAMING: 1},
+        // HmIP, Wired and a group have no receiver and are not in the answer
+        {ADDRESS: '0001D3C99ABCDE'},
+        {ADDRESS: 'INT0000001', INTERFACE: ''},
+    ];
+
+    it('gives every device with a receiver a verdict, channels and receiver-less devices none', () => {
+        const proposals = proposeReceivers(devices, gateways, store);
+        expect(proposals.map((row) => [row.address, row.verdict])).toEqual([
+            ['MEQ0000001', 'switch'],
+            ['MEQ0000002', 'marginal'],
+            ['MEQ0000004', 'unheard'],
+            ['MEQ0000003', 'keep'],
+            ['MEQ0000006', 'keep'],
+            ['MEQ0000005', 'unmeasured'],
+            ['MEQ0000007', 'roaming'],
+        ]);
+    });
+
+    it('measures what the interfaces receive from the device, and says by how much', () => {
+        const [first] = proposeReceivers(devices, gateways, store);
+        expect(first).toEqual({
+            address: 'MEQ0000001',
+            configured: 'BidCoS-RF',
+            configuredTx: -84,
+            best: 'LEQ-LGW-01',
+            bestTx: -72,
+            gain: 12,
+            verdict: 'switch',
+        });
+        const unheard = proposeReceivers(devices, gateways, store).find((row) => row.address === 'MEQ0000004');
+        expect(unheard?.configuredTx).toBeUndefined();
+        expect(unheard?.gain).toBeUndefined();
+        expect(unheard?.best).toBe('LEQ-LGW-01');
+    });
+
+    it('takes the margin from the caller: at 3 dB the marginal one switches, at 20 dB nothing does', () => {
+        expect(DEFAULT_RECEIVER_MARGIN_DB).toBe(6);
+        const at3 = proposeReceivers(devices, gateways, store, {marginDb: 3});
+        expect(at3.find((row) => row.address === 'MEQ0000002')?.verdict).toBe('switch');
+        // a switch by more sorts first
+        expect(at3.slice(0, 2).map((row) => row.address)).toEqual(['MEQ0000001', 'MEQ0000002']);
+        const at20 = proposeReceivers(devices, gateways, store, {marginDb: 20});
+        expect(at20.filter((row) => row.verdict === 'switch')).toEqual([]);
+        expect(at20.find((row) => row.address === 'MEQ0000001')?.verdict).toBe('marginal');
+        // a negative margin is no margin
+        expect(proposeReceivers(devices, gateways, store, {marginDb: -5})[0]?.verdict).toBe('switch');
+    });
+
+    it('keeps a device whose configured receiver is not in the interface list, unless another hears it', () => {
+        const stale = [{ADDRESS: 'MEQ0000001', INTERFACE: 'OEQ-GONE'}];
+        expect(proposeReceivers(stale, gateways, store)[0]?.verdict).toBe('unheard');
+        expect(proposeReceivers(stale, [], store)[0]?.verdict).toBe('unmeasured');
     });
 });

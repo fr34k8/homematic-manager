@@ -170,6 +170,38 @@ export const UI_MESSAGES: MessageCatalogue = {
         de: '{interface} als Empfänger verwenden',
         en: 'Use {interface} as receiver',
     },
+    // Issue #69: the dry run that assigns every BidCos-RF device to the interface that hears it best.
+    'Assign the best receiver': {de: 'Besten Empfänger zuweisen', en: 'Assign the best receiver'},
+    'Best receiver': {de: 'Bester Empfänger', en: 'Best receiver'},
+    'Only one interface': {de: 'Nur eine Schnittstelle', en: 'Only one interface'},
+    'Which interface receives each device best, from the levels the interfaces last measured. Nothing is written until you confirm; every device is one setBidcosInterface.':
+        {
+            de: 'Welche Schnittstelle jedes Gerät am besten empfängt, aus den zuletzt gemessenen Pegeln. Geschrieben wird erst nach Bestätigung, jedes Gerät ist ein setBidcosInterface.',
+            en: 'Which interface receives each device best, from the levels the interfaces last measured. Nothing is written until you confirm; every device is one setBidcosInterface.',
+        },
+    Margin: {de: 'Mindestabstand', en: 'Margin'},
+    'A switch is proposed only when the best interface receives the device at least this much better than the configured one - two reads of the same link differ by a few dB.':
+        {
+            de: 'Ein Wechsel wird nur vorgeschlagen, wenn die beste Schnittstelle das Gerät um mindestens so viel besser empfängt als die konfigurierte - zwei Messungen derselben Strecke unterscheiden sich um einige dB.',
+            en: 'A switch is proposed only when the best interface receives the device at least this much better than the configured one - two reads of the same link differ by a few dB.',
+        },
+    Proposed: {de: 'Vorgeschlagen', en: 'Proposed'},
+    Gain: {de: 'Gewinn', en: 'Gain'},
+    'Below the margin': {de: 'Unter dem Mindestabstand', en: 'Below the margin'},
+    'Not heard by the configured receiver': {
+        de: 'Vom konfigurierten Empfänger nicht gehört',
+        en: 'Not heard by the configured receiver',
+    },
+    'Every device is on the receiver that hears it best': {
+        de: 'Jedes Gerät ist auf dem Empfänger, der es am besten hört',
+        en: 'Every device is on the receiver that hears it best',
+    },
+    'Not listed: {keep} on their best receiver, {unmeasured} without a measurement, {roaming} roaming': {
+        de: 'Nicht aufgeführt: {keep} auf ihrem besten Empfänger, {unmeasured} ohne Messwert, {roaming} mit Roaming',
+        en: 'Not listed: {keep} on their best receiver, {unmeasured} without a measurement, {roaming} roaming',
+    },
+    'Assign ({count})': {de: 'Zuweisen ({count})', en: 'Assign ({count})'},
+    '{done} of {total} assigned': {de: '{done} von {total} zugewiesen', en: '{done} of {total} assigned'},
     install: {de: 'installieren', en: 'install'},
     'Install firmware {version}': {de: 'Firmware {version} installieren', en: 'Install firmware {version}'},
 

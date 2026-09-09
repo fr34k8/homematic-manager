@@ -9,8 +9,21 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 ## [Unreleased]
 
 Two reports from Baxxy13 against the CCU addon on OpenCCU (#140, #141), both in the addon's
-packaging scripts; the app itself is untouched.
+packaging scripts, and the oldest open wish of the tracker (#69) in the Funk tab.
 
+- **Assign the best receiver** (#69). The Funk tab has a button next to `setBidcosInterface` that
+  proposes, for every BidCos-RF device, the interface that receives it best - from the levels the
+  interfaces last measured, as a list the user confirms and never as a write on its own. A device
+  whose best interface clears the configured one by at least the margin (6 dB by default, the
+  noise between two reads of the same link; changeable in the dialog) is ticked, one that is
+  better by less is listed unticked and says so, one whose configured receiver has no level of it
+  while another has is listed unticked as well; devices already on their best receiver, devices no
+  interface has measured and devices that roam are a line of counts. Each ticked device is one
+  `setBidcosInterface` with roaming off, in order, with a progress line; the device list and the
+  levels are re-read afterwards, a refused write leaves the dialog open with the device still in
+  it. With a single interface the button is off. Core's `proposeReceivers` is the pure part, with
+  its own tests; the dialog is tested against the mock transport. Not tried against hardware with
+  two receivers - the lab has none.
 - **The Zusatzsoftware page shows the addon's umlauts as `GerÃ¤te`** (#140, `BUGS.md` B-3). The
   WebUI reads an addon's `rc.d/<name> info` lines through a Tcl pipe whose system encoding is
   Latin-1 on the CCU3 and OpenCCU alike and prints them into its Latin-1 page as they are, so the
@@ -36,10 +49,10 @@ packaging scripts; the app itself is untouched.
 
 ### Known issues
 
-- Neither fix has been on a CCU yet: the encoding was reproduced from the WebUI's own `cp_software.cgi`
+- Neither addon fix has been on a CCU yet: the encoding was reproduced from the WebUI's own `cp_software.cgi`
   and Tcl's system encoding on the lab boxes, the lost answer in the container with the real
   installer flow. The first update from beta.7 to the release that carries this still goes through
-  beta.7's `update_script`, which is the old one - the popup appears from the update *after* that.
+  beta.7's `update_script`, which is the old one - the popup appears from the update _after_ that.
 - Everything under beta.7's "Known issues" still applies.
 
 ## [3.0.0-beta.7] — 2026-09-08
