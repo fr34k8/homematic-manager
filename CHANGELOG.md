@@ -6,7 +6,11 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
-## [Unreleased]
+## [3.0.0-beta.9] — 2026-09-09
+
+Five reports from the beta.8 testers, all of one evening: Herbert-Testmann on the device grid on
+VirtualDevices (#143), the tooltips (#145), the refresh button (#146) and a dot in the Funk grid
+(#148), Baxxy13 on the callback registrations of the addon (#144). Fixes only, nothing new.
 
 - **On the CCU the interface processes are told to call back on `127.0.0.1`** (#144). Running as
   the addon, the app registered its callback server under the box's LAN address - the one address
@@ -48,6 +52,23 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
   the marker plus the cell's padding (`--hmm-mark-size`, the arithmetic the picture column already
   used), and a cell of a fixed column - a picture, a glyph, a control, never running text - clips
   instead of abbreviating.
+
+### Known issues
+
+- The pile-up of `init` registrations in the VirtualDevices group process (#144) is only half
+  addressed: the loopback address keeps the LAN address out of a registration that outlives it, but
+  the callback port still defaults to `0`, so every start registers under a new port - and the
+  group process does not drop a handler on `init(url, '')` (an eQ-3 defect the reporter documented),
+  so the old entries stay. Fixed ports are configurable under settings → Callback; whether they
+  become the default is an open decision.
+- The automatic acknowledgement of `STICKY_UNREACH` (#147) fires on the edge of the unreach counter
+  while the app runs - never for a message that was already in the list when the option was ticked,
+  never after a restart, and never for an HmIP message that came from the `:0` sweep. Whether it
+  should also clear what is already there is a product decision; nothing changed for it in this
+  release.
+- None of the five fixes has been on a CCU: the loopback address is guarded by a unit test, the
+  filter, the tooltips and the marker by component tests, the refresh against hm-simulator.
+- Everything under beta.8's "Known issues" still applies.
 
 ## [3.0.0-beta.8] — 2026-09-09
 
@@ -534,6 +555,7 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
+[3.0.0-beta.9]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.9
 [3.0.0-beta.8]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.8
 [3.0.0-beta.7]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.7
 [3.0.0-beta.6]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.6
