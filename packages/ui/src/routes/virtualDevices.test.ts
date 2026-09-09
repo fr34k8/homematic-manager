@@ -156,6 +156,46 @@ describe('the VirtualDevices interface (B-1, #143)', () => {
         expect(document.querySelector('[data-row-id="INT0000001"]')).not.toBeNull();
     });
 
+    /**
+     * The reporter saw it again on 3.0.0-beta.8 (2026-09-09), while another user saw every group
+     * on the same version. The column filters of B-1 belong to the interface since beta.7 - the
+     * room and the function filter above the grid did not, and they are applied to the rows
+     * *before* the table sees them, so the table's own "0 von 31" could not report them either.
+     * A grid narrowed to a room of BidCos-RF is empty on VirtualDevices, whose groups are in no
+     * room at all, and it blamed the interface for it.
+     */
+    it('forgets the room filter when the interface changes (#143)', async () => {
+        const {stores} = await mountApp({transport: transportWithGroups(), hash: '#/BidCos-RF/devices'});
+        await waitFor(() => {
+            expect(stores.devices.devices('BidCos-RF')).toHaveLength(200);
+        });
+        const room = screen.getByTestId<HTMLSelectElement>('devices-filter-room');
+        await fireEvent.change(room, {target: {value: 'room/eg/kueche'}});
+        await waitFor(() => {
+            expect(drawnRows()).toHaveLength(0);
+        });
+
+        await stores.selectInterface('VirtualDevices');
+        await waitFor(() => {
+            expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('31');
+        });
+        expect(screen.getByTestId<HTMLSelectElement>('devices-filter-room').value).toBe('');
+        expect(document.querySelector('[data-row-id="INT0000001"]')).not.toBeNull();
+    });
+
+    it('blames the room filter, not the interface, when the filter empties the grid (#143)', async () => {
+        const {stores} = await mountApp({transport: transportWithGroups(), hash: '#/BidCos-RF/devices'});
+        await waitFor(() => {
+            expect(stores.devices.devices('BidCos-RF')).toHaveLength(200);
+        });
+        await fireEvent.change(screen.getByTestId('devices-filter-room'), {target: {value: 'room/eg/kueche'}});
+        await waitFor(() => {
+            expect(drawnRows()).toHaveLength(0);
+        });
+        expect(screen.getByText('Kein Gerät passt zum Raum- oder Gewerkefilter')).toBeTruthy();
+        expect(screen.queryByText('Keine Geräte - die Schnittstelle hat noch keine gemeldet')).toBeNull();
+    });
+
     it('says when a filter leaves nothing, counts honestly, and clears it on request', async () => {
         const {stores} = await mountApp({transport: transportWithGroups(), hash: '#/VirtualDevices/devices'});
         await waitFor(() => {

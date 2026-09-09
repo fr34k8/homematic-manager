@@ -161,6 +161,12 @@ export const UI_MESSAGES: MessageCatalogue = {
         de: 'Keine Geräte - die Schnittstelle hat noch keine gemeldet',
         en: 'No devices - the interface has not reported any yet',
     },
+    // #143: the same for the room and function filter, which sits above the grid and is applied
+    // before the table sees the rows.
+    'No device matches the room or function filter': {
+        de: 'Kein Gerät passt zum Raum- oder Gewerkefilter',
+        en: 'No device matches the room or function filter',
+    },
     // BUGS.md B-1: a filter that leaves nothing has to say so; the old text blamed the interface.
     'No row matches the filter': {de: 'Keine Zeile passt zum Filter', en: 'No row matches the filter'},
     'Clear filter': {de: 'Filter löschen', en: 'Clear filter'},

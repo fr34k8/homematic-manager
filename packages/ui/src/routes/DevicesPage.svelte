@@ -95,12 +95,18 @@
         }
     });
 
-    // A selection and the expanded rows belong to the interface they were made on (B-1: state
-    // that outlives an interface switch is what emptied the grid).
+    // A selection, the expanded rows and the room/function filter belong to the interface they were
+    // made on (B-1: state that outlives an interface switch is what emptied the grid). #143: the
+    // room and the function filter were the two that still survived it - they are applied to the
+    // rows before the table sees them, so the table's own "0 von 31" could not report them either,
+    // and a device grid narrowed to a room of BidCos-RF was simply empty on VirtualDevices, whose
+    // groups are in no room at all.
     $effect(() => {
         void interfaceName;
         selected = [];
         expanded = [];
+        roomFilter = '';
+        functionFilter = '';
     });
 
     // ---------------------------------------------------------------- rooms and functions
@@ -172,7 +178,12 @@
     const emptyText = $derived(
         stores.devices.isLoading(interfaceName) || index === undefined
             ? t('Loading Homematic Manager...')
-            : t('No devices - the interface has not reported any yet'),
+            : allDevices.length > 0
+              ? // #143: the interface *has* reported devices, the room or function filter above the
+                // grid is hiding them. Saying the opposite is what sends somebody hunting for a
+                // fault in the interface.
+                t('No device matches the room or function filter')
+              : t('No devices - the interface has not reported any yet'),
     );
 
     // ---------------------------------------------------------------- selection

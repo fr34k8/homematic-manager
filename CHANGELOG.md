@@ -8,6 +8,15 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+- **The room and the function filter belong to the interface they were set on** (#143). B-1 gave
+  the column filters of a grid to their interface in 3.0.0-beta.7; the two selects above the
+  device grid still outlived a switch, and they are applied to the rows before the table sees
+  them, so not even the table's own "0 von 31" could report them. A grid narrowed to a room of
+  BidCos-RF was therefore empty on VirtualDevices, whose groups are in no room - and the empty
+  grid said the interface had reported nothing. Both are cleared with the interface now, and when
+  a filter is what empties the grid the text says so. The filter a caller sets from outside (#25
+  opens the Links tab narrowed to a channel) is cleared with the interface for the same reason.
+
 - **The refresh button of the service-message tab reads the CCU again** (#146). It asked
   `serviceMessages.list`, which the backend answers out of its cache - that cache is filled by the
   events and by a poll every five minutes, so the button could not change anything about the list

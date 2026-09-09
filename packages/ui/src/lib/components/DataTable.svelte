@@ -196,6 +196,10 @@
         }
         lastScope = scope;
         clearFilters();
+        // #143: the filter set from outside is the one #25 uses to open the Links tab on a
+        // channel. It names an address of the interface it was set for, so it hides every row of
+        // the next one - the same trap as the column filters of B-1, one prop further out.
+        filter = '';
         if (viewport) {
             viewport.scrollTop = 0;
             scrollTop = 0;
