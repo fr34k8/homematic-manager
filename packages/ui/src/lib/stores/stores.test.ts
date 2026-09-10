@@ -885,3 +885,26 @@ describe('Stores', () => {
         expect(transport.calls).toEqual([]);
     });
 });
+
+describe('DevicesStore failure (#143)', () => {
+    it('separates a read that failed from one that has not answered yet', async () => {
+        const transport = new MockTransport({demo: true});
+        const notices = new NoticesStore(transport);
+        const devices = new DevicesStore(transport, notices);
+
+        // nothing read yet: not loading, not failed - the grid may say "loading"
+        expect(devices.isLoading('BidCos-RF')).toBe(false);
+        expect(devices.hasFailed('BidCos-RF')).toBe(false);
+
+        transport.fail('devices.list', 'Generic error');
+        await devices.ensure('BidCos-RF');
+        expect(devices.index('BidCos-RF')).toBeUndefined();
+        expect(devices.isLoading('BidCos-RF')).toBe(false);
+        expect(devices.hasFailed('BidCos-RF')).toBe(true);
+
+        transport.result('devices.list', [{ADDRESS: 'MEQ0123456', TYPE: 'HM-LC-Sw1-Pl', PARENT: '', CHILDREN: []}]);
+        await devices.retry('BidCos-RF');
+        expect(devices.hasFailed('BidCos-RF')).toBe(false);
+        expect(devices.devices('BidCos-RF').length).toBeGreaterThan(0);
+    });
+});

@@ -219,7 +219,14 @@
                     <button type="button" class="hmm-multiselect-link" onclick={uncheckAll}>{uncheckAllLabel}</button>
                 {/if}
             </div>
-            <ul class="hmm-multiselect-list" role="listbox" aria-multiselectable={multiple} id={`${uid}-list`} aria-label={label} bind:this={list}>
+            <ul
+                class="hmm-multiselect-list"
+                role="listbox"
+                aria-multiselectable={multiple}
+                id={`${uid}-list`}
+                aria-label={label}
+                bind:this={list}
+            >
                 {#each shown as option, i (option.value)}
                     <li>
                         <button

@@ -80,6 +80,8 @@ export class AppStore {
     /** True until the first `config.get` answered - what the 2.x `#loader` overlay covered. */
     loading = $state(true);
     connected = $state(false);
+    /** #149: why the last `config.set` failed, for the settings dialog to show. */
+    saveError = $state('');
     selectedInterface = $state('');
     tab = $state<TabId>(DEFAULT_TAB);
     /**
@@ -249,11 +251,16 @@ export class AppStore {
 
     /** Persists a changed connection and applies what the backend answered. */
     async save(connection: ConnectionConfig): Promise<boolean> {
+        this.saveError = '';
         try {
             this.applyConfig(await this.#transport.request('config.set', connection));
             this.configDialogOpen = false;
             return true;
         } catch (error) {
+            // Issue #149: the settings dialog is a modal `<dialog>`, which the browser draws in
+            // the top layer - above the notices. A failed save was therefore invisible: the button
+            // went grey for a moment and nothing else happened. The dialog shows this itself.
+            this.saveError = error instanceof Error ? error.message : String(error);
             this.#notices.fromError(error, 'config.set');
             return false;
         }

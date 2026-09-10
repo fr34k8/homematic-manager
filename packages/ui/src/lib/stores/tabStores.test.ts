@@ -296,6 +296,29 @@ describe('RadioStore', () => {
         store.dispose();
     });
 
+    it('#151: reads the matrix once even when the gateway list is already there', async () => {
+        const {transport, notices} = setup();
+        const store = new RadioStore(transport, notices);
+
+        // what the Devices tab does for the receiver column (B-2): gateways, no matrix
+        await store.ensureGateways('BidCos-RF');
+        expect(store.gateways('BidCos-RF').length).toBeGreaterThan(0);
+        expect(transport.countOf('rssi.get')).toBe(0);
+        expect(store.hasMatrix('BidCos-RF')).toBe(false);
+
+        // opening the Funk tab must still read it - this is what showed an empty dBm grid
+        await store.ensureMatrix('BidCos-RF');
+        expect(transport.countOf('rssi.get')).toBe(1);
+        expect(store.hasMatrix('BidCos-RF')).toBe(true);
+        expect(store.pair('BidCos-RF', 'MEQ0123456', 'BidCoS-RF')?.rx).toBe(-52);
+
+        // and only once; the Refresh button is the forced read
+        await store.ensureMatrix('BidCos-RF');
+        expect(transport.countOf('rssi.get')).toBe(1);
+        await store.load('BidCos-RF');
+        expect(transport.countOf('rssi.get')).toBe(2);
+    });
+
     it('reports a refused setBidcosInterface', async () => {
         const {transport, notices} = setup();
         transport.fail('bidcos.setInterface', 'Failure');

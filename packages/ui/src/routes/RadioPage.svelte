@@ -205,10 +205,15 @@
         ]);
     }
 
+    /**
+     * #151: read the matrix once per interface. Asking whether the gateway list is empty was the
+     * wrong question - the Devices tab fills that list without the matrix, so opening Funk after
+     * it showed a grid with no dBm values until Refresh was pressed.
+     */
     $effect(() => {
         const name = interfaceName;
-        if (name !== '' && stores.radio.gateways(name).length === 0 && !stores.radio.loading) {
-            void stores.radio.load(name);
+        if (name !== '') {
+            void stores.radio.ensureMatrix(name);
         }
     });
 

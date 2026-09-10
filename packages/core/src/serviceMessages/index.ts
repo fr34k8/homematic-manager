@@ -121,12 +121,18 @@ export class ServiceMessageStore {
      * Applies one datapoint. Returns true when something changed, so a caller can decide whether
      * to notify the UI. A datapoint that is not a service message is ignored.
      */
-    apply(interfaceName: string, address: string, datapoint: string, value: ParamsetValue): boolean {
+    apply(
+        interfaceName: string,
+        address: string,
+        datapoint: string,
+        value: ParamsetValue,
+        timestamp?: number,
+    ): boolean {
         if (!countsAsServiceMessage(datapoint, value)) {
             return false;
         }
         return value
-            ? this.#set(interfaceName, address, datapoint, value)
+            ? this.#set(interfaceName, address, datapoint, value, timestamp)
             : this.clear(interfaceName, address, datapoint);
     }
 
@@ -147,11 +153,22 @@ export class ServiceMessageStore {
         return changed;
     }
 
-    /** Replaces everything an interface has with a fresh `getServiceMessages` answer. */
+    /**
+     * Replaces everything an interface has with a fresh `getServiceMessages` answer.
+     *
+     * Issue #150: a message that is still there with the same value keeps the time it was first
+     * seen. Rebuilding the map from scratch stamped every row with "now", so pressing Refresh
+     * moved the "Since" column of six-day-old messages to this minute.
+     */
     replaceInterface(interfaceName: string, tuples: readonly ServiceMessageTuple[]): void {
+        const previous = new Map<string, ServiceMessageRecord>();
+        for (const record of this.forInterface(interfaceName)) {
+            previous.set(`${record.address}|${record.datapoint}`, record);
+        }
         this.#byInterface.delete(interfaceName);
         for (const [address, datapoint, value] of tuples) {
-            this.apply(interfaceName, address, datapoint, value);
+            const kept = previous.get(`${address}|${datapoint}`);
+            this.apply(interfaceName, address, datapoint, value, kept?.value === value ? kept.timestamp : undefined);
         }
     }
 
@@ -202,7 +219,7 @@ export class ServiceMessageStore {
         return this.forInterface(interfaceName).map((message) => [message.address, message.datapoint, message.value]);
     }
 
-    #set(interfaceName: string, address: string, datapoint: string, value: ParamsetValue): boolean {
+    #set(interfaceName: string, address: string, datapoint: string, value: ParamsetValue, timestamp?: number): boolean {
         let channels = this.#byInterface.get(interfaceName);
         if (!channels) {
             channels = new Map();
@@ -224,7 +241,7 @@ export class ServiceMessageStore {
             datapoint,
             value,
             acknowledgeable: isAcknowledgeable(datapoint),
-            timestamp: this.#now(),
+            timestamp: timestamp ?? this.#now(),
         });
         return true;
     }

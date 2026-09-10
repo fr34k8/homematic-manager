@@ -176,14 +176,20 @@
      * `loading` distinguishes.
      */
     const emptyText = $derived(
-        stores.devices.isLoading(interfaceName) || index === undefined
+        stores.devices.isLoading(interfaceName)
             ? t('Loading Homematic Manager...')
-            : allDevices.length > 0
-              ? // #143: the interface *has* reported devices, the room or function filter above the
-                // grid is hiding them. Saying the opposite is what sends somebody hunting for a
-                // fault in the interface.
-                t('No device matches the room or function filter')
-              : t('No devices - the interface has not reported any yet'),
+            : // #143: a read that failed leaves no index, exactly like one that has not started.
+              // Saying "loading" for both left the grid claiming to be busy for good.
+              stores.devices.hasFailed(interfaceName)
+              ? t('The device list could not be read - press Refresh to try again')
+              : index === undefined
+                ? t('Loading Homematic Manager...')
+                : allDevices.length > 0
+                  ? // #143: the interface *has* reported devices, the room or function filter above the
+                    // grid is hiding them. Saying the opposite is what sends somebody hunting for a
+                    // fault in the interface.
+                    t('No device matches the room or function filter')
+                  : t('No devices - the interface has not reported any yet'),
     );
 
     // ---------------------------------------------------------------- selection

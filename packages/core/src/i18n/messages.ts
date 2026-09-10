@@ -306,6 +306,10 @@ export const MESSAGES: MessageCatalogue = {
         de: 'Über Homematic Manager',
         en: 'about Homematic Manager',
     },
+    'The device list could not be read - press Refresh to try again': {
+        de: 'Die Geräteliste konnte nicht gelesen werden - mit Aktualisieren erneut versuchen',
+        en: 'The device list could not be read - press Refresh to try again',
+    },
     'Loading Homematic Manager...': {
         de: 'Lade Homematic Manager...',
         en: 'Loading Homematic Manager...',

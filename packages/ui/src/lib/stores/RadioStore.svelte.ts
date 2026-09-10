@@ -28,6 +28,16 @@ export class RadioStore {
     readonly #stores: Record<string, RssiStore> = {};
     /** Interfaces whose gateway list is being read, was read, or failed once this session. Plain, like `#stores`. */
     readonly #gatewayReads: Record<string, 'busy' | 'done' | 'failed'> = {};
+    /**
+     * Interfaces whose RSSI matrix has been read this session, reactive because the Funk tab's
+     * effect reads it.
+     *
+     * Issue #151: the tab used to ask "are there gateways yet?" to decide whether to load. The
+     * Devices tab fills that list on its own (`ensureGateways`, B-2), so on a start that opened
+     * Devices first the answer was yes and `rssiInfo` was never read - the Funk tab showed the
+     * grid without a single dBm value until the user pressed Refresh.
+     */
+    #matrixReads = $state<Record<string, 'busy' | 'done' | 'failed'>>({});
     readonly #transport: Transport;
     readonly #notices: NoticesStore;
     readonly #unsubscribe: () => void;
@@ -54,6 +64,22 @@ export class RadioStore {
         const store = this.#stores[interfaceName] ?? new RssiStore();
         this.#stores[interfaceName] = store;
         return store;
+    }
+
+    /** Has the RSSI matrix of this interface been read (or refused) this session? */
+    hasMatrix(interfaceName: string): boolean {
+        return this.#matrixReads[interfaceName] !== undefined;
+    }
+
+    /**
+     * Reads the matrix once per interface, which is what the Funk tab needs when it opens (#151).
+     * {@link load} is the forced read behind the Refresh button and marks the interface as read.
+     */
+    async ensureMatrix(interfaceName: string): Promise<void> {
+        if (interfaceName === '' || this.#matrixReads[interfaceName] !== undefined) {
+            return;
+        }
+        await this.load(interfaceName);
     }
 
     /** The BidCos interfaces (LAN gateways and the built-in coprocessor) of one interface process. */
@@ -140,6 +166,7 @@ export class RadioStore {
         if (interfaceName === '') {
             return;
         }
+        this.#matrixReads = {...this.#matrixReads, [interfaceName]: 'busy'};
         this.loading = true;
         try {
             await this.#loadGateways(interfaceName);
@@ -149,9 +176,11 @@ export class RadioStore {
         try {
             this.#store(interfaceName).applyRssiInfo(await this.#transport.request('rssi.get', interfaceName));
             this.#version += 1;
+            this.#matrixReads = {...this.#matrixReads, [interfaceName]: 'done'};
         } catch (error) {
             // hmipserver has no `rssiInfo`; there the matrix is built from events, so this is a
             // status, not a failure - the backend answers with an empty matrix in that case.
+            this.#matrixReads = {...this.#matrixReads, [interfaceName]: 'failed'};
             this.#notices.fromError(error, `rssiInfo ${interfaceName}`);
         } finally {
             this.loading = false;

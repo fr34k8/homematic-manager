@@ -21,6 +21,12 @@ export class DevicesStore {
     /** Interface name -> index. Reassigned on every change so the components re-render. */
     indexes = $state<Record<string, DeviceIndex>>({});
     loading = $state<Record<string, boolean>>({});
+    /**
+     * Interfaces whose last `devices.list` failed (#143). Without it the grid cannot tell "the
+     * answer has not arrived yet" from "it never will": both are an index that is not there, and
+     * the page said "Loading Homematic Manager..." for both - forever, after a failure.
+     */
+    failed = $state<Record<string, boolean>>({});
     /** Addresses whose firmware update was asked for and has not finished; the grid marks them. */
     firmwareBusy = $state<string[]>([]);
 
@@ -57,6 +63,11 @@ export class DevicesStore {
         return this.loading[interfaceName] === true;
     }
 
+    /** Did the last read of this interface's device list fail? */
+    hasFailed(interfaceName: string): boolean {
+        return this.failed[interfaceName] === true;
+    }
+
     /** Loads (or reloads) one interface. `refresh` bypasses the backend's device cache. */
     async load(interfaceName: string, options: {refresh?: boolean} = {}): Promise<void> {
         if (interfaceName === '') {
@@ -68,8 +79,10 @@ export class DevicesStore {
                 refresh: options.refresh ?? false,
             });
             this.indexes = {...this.indexes, [interfaceName]: new DeviceIndex(interfaceName, descriptions)};
+            this.failed = {...this.failed, [interfaceName]: false};
             this.settleFirmware(interfaceName);
         } catch (error) {
+            this.failed = {...this.failed, [interfaceName]: true};
             this.#notices.fromError(error, `devices.list ${interfaceName}`);
         } finally {
             this.loading = {...this.loading, [interfaceName]: false};
@@ -121,6 +134,14 @@ export class DevicesStore {
             return;
         }
         await this.load(interfaceName);
+    }
+
+    /** Reads an interface again after a failed read - what the grid's "try again" does (#143). */
+    async retry(interfaceName: string): Promise<void> {
+        if (this.isLoading(interfaceName)) {
+            return;
+        }
+        await this.load(interfaceName, {refresh: true});
     }
 
     /**

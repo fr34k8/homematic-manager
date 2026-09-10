@@ -165,6 +165,26 @@ describe('ServiceMessageStore', () => {
         expect(messages.forInterface('HmIP-RF')).toHaveLength(1);
     });
 
+    it('#150: a refresh keeps the time a message that is still there was first seen', () => {
+        let time = 1_700_000_000_000;
+        const messages = new ServiceMessageStore({now: () => time});
+        messages.apply('BidCos-RF', 'A:0', 'UNREACH', true);
+        messages.apply('BidCos-RF', 'B:0', 'LOWBAT', true);
+
+        time += 6 * 24 * 3600 * 1000;
+        // getServiceMessages answers again: A is unchanged, B's value changed, C is new
+        messages.replaceInterface('BidCos-RF', [
+            ['A:0', 'UNREACH', true],
+            ['B:0', 'LOWBAT', 1],
+            ['C:0', 'STICKY_UNREACH', true],
+        ]);
+
+        const byAddress = new Map(messages.forInterface('BidCos-RF').map((message) => [message.address, message]));
+        expect(byAddress.get('A:0')?.timestamp).toBe(1_700_000_000_000);
+        expect(byAddress.get('B:0')?.timestamp).toBe(time);
+        expect(byAddress.get('C:0')?.timestamp).toBe(time);
+    });
+
     it('answers in the tuple format a BidCos interface would', () => {
         const messages = store();
         messages.apply('HmIP-RF', 'B:0', 'UNREACH', true);

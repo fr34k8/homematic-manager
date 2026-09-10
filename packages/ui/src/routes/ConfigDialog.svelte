@@ -33,8 +33,23 @@
     let saving = $state(false);
     let discovering = $state(false);
 
+    /**
+     * #149: "Save & Restart" only does something when there is something to save. The button used
+     * to be live on a dialog nobody had touched, so a click that changed nothing looked like a
+     * button that did nothing.
+     */
+    const stored = $derived(stores.app.config?.connection);
+    const dirty = $derived(
+        clearCaches ||
+            draft === undefined ||
+            stored === undefined ||
+            JSON.stringify($state.snapshot(draft)) !== JSON.stringify(stored) ||
+            useAuth !== (stored.auth !== undefined),
+    );
+
     $effect(() => {
         if (open && draft === undefined) {
+            stores.app.saveError = '';
             const connection = stores.app.config?.connection;
             draft = connection
                 ? structuredClone($state.snapshot(connection))
@@ -646,14 +661,27 @@
     {/if}
 
     {#snippet buttons()}
+        {#if stores.app.saveError !== ''}
+            <!-- #149: a modal dialog is drawn above the notices, so the failure has to be said here. -->
+            <span class="hmm-config-error" data-testid="config-error">{t('Error')}: {stores.app.saveError}</span>
+        {/if}
         <button type="button" class="hmm-button" onclick={() => (open = false)}>{t('Cancel')}</button>
-        <button type="button" class="hmm-button" disabled={saving} data-testid="config-save" onclick={() => void save()}
-            >{t('Save & Restart')}</button
+        <button
+            type="button"
+            class="hmm-button"
+            disabled={saving || !dirty}
+            data-testid="config-save"
+            onclick={() => void save()}>{t('Save & Restart')}</button
         >
     {/snippet}
 </Dialog>
 
 <style>
+    .hmm-config-error {
+        margin-right: auto;
+        color: var(--hmm-error);
+    }
+
     .hmm-config {
         display: flex;
         flex-direction: column;
