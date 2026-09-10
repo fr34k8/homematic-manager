@@ -306,6 +306,18 @@ export const MESSAGES: MessageCatalogue = {
         de: 'Über Homematic Manager',
         en: 'about Homematic Manager',
     },
+    'Saving and reconnecting…': {
+        de: 'Wird gespeichert, die Verbindung wird neu aufgebaut…',
+        en: 'Saving and reconnecting…',
+    },
+    'This tab could not be drawn.': {
+        de: 'Dieser Reiter konnte nicht gezeichnet werden.',
+        en: 'This tab could not be drawn.',
+    },
+    'Try again': {
+        de: 'Erneut versuchen',
+        en: 'Try again',
+    },
     'The device list could not be read - press Refresh to try again': {
         de: 'Die Geräteliste konnte nicht gelesen werden - mit Aktualisieren erneut versuchen',
         en: 'The device list could not be read - press Refresh to try again',

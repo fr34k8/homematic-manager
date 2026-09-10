@@ -193,6 +193,26 @@ describe('the firmware cell', () => {
         expect(firmwareCell(device({}))).toEqual({firmware: '1.0', busy: false});
     });
 
+    it('#143: a PARAMSETS that is a string does not blank the grid', async () => {
+        const transport = new MockTransport({demo: true});
+        // what the group process sends on the reporter's box: a string where a list belongs
+        transport.result('devices.list', [
+            {ADDRESS: 'INT0000001', TYPE: 'HM-RCV-50', PARENT: '', CHILDREN: 'INT0000001:1'},
+            {
+                ADDRESS: 'INT0000001:1',
+                TYPE: 'VIRTUAL_KEY',
+                PARENT: 'INT0000001',
+                PARAMSETS: 'MASTER VALUES',
+            },
+        ] as never);
+        await mountApp({transport, hash: '#/BidCos-RF/devices'});
+
+        // the row is there and the page is not stuck on its loading text
+        await waitFor(() => expect(rowOf('INT0000001')).toBeTruthy());
+        expect(screen.queryByTestId('page-failed')).toBeNull();
+        expect(screen.queryByText('Lade Homematic Manager...')).toBeNull();
+    });
+
     it('#153: 0.0.0 is "no firmware", not one to install over a working version', () => {
         // an HmIP access point and the CCU's own radio module report it, with READY_FOR_UPDATE
         expect(

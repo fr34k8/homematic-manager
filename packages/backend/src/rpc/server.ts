@@ -19,7 +19,13 @@
 import binrpc from 'binrpc';
 import xmlrpc from 'homematic-xmlrpc';
 
-import {interfaceNameFromIdent, type DeviceDescription, type RpcProtocol, type RpcValue} from '@homematic-manager/core';
+import {
+    interfaceNameFromIdent,
+    normaliseDescription,
+    type DeviceDescription,
+    type RpcProtocol,
+    type RpcValue,
+} from '@homematic-manager/core';
 
 import {connectionError, errorMessage} from '../errors.js';
 
@@ -339,7 +345,9 @@ function asDescriptions(value: unknown): DeviceDescription[] {
             !Array.isArray(entry) &&
             typeof (entry as Record<string, unknown>)['ADDRESS'] === 'string'
         ) {
-            descriptions.push(entry as unknown as DeviceDescription);
+            // #143: the list fields of a description are made into lists here, once, for every
+            // interface - the group process sends `PARAMSETS` as a string on some boxes.
+            descriptions.push(normaliseDescription(entry as unknown as DeviceDescription));
         }
     }
     return descriptions;

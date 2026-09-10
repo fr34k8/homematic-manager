@@ -3,8 +3,10 @@ import {readFileSync} from 'node:fs';
 import {describe, expect, it} from 'vitest';
 
 import {
+    asStringList,
     CENTRAL_DEVICE_TYPES,
     DeviceIndex,
+    normaliseDescription,
     decodeDeviceFlags,
     decodeDirection,
     decodeRxMode,
@@ -300,5 +302,49 @@ describe('DeviceIndex', () => {
             'HmIP-RF/HmIP-PDT/1.4.8/2/DIMMER_VIRTUAL_RECEIVER/LINK',
         );
         expect(it_.childrenOf('0001D3C99C1234')).toHaveLength(4);
+    });
+});
+
+describe('#143: the list fields of a description are lists', () => {
+    it('keeps a real list and drops what is not a string in it', () => {
+        expect(asStringList(['MASTER', 'VALUES'])).toEqual(['MASTER', 'VALUES']);
+        expect(asStringList(['MASTER', 7, null])).toEqual(['MASTER']);
+        expect(asStringList([])).toEqual([]);
+    });
+
+    it('reads a string as the words it holds - the group process sends PARAMSETS that way', () => {
+        expect(asStringList('MASTER')).toEqual(['MASTER']);
+        expect(asStringList('MASTER VALUES')).toEqual(['MASTER', 'VALUES']);
+        expect(asStringList('MASTER, VALUES')).toEqual(['MASTER', 'VALUES']);
+        expect(asStringList('')).toEqual([]);
+    });
+
+    it('is nothing for what cannot be a list at all', () => {
+        expect(asStringList(undefined)).toBeUndefined();
+        expect(asStringList(7)).toBeUndefined();
+        expect(asStringList({})).toBeUndefined();
+        expect(asStringList(null)).toBeUndefined();
+    });
+
+    it('shapes a description and leaves everything else alone', () => {
+        const raw = {
+            ADDRESS: 'INT0000001:1',
+            TYPE: 'VIRTUAL_KEY',
+            PARAMSETS: 'MASTER VALUES',
+            CHILDREN: 'INT0000001:2',
+            FLAGS: 1,
+            LINK_SOURCE_ROLES: 'KEYMATIC',
+        } as unknown as DeviceDescription;
+        const shaped = normaliseDescription(raw);
+        expect(shaped.PARAMSETS).toEqual(['MASTER', 'VALUES']);
+        expect(shaped.CHILDREN).toEqual(['INT0000001:2']);
+        expect(shaped.FLAGS).toBe(1);
+        expect(shaped.LINK_SOURCE_ROLES).toBe('KEYMATIC');
+        // an already correct description is handed back as it is, not copied
+        const fine = {ADDRESS: 'A:1', TYPE: 'X', PARAMSETS: ['MASTER']} as DeviceDescription;
+        expect(normaliseDescription(fine)).toBe(fine);
+        // a value that is no list at all is taken out rather than left to throw in a grid
+        const odd = {ADDRESS: 'A:1', TYPE: 'X', PARAMSETS: 7} as unknown as DeviceDescription;
+        expect(normaliseDescription(odd).PARAMSETS).toBeUndefined();
     });
 });

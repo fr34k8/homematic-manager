@@ -53,6 +53,7 @@ import {
     type RpcWriteValue,
     type RssiInfo,
     type ServiceMessage,
+    normaliseDescription,
 } from '@homematic-manager/core';
 
 import {CacheStore} from '../cache/store.js';
@@ -1495,7 +1496,9 @@ function asDescriptions(value: unknown): DeviceDescription[] {
     const descriptions: DeviceDescription[] = [];
     for (const entry of value) {
         if (isStruct(entry) && typeof entry['ADDRESS'] === 'string') {
-            descriptions.push(entry as unknown as DeviceDescription);
+            // #143: the list fields of a description are made into lists here, once, for every
+            // interface - the group process sends `PARAMSETS` as a string on some boxes.
+            descriptions.push(normaliseDescription(entry as unknown as DeviceDescription));
         }
     }
     return descriptions;

@@ -1,6 +1,7 @@
 <script lang="ts">
     import type {DeviceDescription} from '@homematic-manager/core';
     import {
+        asStringList,
         decodeDeviceFlags,
         decodeDirection,
         decodeRxMode,
@@ -275,7 +276,7 @@
             // (found by the e2e suite when the rooms and functions columns arrived, task 25)
             fixed: true,
             sortable: false,
-            value: (device) => (device.PARAMSETS ?? []).join(' '),
+            value: (device) => (asStringList(device.PARAMSETS) ?? []).join(' '),
         },
         {
             key: 'FLAGS',
@@ -322,7 +323,7 @@
             width: 140,
             fixed: true,
             sortable: false,
-            value: (channel) => (channel.PARAMSETS ?? []).join(' '),
+            value: (channel) => (asStringList(channel.PARAMSETS) ?? []).join(' '),
         },
         {
             key: 'FLAGS',
@@ -509,7 +510,7 @@
                   {
                       id: 'paramset:SERVICE',
                       label: t('SERVICE Paramset'),
-                      disabled: !(index?.get(menuAddress)?.PARAMSETS ?? []).includes('SERVICE'),
+                      disabled: !(asStringList(index?.get(menuAddress)?.PARAMSETS) ?? []).includes('SERVICE'),
                   },
                   {id: 'sep1', separator: true},
                   {
@@ -830,7 +831,11 @@
                         <span class="hmm-firmware-status">{cellState.status}</span>
                     {/if}
                 {:else if column.key === 'PARAMSETS'}
-                    {#each (row.PARAMSETS ?? []).filter((name) => name !== 'LINK') as name (name)}
+                    <!-- #143: `asStringList` and not `?? []`: a value that is not a list at all
+                         (the group process sends `PARAMSETS` as a string on some boxes) must not
+                         throw here - one throw in a reactive grid blanks the whole page. The
+                         backend shapes it too; this is the second lock on the same door. -->
+                    {#each asStringList(row.PARAMSETS)?.filter((name) => name !== 'LINK') ?? [] as name (name)}
                         <button
                             type="button"
                             class="hmm-inline-button"

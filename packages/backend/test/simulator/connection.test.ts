@@ -79,9 +79,11 @@ describe.skipIf(!simulatorAvailable)('connecting to hm-simulator', () => {
             'INT0000001:1',
             'INT0000001:2',
         ]);
-        // the shape a real CCU sends survives the XML-RPC round trip untouched
+        // the shape a real CCU sends survives the XML-RPC round trip; its list fields are made
+        // into lists on the way in (#143: the group process sends `CHILDREN` as an empty string
+        // and, on some boxes, `PARAMSETS` as a plain string, which the grid then iterated over)
         const channel = index.require('INT0000001:1') as unknown as Record<string, unknown>;
-        expect(channel['CHILDREN']).toBe('');
+        expect(channel['CHILDREN']).toEqual([]);
         expect(channel['UPDATABLE']).toBe(true);
         expect(channel['PARENT_TYPE']).toBe('HM-CC-VG-1');
         expect(index.require('INT0000001').TYPE).toBe('HM-CC-VG-1');

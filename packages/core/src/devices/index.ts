@@ -44,6 +44,54 @@ export interface DeviceDescription {
     readonly SUBTYPE?: string;
 }
 
+/**
+ * The fields of a description that are lists of strings. What an interface process actually sends
+ * for them is not guaranteed: the CCU's group process (`VirtualDevices`) answers `PARAMSETS` as a
+ * plain string on some boxes, and a `?? []` guard does not catch that - `.filter` on a string
+ * throws, and in a reactive grid one throw takes the whole page down (#143: the device list stayed
+ * on "Loading Homematic Manager..." while the count beside it said 31).
+ */
+const LIST_FIELDS = ['CHILDREN', 'PARAMSETS', 'TEAM_CHANNELS'] as const;
+
+/**
+ * One value of a list field as a list of strings: an array keeps its string entries, a string
+ * becomes its whitespace- or comma-separated words (`"MASTER VALUES"` is two paramsets, `"MASTER"`
+ * is one), and anything else - a number, an object, null - is nothing.
+ */
+export function asStringList(value: unknown): string[] | undefined {
+    if (Array.isArray(value)) {
+        return value.filter((entry): entry is string => typeof entry === 'string');
+    }
+    if (typeof value === 'string') {
+        const words = value.split(/[\s,]+/).filter((word) => word !== '');
+        return words.length > 0 ? words : [];
+    }
+    return undefined;
+}
+
+/**
+ * A description as it arrives from an interface process, with its list fields made into lists
+ * (#143). Everything else is passed through untouched: what a field means is the interface's
+ * business, only its *shape* is ours, and only where the UI iterates over it.
+ */
+export function normaliseDescription(entry: DeviceDescription): DeviceDescription {
+    let patch: Record<string, unknown> | undefined;
+    for (const field of LIST_FIELDS) {
+        const value = (entry as unknown as Record<string, unknown>)[field];
+        if (value === undefined || Array.isArray(value)) {
+            continue;
+        }
+        const list = asStringList(value);
+        patch ??= {};
+        if (list === undefined) {
+            patch[field] = undefined;
+        } else {
+            patch[field] = list;
+        }
+    }
+    return patch === undefined ? entry : {...entry, ...patch};
+}
+
 /** `FLAGS` bits of a device description. */
 export const DEVICE_FLAGS = {
     VISIBLE: 1,

@@ -277,34 +277,56 @@
 
     <main class="hmm-main">
         <div class="hmm-panel" id={`panel-${app.tab}`} role="tabpanel" aria-labelledby={`tab-${app.tab}`}>
-            {#if app.selectedInterface === ''}
-                <p class="hmm-empty">{t('Select an interface')}</p>
-            {:else if app.storeSelected}
-                <!--
+            <!--
+                #143: one bad value used to take the whole page with it. A description whose
+                `PARAMSETS` was a string instead of a list threw inside the grid's reactivity, and
+                what a user saw was a page stuck on "Loading Homematic Manager..." - with the device
+                count beside it saying 31, because that came from another derived. The value is
+                shaped in the backend now, but the class of fault stays possible: a boundary turns
+                it into a message with the reason, one tab wide, instead of a blank page. The key
+                is the tab and the interface, so switching either one tries again.
+            -->
+            {#key `${app.selectedInterface}/${app.tab}`}
+                <svelte:boundary onerror={(error) => stores.notices.fromError(error, `page ${app.tab}`)}>
+                    {#snippet failed(error, reset)}
+                        <div class="hmm-page-failed" data-testid="page-failed">
+                            <p>{t('This tab could not be drawn.')}</p>
+                            <p class="hmm-page-failed-reason">
+                                {error instanceof Error ? error.message : String(error)}
+                            </p>
+                            <button type="button" class="hmm-button" onclick={reset}>{t('Try again')}</button>
+                        </div>
+                    {/snippet}
+                    {#if app.selectedInterface === ''}
+                        <p class="hmm-empty">{t('Select an interface')}</p>
+                    {:else if app.storeSelected}
+                        <!--
                     2026-09-10: the store is the selection. ReGaHSS has its two lists as two
                     tabs; every store that nests has the one tree, which is also what a flat store
                     gets when the hash names a tab it does not have.
                 -->
-                {#if app.tab === 'rooms'}
-                    <MetadataPage enumId="room" />
-                {:else if app.tab === 'functions'}
-                    <MetadataPage enumId="function" />
-                {:else}
-                    <MetadataPage />
-                {/if}
-            {:else if app.tab === 'devices'}
-                <DevicesPage />
-            {:else if app.tab === 'links'}
-                <LinksPage />
-            {:else if app.tab === 'rssi'}
-                <RadioPage />
-            {:else if app.tab === 'console'}
-                <ConsolePage />
-            {:else if app.tab === 'messages'}
-                <ServiceMessagesPage />
-            {:else}
-                <EventsPage />
-            {/if}
+                        {#if app.tab === 'rooms'}
+                            <MetadataPage enumId="room" />
+                        {:else if app.tab === 'functions'}
+                            <MetadataPage enumId="function" />
+                        {:else}
+                            <MetadataPage />
+                        {/if}
+                    {:else if app.tab === 'devices'}
+                        <DevicesPage />
+                    {:else if app.tab === 'links'}
+                        <LinksPage />
+                    {:else if app.tab === 'rssi'}
+                        <RadioPage />
+                    {:else if app.tab === 'console'}
+                        <ConsolePage />
+                    {:else if app.tab === 'messages'}
+                        <ServiceMessagesPage />
+                    {:else}
+                        <EventsPage />
+                    {/if}
+                </svelte:boundary>
+            {/key}
         </div>
     </main>
 
@@ -344,6 +366,20 @@
 </div>
 
 <style>
+    /* #143: what a tab that threw looks like - a sentence, the reason, and a way to try again. */
+    .hmm-page-failed {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 16px;
+    }
+
+    .hmm-page-failed-reason {
+        color: var(--hmm-error);
+        font-family: var(--hmm-font-mono);
+    }
+
     /*
         The shell is the window, and it says so itself.
 

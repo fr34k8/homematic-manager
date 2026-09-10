@@ -662,6 +662,15 @@
     {/if}
 
     {#snippet buttons()}
+        {#if saving}
+            <!--
+                #149: "Speichern und Neustarten" rebuilds the whole connection - on the reporter's
+                CCU it took eleven seconds before the dialog closed, with nothing to say that
+                anything was happening. It says so now, next to the buttons, and the button itself
+                is disabled while it runs.
+            -->
+            <span class="hmm-config-busy" data-testid="config-saving">{t('Saving and reconnecting…')}</span>
+        {/if}
         {#if stores.app.saveError !== ''}
             <!-- #149: a modal dialog is drawn above the notices, so the failure has to be said here. -->
             <span class="hmm-config-error" data-testid="config-error">{t('Error')}: {stores.app.saveError}</span>
@@ -678,6 +687,11 @@
 </Dialog>
 
 <style>
+    .hmm-config-busy {
+        margin-right: auto;
+        color: var(--hmm-fg-muted);
+    }
+
     .hmm-config-error {
         margin-right: auto;
         color: var(--hmm-error);
