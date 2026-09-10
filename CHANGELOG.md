@@ -6,7 +6,32 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
-## [Unreleased]
+## [3.0.0-beta.12] — 2026-09-11
+
+The cause of #143, found in the reporter's own developer console, and the two small things the
+beta.11 round left over. Fixes only, nothing new.
+
+- **The device list of VirtualDevices is there** (#143, open since beta.5). His console had the
+  answer: `(row(...).PARAMSETS ?? []).filter is not a function`, nine times, out of the grid's
+  reactivity. The CCU's group process sends `PARAMSETS` as a plain string on his box, and
+  `CHILDREN` as an empty string on every box; `?? []` catches null and undefined, not a string, so
+  the grid threw while it drew. That is why the list stayed on "Loading Homematic Manager..." while
+  the device count beside it said 31 — the two numbers came from different places, one of which had
+  already crashed. Two causes were found and fixed before this one (the column filter in beta.7,
+  the room and function filter in beta.9); they were real, and they were not what he was seeing.
+  The list fields of a description — `CHILDREN`, `PARAMSETS`, `TEAM_CHANNELS` — are made into lists
+  in the backend now, once, for every interface, and the grid uses the same helper where it
+  iterates over them.
+
+- **A tab that cannot be drawn says so** instead of leaving an empty page behind. One bad value used
+  to take the whole page with it, and what a user saw was a loading text that never went away. A
+  fault in a tab is now a sentence with the reason and a button to try again, one tab wide; the
+  rest of the window keeps working.
+
+- **"Save & Restart" says that it is working** (#149). It rebuilds the whole connection — on the
+  reporter's CCU eleven seconds passed before the dialog closed, with nothing to show for it. It
+  says "Saving and reconnecting…" while it runs. Saving itself was never broken, which is what he
+  established: his settings had been saved all along.
 
 ### Changed
 
@@ -35,6 +60,15 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 - **The "Rooms and functions" dialog of the device grid is gone**; its toolbar button opens the
   store's pages instead. The rooms and functions columns, the filters and "assign to room /
   function" of the device grid are unchanged.
+
+### Known issues
+
+- **#150 is half open**: the "Since" column survives a refresh since beta.11, but the service
+  message list still differs from the CCU's. Three are missing on the reporter's box: two
+  `STICKY_UNREACH` and one "Kommunikationsstörung" on a device channel rather than the maintenance
+  channel. What settles it is the answer of `getServiceMessages` on his BidCos-RF, which the RPC
+  console shows.
+- Everything under beta.11's "Known issues" that is not named above still applies.
 
 ## [3.0.0-beta.11] — 2026-09-10
 
@@ -693,6 +727,7 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
+[3.0.0-beta.12]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.12
 [3.0.0-beta.11]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.11
 [3.0.0-beta.10]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.10
 [3.0.0-beta.9]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.9
