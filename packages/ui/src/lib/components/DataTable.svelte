@@ -421,7 +421,22 @@
                     style:text-align={column.align ?? 'left'}
                 >
                     {#if isSortable(column)}
-                        <button type="button" class="hmm-th-button" onclick={() => toggleSort(column)}>
+                        <!--
+                            #152: the label of a right- or centre-aligned column has to follow the
+                            values. `justify-content: inherit` took `normal` from the grid cell, so
+                            every sortable label sat on the left while its values sat on the right -
+                            "CONNECTED" over one column, its tick over the next.
+                        -->
+                        <button
+                            type="button"
+                            class="hmm-th-button"
+                            style:justify-content={column.align === 'right'
+                                ? 'flex-end'
+                                : column.align === 'center'
+                                  ? 'center'
+                                  : 'flex-start'}
+                            onclick={() => toggleSort(column)}
+                        >
                             <span>{column.label}</span>
                             {#if sort?.key === column.key}
                                 <span class="hmm-th-sort" aria-hidden="true"

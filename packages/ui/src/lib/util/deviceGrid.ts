@@ -107,6 +107,17 @@ export interface FirmwareCell {
 /** hmipserver's `FIRMWARE_UPDATE_STATE` values that are worth printing next to the version. */
 const HMIP_STATUS = ['UP_TO_DATE', 'NEW_FIRMWARE_AVAILABLE', 'DELIVER_FIRMWARE_IMAGE', 'PERFORMING_UPDATE'];
 
+/**
+ * Is there really a new firmware on offer?
+ *
+ * Issue #153: hmipserver reports `AVAILABLE_FIRMWARE` `0.0.0` for its access points and for the
+ * CCU's own radio module - "none", not a version - and pairs it with `READY_FOR_UPDATE`. The grid
+ * took that at face value and offered to install 0.0.0 over a working 4.4.18.
+ */
+function hasOffer(available: string | undefined, firmware: string): available is string {
+    return available !== undefined && available !== '' && available !== '0.0.0' && available !== firmware;
+}
+
 export function firmwareCell(
     device: DeviceDescription,
     options: {readonly busy?: boolean; readonly updatePending?: boolean} = {},
@@ -117,10 +128,10 @@ export function firmwareCell(
     const state = device.FIRMWARE_UPDATE_STATE;
 
     if (state !== undefined && state !== '') {
-        if (state === 'READY_FOR_UPDATE') {
+        if (state === 'READY_FOR_UPDATE' && hasOffer(available, firmware)) {
             return {
                 firmware,
-                ...(available === undefined ? {} : {available}),
+                available,
                 ...(busy ? {} : {action: 'install' as const}),
                 busy,
             };
@@ -132,7 +143,7 @@ export function firmwareCell(
     if (options.updatePending === true) {
         return {firmware, status: 'update pending', busy};
     }
-    if (available !== undefined && available !== '' && available !== firmware) {
+    if (hasOffer(available, firmware)) {
         return {firmware, available, ...(busy ? {} : {action: 'update' as const}), busy};
     }
     return {firmware, busy};

@@ -193,6 +193,19 @@ describe('the firmware cell', () => {
         expect(firmwareCell(device({}))).toEqual({firmware: '1.0', busy: false});
     });
 
+    it('#153: 0.0.0 is "no firmware", not one to install over a working version', () => {
+        // an HmIP access point and the CCU's own radio module report it, with READY_FOR_UPDATE
+        expect(
+            firmwareCell(
+                device({FIRMWARE: '4.4.18', FIRMWARE_UPDATE_STATE: 'READY_FOR_UPDATE', AVAILABLE_FIRMWARE: '0.0.0'}),
+            ),
+        ).toEqual({firmware: '4.4.18', busy: false});
+        expect(firmwareCell(device({FIRMWARE: '3.0.18', AVAILABLE_FIRMWARE: '0.0.0'}))).toEqual({
+            firmware: '3.0.18',
+            busy: false,
+        });
+    });
+
     it('follows hmipserver through its FIRMWARE_UPDATE_STATE', () => {
         expect(firmwareCell(device({FIRMWARE_UPDATE_STATE: 'READY_FOR_UPDATE', AVAILABLE_FIRMWARE: '2.0'}))).toEqual({
             firmware: '1.0',
