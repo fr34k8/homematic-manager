@@ -52,19 +52,23 @@ Running() {
 # The token the UI's browser has to present on the API socket. settings.cgi hands it out as a
 # cookie after the WebUI session check; nobody else ever sees it, so it is root-only and lives in
 # the profile directory, where it survives an update (and with it the open browser tab).
+# Returns 1 when the file cannot be written or read - on openccu-lite the addon runs as its own
+# user (D-36), and a profile directory still owned by root from an earlier life makes every line
+# here fail with "Permission denied"; Start must then fail, not report OK with an empty token
+# (openccu-lite B-62: the unit said "active (exited)", the Services page said "Completed").
 Token() {
     if [ ! -s $TOKEN_FILE ]; then
-        mkdir -p $STATE_DIR
+        mkdir -p $STATE_DIR 2>/dev/null || return 1
         if command -v openssl >/dev/null 2>&1; then
             openssl rand -hex 32 > $TOKEN_FILE 2>/dev/null
         fi
         if [ ! -s $TOKEN_FILE ]; then
-            dd if=/dev/urandom bs=32 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n' > $TOKEN_FILE
-            echo >> $TOKEN_FILE
+            { dd if=/dev/urandom bs=32 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n' > $TOKEN_FILE && echo >> $TOKEN_FILE; } 2>/dev/null
         fi
+        [ -s $TOKEN_FILE ] || { rm -f $TOKEN_FILE 2>/dev/null; return 1; }
         chmod 600 $TOKEN_FILE
     fi
-    cat $TOKEN_FILE
+    cat $TOKEN_FILE 2>/dev/null || return 1
 }
 
 # Tells the CCU's lighttpd about a rule file that changed or went away - through `reload`, never
@@ -127,7 +131,11 @@ Start() {
     export HMM_PORT HMM_LOG_LEVEL
 
     # not on the command line: an argument is world-readable in `ps`, the environment is not
-    HMM_TOKEN="$(Token)"
+    if ! HMM_TOKEN="$(Token)" || [ -z "$HMM_TOKEN" ]; then
+        echo "Starting $ADDON: FAILED ($TOKEN_FILE cannot be written; is $STATE_DIR owned by $(id -un)?)" >&2
+        logger -t $ADDON -p daemon.err "cannot write $TOKEN_FILE as $(id -un): not starting"
+        return 1
+    fi
     export HMM_TOKEN
 
     mkdir -p $ADDON_DIR/var $ADDON_DIR/var/cache $STATE_DIR
@@ -195,7 +203,7 @@ case "$1" in
         ;;
 
     start)
-        Start
+        Start || exit 1
         ;;
 
     stop)
@@ -205,7 +213,7 @@ case "$1" in
     restart)
         Stop
         sleep 2
-        Start
+        Start || exit 1
         ;;
 
     status)
