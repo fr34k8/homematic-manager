@@ -22,6 +22,11 @@ test('the settings dialog shows the live configuration and saves it', async ({pa
     await expect(dialog).toHaveAttribute('open', '');
     await expect(page.getByTestId('config-host')).toHaveValue('127.0.0.1');
 
+    // #149: nothing changed, nothing to save - the button is live only after an edit.
+    await expect(page.getByTestId('config-save')).toBeDisabled();
+    await page.getByTestId('config-clear-cache').check();
+    await expect(page.getByTestId('config-save')).toBeEnabled();
+
     // Saving restarts the whole start-up sequence; the grid has to come back.
     await page.getByTestId('config-save').click();
     await expect(dialog).not.toHaveAttribute('open');

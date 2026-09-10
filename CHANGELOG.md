@@ -6,6 +6,68 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [3.0.0-beta.10] — 2026-09-10
+
+Six reports from the beta.9 testers, all of one day: Herbert-Testmann on the Funk tab (#151), the
+service messages (#150), the settings dialog (#149) and the device grid on VirtualDevices (#143),
+Baxxy13 on the interface table (#152) and on a firmware offer (#153). Fixes only, nothing new.
+
+- **The Funk tab reads the levels again after a start** (#151). It decided whether to ask the
+  interface for `rssiInfo` by looking at whether the list of BidCos interfaces was already there -
+  and the Devices tab fills exactly that list on its own, because it needs the receivers' names for
+  its own column. The Devices tab is drawn first, so the answer was always "already there", the
+  matrix was never read, and the Funk grid showed every device with empty dBm columns until the
+  user pressed Refresh. The gateway list and the matrix are now tracked apart, and the tab reads
+  the matrix once per interface.
+
+- **The Refresh button of the service messages keeps the "Since" column** (#150). The refresh threw
+  away what was stored for the interface and rebuilt it from the fresh `getServiceMessages` answer,
+  which stamped every row with the moment of the refresh - a message from last week suddenly read
+  "today, 09:52". A message that is still there with the same value keeps the time it was first
+  seen; only a changed value or a new message gets the current time.
+
+- **The settings dialog says why a save failed** (#149). It is a modal dialog, which the browser
+  draws in a layer above everything else - including the notices. A `config.set` that failed was
+  therefore reported into a stack nobody could see: the button went grey for a moment and, from the
+  outside, nothing happened at all. The reason now stands in the dialog itself, next to the
+  buttons. And "Save & Restart" is only live when something was actually changed, so a click on an
+  untouched dialog no longer looks like a button that does nothing.
+
+- **A column label stands over its own column** (#152). Where the values are centred or
+  right-aligned - CONNECTED, DEFAULT and DUTY_CYCLE in the interface table of the Funk tab, and
+  every centred column of the other grids - the label stayed on the left, because a sortable label
+  is a button and the button did not take the column's alignment. It does now.
+
+- **Firmware `0.0.0` is not offered for installation** (#153). hmipserver reports
+  `AVAILABLE_FIRMWARE` `0.0.0` for HmIP access points and for the CCU's own radio module - "none",
+  not a version - and pairs it with the state that means "ready". The grid took both at face value
+  and offered to install 0.0.0 over a working 4.4.18. `0.0.0` now counts as nothing on offer.
+
+- **A device list that could not be read says so** (#143). When `listDevices` failed there was
+  neither an index nor a request in flight, and the grid showed "Loading Homematic Manager..." for
+  that state - for good. It now says that the list could not be read and points at Refresh. This is
+  a diagnostic improvement, not the cause of #143: the empty grid on VirtualDevices is still open
+  and the reporter has been asked for four details.
+
+### Known issues
+
+- **#143 is not fixed.** The grid stays empty for one reporter on VirtualDevices while the app
+  counts 31 devices. Two causes were found and fixed before (the column filter in beta.7, the room
+  and function filter in beta.9); what is left does not fit together yet - the device count and the
+  count over the grid come from the same loaded list, so with no filter set the grid cannot be
+  empty. Four questions are on the issue.
+- **#149 and #150 are half fixed.** Why the save failed on the reporter's Mac is unknown - the
+  dialog now shows the reason, which is what the next report needs. And the service message count
+  differs from the CCU's: the list is per interface where the CCU WebUI merges them all, and
+  whether two `STICKY_UNREACH` rows are missing depends on what `getServiceMessages` answers on
+  that box, which has been asked for.
+- **"Since" of a service message** is the moment this app first saw it, not the CCU's own first
+  occurrence: after a restart of the app it is the restart's time. The CCU's own column comes from
+  ReGa's bookkeeping, which the app does not read today.
+- None of the six fixes has been on a CCU; they are guarded by unit and component tests and by the
+  e2e suite against hm-simulator.
+- Everything under beta.9's "Known issues" still applies.
+
 ## [3.0.0-beta.9] — 2026-09-09
 
 Five reports from the beta.8 testers, all of one evening: Herbert-Testmann on the device grid on
@@ -555,6 +617,7 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
+[3.0.0-beta.10]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.10
 [3.0.0-beta.9]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.9
 [3.0.0-beta.8]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.8
 [3.0.0-beta.7]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.7
