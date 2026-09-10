@@ -32,7 +32,11 @@ describe('the 2.x hash route', () => {
 describe('tabsForInterface', () => {
     it('gives BidCos-RF everything and takes the RSSI matrix from the rest', () => {
         expect(tabsForInterface('BidCos-RF')).toEqual([...TAB_IDS]);
-        expect(tabsForInterface('HmIP-RF')).toEqual(['devices', 'links', 'console', 'messages', 'events']);
+        // #155: HmIP has the levels too, from the maintenance channel - 2.x showed them
+        expect(tabsForInterface('HmIP-RF')).toEqual(['devices', 'links', 'rssi', 'console', 'messages', 'events']);
+        expect(tabsForInterface('HmIPW')).toContain('rssi');
+        // a user-defined interface answers no listBidcosInterfaces, so it keeps the shorter set
+        expect(tabsForInterface('CCU-Jack')).toEqual(['devices', 'links', 'console', 'messages', 'events']);
         expect(tabsForInterface('BidCos-Wired')).toEqual(['devices', 'links', 'console', 'events']);
         expect(tabsForInterface('CUxD')).toEqual(['devices', 'console', 'events']);
         expect(tabsForInterface('')).not.toContain('rssi');

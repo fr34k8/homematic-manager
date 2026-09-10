@@ -171,6 +171,31 @@ describe('the radio tab', () => {
         expect(stores.radio.pair('HmIP-RF', '000A1B2C3D4E5F', 'HmIP-RCV-50')?.tx).toBe(-61);
     });
 
+    it('#155: HmIP has the tab too, with the access point and without the BidCos-only columns', async () => {
+        const {stores} = await mountApp({transport, hash: '#/HmIP-RF/rssi'});
+        await waitFor(() => {
+            expect(stores.radio.gateways('HmIP-RF')).toHaveLength(1);
+        });
+
+        // the tab is offered, not only reachable by its hash
+        expect(screen.getByRole('tab', {name: 'Funk'})).toBeTruthy();
+
+        // the access point is the one "gateway", and it names the column pair
+        const gateways = within(screen.getByTestId('radio-gateways'));
+        expect(gateways.getByText('3014F711A0000418971558')).toBeTruthy();
+        expect(screen.getAllByText('← dBm').length).toBeGreaterThan(0);
+
+        // setBidcosInterface does not exist on HmIP: no marker column, no buttons for it
+        expect(screen.queryByTestId('radio-set-interface')).toBeNull();
+        expect(screen.queryByTestId('radio-best-receivers')).toBeNull();
+        expect(screen.queryByRole('columnheader', {name: 'ROAMING'})).toBeNull();
+
+        // and the levels of the maintenance channel are in the grid
+        await waitFor(() => {
+            expect(stores.radio.pair('HmIP-RF', '000A1B2C3D4E5F', '3014F711A0000418971558')?.rx).toBe(-55);
+        });
+    });
+
     it('names the interface a device is heard best by (#69)', async () => {
         const {stores} = await mountApp({transport, hash: '#/BidCos-RF/rssi'});
         await waitFor(() => {

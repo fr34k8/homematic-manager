@@ -55,7 +55,14 @@ export function tabsForInterface(interfaceType: string): TabId[] {
         case 'BidCos-RF':
             return [...TAB_IDS];
         default:
-            // HmIP and everything user-defined: no BidCos RSSI matrix, the rest is available.
+            // #155: HmIP has no `rssiInfo`, but it has the levels - they arrive as `RSSI_DEVICE`
+            // and `RSSI_PEER` of the maintenance channel, which is what 2.x showed in its Funk tab
+            // for HmIP and what the backend's matrix is built from. OpenCCU's WebUI assembles its
+            // own HmIP list the same way. Everything user-defined keeps the shorter set: nothing
+            // there answers `listBidcosInterfaces`.
+            if (/hmip/i.test(interfaceType)) {
+                return ['devices', 'links', 'rssi', 'console', 'messages', 'events'];
+            }
             return ['devices', 'links', 'console', 'messages', 'events'];
     }
 }

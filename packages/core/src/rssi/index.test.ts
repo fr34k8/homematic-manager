@@ -16,7 +16,40 @@ import {
 describe('normaliseRssiValue', () => {
     it('keeps a real measurement', () => {
         expect(normaliseRssiValue(-60)).toBe(-60);
-        expect(normaliseRssiValue(0)).toBe(0);
+        expect(normaliseRssiValue(-126)).toBe(-126);
+        expect(normaliseRssiValue(-1)).toBe(-1);
+    });
+
+    it('#154: gives a positive value back its sign', () => {
+        // the reporter's screenshot: "37 dBm" next to a -38 dBm in the other direction
+        expect(normaliseRssiValue(37)).toBe(-37);
+        expect(normaliseRssiValue(2)).toBe(-2);
+        expect(normaliseRssiValue(126)).toBe(-126);
+    });
+
+    it('#154: takes the 256 off a value that came through as an unsigned byte', () => {
+        expect(normaliseRssiValue(218)).toBe(-38);
+        expect(normaliseRssiValue(130)).toBe(-126);
+        expect(normaliseRssiValue(255)).toBe(-1);
+        // and the same offset with the sign still on it: the maintainer's -208 is -48 dBm
+        expect(normaliseRssiValue(-208)).toBe(-48);
+        expect(normaliseRssiValue(-130)).toBe(-126);
+        expect(normaliseRssiValue(-255)).toBe(-1);
+    });
+
+    it('#154: every placeholder is "no value", not a level', () => {
+        // 65536 is eQ-3's documented one, 0x80 the radio chip's "no RSSI available",
+        // 0 and 1 "nothing received in this direction since the start"
+        for (const placeholder of [0, 1, -1 * 0, 128, -128, 129, -129, 256, -256, RSSI_UNKNOWN, -RSSI_UNKNOWN]) {
+            expect(normaliseRssiValue(placeholder), `${placeholder}`).toBeUndefined();
+        }
+    });
+
+    it('is idempotent: a normalised value survives a second pass', () => {
+        for (const raw of [37, 218, -208, -60]) {
+            const once = normaliseRssiValue(raw);
+            expect(normaliseRssiValue(once)).toBe(once);
+        }
     });
 
     it('drops the "unknown" placeholder and anything that is not a finite number', () => {
@@ -76,8 +109,12 @@ describe('rssiColor', () => {
     });
 
     it('clamps both channels instead of producing nonsense', () => {
-        expect(rssiColor(0)).toBe('#00ff00');
-        expect(rssiColor(-200)).toBe('#ff0000');
+        expect(rssiColor(-1)).toBe('#00ff00');
+        expect(rssiColor(-126)).toBe('#ff0000');
+        // #154: a placeholder has no colour at all, and -200 is not one - it is -48 dBm
+        expect(rssiColor(0)).toBeUndefined();
+        expect(rssiColor(128)).toBeUndefined();
+        expect(rssiColor(-208)).toBe(rssiColor(-48));
     });
 
     it('has no colour for a value there is none for', () => {

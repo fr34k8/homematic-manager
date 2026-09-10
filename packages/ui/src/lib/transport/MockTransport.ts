@@ -15,6 +15,7 @@ import {findNode, MetaStore, parseDocument, parsePath, slugId, summarise} from '
 
 import {
     DEMO_BIDCOS_INTERFACES,
+    DEMO_HMIP_INTERFACES,
     DEMO_CONFIG,
     DEMO_DATA_FILES,
     DEMO_DEVICES,
@@ -201,7 +202,11 @@ export class MockTransport implements Transport {
             isDemoInterface(interfaceName) ? DEMO_LINKS[interfaceName] : [],
         );
         this.respond('rssi.get', (interfaceName) => (isDemoInterface(interfaceName) ? DEMO_RSSI[interfaceName] : {}));
-        this.result('bidcos.interfaces', DEMO_BIDCOS_INTERFACES);
+        // #155: hmipserver answers `listBidcosInterfaces` with its access point, not with the
+        // BidCos coprocessor - the Funk tab of an HmIP interface groups its columns under that one.
+        this.respond('bidcos.interfaces', (interfaceName) =>
+            interfaceName === 'HmIP-RF' ? DEMO_HMIP_INTERFACES : DEMO_BIDCOS_INTERFACES,
+        );
         this.respond('serviceMessages.list', (interfaceName) =>
             interfaceName === undefined
                 ? DEMO_SERVICE_MESSAGES

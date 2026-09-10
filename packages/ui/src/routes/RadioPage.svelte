@@ -27,6 +27,12 @@
 
     const interfaceName = $derived(stores.app.selectedInterface);
     const gateways = $derived(stores.radio.gateways(interfaceName));
+    /**
+     * #155: the tab is HmIP's as well now, and there `setBidcosInterface` does not exist - an HmIP
+     * device is bound to the one access point and has neither a receiver to choose nor roaming.
+     * The levels, the duty cycle and the unreach counters are the same on both.
+     */
+    const isBidcos = $derived(stores.interfaces.typeOf(interfaceName).startsWith('BidCos'));
 
     function openSetInterface(address: string, preset = ''): void {
         setInterfaceAddress = address;
@@ -88,7 +94,7 @@
         {key: 'name', label: t('Name'), width: 180, value: (device) => stores.nameOf(device.ADDRESS)},
         {key: 'ADDRESS', label: 'ADDRESS', width: 140, mono: true},
         {key: 'TYPE', label: 'TYPE', width: 150},
-        {key: 'INTERFACE', label: 'INTERFACE', width: 140, mono: true},
+        {key: 'INTERFACE', label: 'INTERFACE', width: 140, mono: true, hidden: !isBidcos},
         {
             key: 'RF_ADDRESS',
             label: 'RF_ADDRESS',
@@ -101,6 +107,7 @@
             label: 'ROAMING',
             width: 90,
             align: 'center',
+            hidden: !isBidcos,
             value: (device) => (isRoaming(device) ? '✔' : ''),
         },
         {
@@ -142,6 +149,7 @@
                 // HmIP; in 3.0 the Funk tab is BidCos-RF's alone, see `tabsForInterface`.)
                 key: `set:${gateway.ADDRESS}`,
                 label: '',
+                hidden: !isBidcos,
                 // The mark is 22 px wide and a cell has 6 px of padding on each side (#148: at
                 // 30 px the button overflowed its track and the browser drew an ellipsis next to
                 // it), the same arithmetic as `ICON_COLUMN_WIDTH`.
@@ -162,7 +170,9 @@
             label: gateway.ADDRESS,
             sublabel:
                 bidcosInterfaceLabel(gateway) === gateway.ADDRESS ? undefined : `(${bidcosInterfaceLabel(gateway)})`,
-            columns: [`rx:${gateway.ADDRESS}`, `tx:${gateway.ADDRESS}`, `set:${gateway.ADDRESS}`],
+            columns: isBidcos
+                ? [`rx:${gateway.ADDRESS}`, `tx:${gateway.ADDRESS}`, `set:${gateway.ADDRESS}`]
+                : [`rx:${gateway.ADDRESS}`, `tx:${gateway.ADDRESS}`],
         })),
     );
 
@@ -272,22 +282,24 @@
                     testId="radio-refresh"
                     onclick={() => void refresh()}
                 />
-                <ToolbarButton
-                    title="setBidcosInterface"
-                    icon="⇄"
-                    disabled={one === ''}
-                    reason={t('Select a device')}
-                    testId="radio-set-interface"
-                    onclick={() => openSetInterface(one)}
-                />
-                <ToolbarButton
-                    title={t('Assign the best receiver')}
-                    icon="⇶"
-                    disabled={gateways.length < 2}
-                    reason={t('Only one interface')}
-                    testId="radio-best-receivers"
-                    onclick={() => (bestReceiverOpen = true)}
-                />
+                {#if isBidcos}
+                    <ToolbarButton
+                        title="setBidcosInterface"
+                        icon="⇄"
+                        disabled={one === ''}
+                        reason={t('Select a device')}
+                        testId="radio-set-interface"
+                        onclick={() => openSetInterface(one)}
+                    />
+                    <ToolbarButton
+                        title={t('Assign the best receiver')}
+                        icon="⇶"
+                        disabled={gateways.length < 2}
+                        reason={t('Only one interface')}
+                        testId="radio-best-receivers"
+                        onclick={() => (bestReceiverOpen = true)}
+                    />
+                {/if}
                 <ToolbarButton
                     title={t('Reset the unreach counters')}
                     icon="⟲"

@@ -655,8 +655,26 @@ export const DEMO_RSSI: Readonly<Record<DemoInterfaceName, RssiInfo>> = {
         LEQ0456789: {'BidCoS-RF': [-112, 65_536]},
         GEQ0567890: {'BidCoS-RF': [-47, -45]},
     },
-    'HmIP-RF': {},
+    // #155: HmIP has no `rssiInfo`; these are the values of the maintenance channel, filed against
+    // the access point exactly as `RssiStore.applyHmipValue` does with the real events.
+    'HmIP-RF': {
+        '000A1B2C3D4E5F': {'3014F711A0000418971558': [-55, -61]},
+        '0001D3C99C1234': {'3014F711A0000418971558': [-73, 65_536]},
+    },
 };
+
+/** The HmIP access point, as `listBidcosInterfaces` answers on hmipserver (#155). */
+export const DEMO_HMIP_INTERFACES: BidcosInterfaceInfo[] = [
+    {
+        ADDRESS: '3014F711A0000418971558',
+        TYPE: 'HMIP_CCU2',
+        DESCRIPTION: 'HMIP_CCU2 3014F711A0000418971558',
+        CONNECTED: true,
+        DEFAULT: true,
+        DUTY_CYCLE: 1,
+        FIRMWARE_VERSION: '4.4.18',
+    },
+];
 
 export const DEMO_BIDCOS_INTERFACES: BidcosInterfaceInfo[] = [
     {

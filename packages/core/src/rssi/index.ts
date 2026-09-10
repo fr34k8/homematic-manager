@@ -36,12 +36,48 @@ export type RssiMatrix = Record<string, Record<string, RssiPair>>;
 /** How good a signal is, for the colour of the grid cell. */
 export type RssiClass = 'unknown' | 'bad' | 'medium' | 'good';
 
-/** One value from an `rssiInfo` answer: a number, unless it is the "unknown" placeholder. */
+/**
+ * One RSSI value as the CCU hands it out, as dBm - or `undefined` where it is not a measurement.
+ *
+ * Issue #154: a receive level in dBm is always negative, and yet `rssiInfo` and the `RSSI_*`
+ * datapoints produce positive numbers (`37`), numbers far below the noise floor (`-208`) and
+ * placeholders (`65536`, `128`). Three things are mixed in there:
+ *
+ * - **`65536`** is eQ-3's documented "no information" (the WebUI's `rssiinfo.tcl`: *"Der Wert 65536
+ *   bedeutet, dass keine Informationen vorliegen"*), and `-65536`, `±256`, `0` and `±1` are used
+ *   the same way by one component or another - `0`/`1` meaning nothing was received in that
+ *   direction since the last start.
+ * - **`128` / `-128`** (`0x80`) is the radio chip's "no RSSI available", not a level.
+ * - The rest is a **sign that was lost on the way**: ReGaHss creates the maintenance datapoints as
+ *   an unsigned byte (`ivtByte`) although the paramset says `INTEGER`, so values arrive with an
+ *   offset of 256 or with the sign dropped. `130…255` is `value - 256`, `-255…-130` is
+ *   `-value - 256` (which is what turns the maintainer's `-208` into a perfectly ordinary
+ *   -48 dBm), and a bare positive `2…126` is the same level without its minus.
+ *
+ * The mapping is the one Home Assistant's `aiohomematic` applies (`model/generic/sensor.py`,
+ * `_fix_rssi`); OpenCCU's WebUI does the `- 256` half in
+ * `0144-WebUI-ControlForMaintenanceChannel` and hm2mqtt.js does it for the ReGa cache. The
+ * inversion of a small positive value is the one step no eQ-3 source confirms - it is
+ * `aiohomematic`'s reading, and it is what makes a `37` in the grid the -37 dBm it plainly is.
+ */
 export function normaliseRssiValue(value: unknown): number | undefined {
-    if (typeof value !== 'number' || !Number.isFinite(value) || value === RSSI_UNKNOWN) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
         return undefined;
     }
-    return value;
+    if (value > -127 && value < 0) {
+        return value; // already a dBm value
+    }
+    if (value > 1 && value < 127) {
+        return -value; // the minus was lost
+    }
+    if (value > -256 && value < -129) {
+        return -value - 256; // -208 -> -48
+    }
+    if (value > 129 && value < 256) {
+        return value - 256; // 218 -> -38
+    }
+    // 0, ±1, ±128, ±129, ±256, ±65536 and anything outside: not a measurement
+    return undefined;
 }
 
 /** Turns an `rssiInfo` answer into the matrix, dropping the 65536 placeholders. */

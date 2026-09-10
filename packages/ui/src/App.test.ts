@@ -172,8 +172,9 @@ describe('App shell', () => {
         const {stores} = await mountApp(transport, '#/HmIP-RF/devices');
         expect(stores.app.selectedInterface).toBe('HmIP-RF');
         expect(screen.getByRole('columnheader', {name: 'SUBTYPE'})).toBeTruthy();
-        // HmIP has no RSSI matrix, so 2.x's "Funk" tab is not offered.
-        expect(screen.queryByRole('tab', {name: 'Funk'})).toBeNull();
+        // #155: HmIP has no `rssiInfo`, but it has the levels of the maintenance channel - the
+        // "Funk" tab is offered there as it was in 2.x.
+        expect(screen.getByRole('tab', {name: 'Funk'})).toBeTruthy();
     });
 
     it('appends live events to the events tab', async () => {
