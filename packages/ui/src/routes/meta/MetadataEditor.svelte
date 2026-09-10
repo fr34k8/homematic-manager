@@ -138,7 +138,7 @@
         {
             key: 'devices',
             label: t('Devices'),
-            width: 70,
+            width: 96,
             fixed: true,
             align: 'right',
             filterable: false,
@@ -148,7 +148,7 @@
         {
             key: 'channels',
             label: t('Channels'),
-            width: 70,
+            width: 96,
             fixed: true,
             align: 'right',
             filterable: false,
