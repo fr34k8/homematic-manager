@@ -19,6 +19,7 @@
     import ToolbarButton from '../lib/components/ToolbarButton.svelte';
     import type {DataTableColumn} from '../lib/components/tableModel.js';
     import {getStores} from '../lib/stores/context.js';
+    import {STORE_INTERFACE} from '../lib/stores/routing.js';
     import {firmwareCell, offersRepair, serviceMarks, serviceMessageExplanation} from '../lib/util/deviceGrid.js';
     import {
         channelVisible,
@@ -39,7 +40,6 @@
     import RenameDialog from './devices/RenameDialog.svelte';
     import RepairConfigDialog from './devices/RepairConfigDialog.svelte';
     import ReplaceDeviceDialog from './devices/ReplaceDeviceDialog.svelte';
-    import TaxonomyDialog from './devices/TaxonomyDialog.svelte';
 
     const stores = getStores();
     const t = stores.i18n.t;
@@ -72,11 +72,10 @@
     let paramsetAddress = $state('');
     let paramsetName = $state('MASTER');
 
-    /** Task 25: the assign dialog for the selection, and the tree dialog of rooms and functions. */
+    /** Task 25: the assign dialog for the selection. */
     let assignOpen = $state(false);
     let assignEnum = $state<TaxonomyId>('room');
     let assignRefs = $state<string[]>([]);
-    let taxonomyOpen = $state(false);
     /** The filter above the grid: a node path per taxonomy, `''` for everything. */
     let roomFilter = $state('');
     let functionFilter = $state('');
@@ -673,13 +672,17 @@
                     testId="devices-assign-function"
                     onclick={() => openAssign('function')}
                 />
+                <!--
+                    2026-09-10: the tree dialog of task 25 is gone - the store has its own pages
+                    behind its entry in the interface picker, and this button goes there.
+                -->
                 <ToolbarButton
                     title={t('Rooms and functions')}
                     icon="⊞"
                     disabled={!taxonomy.available}
                     reason={t('No store connected')}
                     testId="devices-taxonomy"
-                    onclick={() => (taxonomyOpen = true)}
+                    onclick={() => void stores.selectInterface(STORE_INTERFACE)}
                 />
                 <ToolbarButton
                     title="reportValueUsage 1"
@@ -875,7 +878,6 @@
 <TeamDialog bind:open={teamOpen} address={actionAddress} />
 <RepairConfigDialog bind:open={repairOpen} address={actionAddress} />
 <AssignDialog bind:open={assignOpen} enumId={assignEnum} refs={assignRefs} />
-<TaxonomyDialog bind:open={taxonomyOpen} />
 <ParamsetDialog bind:open={paramsetOpen} {interfaceName} address={paramsetAddress} paramset={paramsetName} />
 
 <style>

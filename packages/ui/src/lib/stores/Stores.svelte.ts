@@ -21,7 +21,7 @@ import {RadioStore} from './RadioStore.svelte.js';
 import {ServiceMessagesStore} from './ServiceMessagesStore.svelte.js';
 import {TaxonomyStore} from './TaxonomyStore.svelte.js';
 import {UnreachStore} from './UnreachStore.svelte.js';
-import {tabsForInterface, type TabId} from './routing.js';
+import {isStoreTabId, storeTabs, tabsForInterface, type TabId} from './routing.js';
 import {WriteLogStore} from './WriteLogStore.svelte.js';
 
 export interface StoresOptions extends AppStoreOptions {
@@ -95,8 +95,14 @@ export class Stores {
         });
     }
 
-    /** The tabs the selected interface offers, in the 2.7 order. */
+    /**
+     * The tabs the selected interface offers, in the 2.7 order - or, when the metadata store is the
+     * selection, the store's own tabs (rooms and functions on ReGaHSS, the tree on occulited).
+     */
     get tabs(): TabId[] {
+        if (this.app.storeSelected) {
+            return storeTabs(this.taxonomy.state);
+        }
         return tabsForInterface(this.interfaces.typeOf(this.app.selectedInterface));
     }
 
@@ -116,15 +122,34 @@ export class Stores {
         // The host is optional and must never hold up the CCU work, so its failure is swallowed.
         void this.host.load().catch(() => undefined);
         await Promise.all([this.interfaces.load(), this.names.load(), this.writeLog.load(), this.taxonomy.load()]);
-        await this.selectInterface(this.app.selectedInterface);
+        // A bookmark of the store's pages (`#/%23store/rooms`) on a host that has no store, or
+        // whose store does not answer: the first interface, as an unknown name in the hash gets.
+        const selected =
+            this.app.storeSelected && storeTabs(this.taxonomy.state).length === 0
+                ? (this.app.configuredInterfaces[0] ?? '')
+                : this.app.selectedInterface;
+        await this.selectInterface(selected);
     }
 
     /**
      * Switches the interface and loads what the tabs need. A tab the new interface does not offer
      * falls back to Devices, exactly as `initDaemon` did for BidCos-Wired.
+     *
+     * The metadata store is a selection too (`STORE_INTERFACE`): it loads nothing of the interface
+     * stores, opens on its first tab, and hands the interface its tab back on the way out.
      */
     async selectInterface(interfaceName: string): Promise<void> {
+        const wasStore = this.app.storeSelected;
         this.app.setInterface(interfaceName);
+        if (this.app.storeSelected) {
+            if (!isStoreTabId(this.app.tab) || !this.tabs.includes(this.app.tab)) {
+                this.app.setTab(this.tabs[0] ?? 'metadata');
+            }
+            return;
+        }
+        if (wasStore || isStoreTabId(this.app.tab)) {
+            this.app.setTab(this.app.interfaceTab);
+        }
         if (!this.tabs.includes(this.app.tab)) {
             this.app.setTab('devices');
         }
@@ -142,7 +167,7 @@ export class Stores {
     /** Reloads everything of the selected interface, ignoring the backend's caches. */
     async refresh(): Promise<void> {
         const interfaceName = this.app.selectedInterface;
-        if (interfaceName === '') {
+        if (interfaceName === '' || this.app.storeSelected) {
             return;
         }
         await Promise.all([

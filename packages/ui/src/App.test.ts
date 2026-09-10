@@ -91,6 +91,8 @@ describe('App shell', () => {
         expect(screen.getByTestId('interface-backend').textContent).toBe('Verbunden');
         const options = [...screen.getByTestId('interface-select').querySelectorAll('[role="option"]')];
         expect(options.map((option) => option.getAttribute('data-testid'))).toEqual([
+            // 2026-09-10: the metadata store is the first entry, above the interfaces
+            'meta-indicator',
             'interface-item-BidCos-RF',
             'interface-item-HmIP-RF',
             'interface-item-BidCos-Wired',

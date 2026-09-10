@@ -1,5 +1,7 @@
 import type {InterfaceState} from '@homematic-manager/core';
 
+import type {MetaMark} from './metaIndicator.js';
+
 /**
  * What the interface popup and the header's summary mark are made of (task 21).
  *
@@ -53,6 +55,24 @@ export function summaryMark(states: readonly InterfaceState[]): InterfaceMark {
         return 'busy';
     }
     return marks.includes('ok') ? 'ok' : 'absent';
+}
+
+/**
+ * The metadata store as an entry of the picker (the maintainer, 2026-09-10): one row under the
+ * host and above the interfaces, half their height, with the store's dot and name. Selected like
+ * an interface and reported through `onselect` under its `id`, which the app reserves so that it
+ * cannot be the name of an interface process.
+ */
+export interface StoreEntry {
+    readonly id: string;
+    /** `ReGaHSS`, `occulited`, "This profile". */
+    readonly label: string;
+    readonly mark: MetaMark;
+    /** The tooltip: state, revision, implementation, error - and so the reason when it cannot be selected. */
+    readonly title: string;
+    /** False while the store does not answer: the row is shown and greyed, never chosen. */
+    readonly selectable: boolean;
+    readonly provider?: string | undefined;
 }
 
 /** What the UI knows about an interface beyond its state; both halves are often unknown. */

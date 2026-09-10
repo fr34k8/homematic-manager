@@ -1,5 +1,5 @@
 import type {MetaEnum, MetaObjectView, MetaState, Transport} from '@homematic-manager/core';
-import {flattenAll, makeRef, type FlatNode} from '@homematic-manager/core';
+import {enumTitle, flattenAll, makeRef, type FlatNode} from '@homematic-manager/core';
 
 import {deviceMatches, membersOf, nodeOptions, objectMatches, type NodeOption} from '../util/taxonomy.js';
 
@@ -70,6 +70,11 @@ export class TaxonomyStore {
 
     view(ref: string): MetaObjectView | undefined {
         return this.objects[ref];
+    }
+
+    /** The display name of a taxonomy in a language, English and then the id behind it. */
+    titleOf(enumId: string, language: string): string {
+        return enumTitle(enumId, this.enums[enumId], language);
     }
 
     /** The nodes of one enum for a select or a list, depth first. */
@@ -145,6 +150,42 @@ export class TaxonomyStore {
             return true;
         } catch (error) {
             this.#notices.fromError(error, 'meta.assign');
+            return false;
+        }
+    }
+
+    /**
+     * A new taxonomy beside `room`, `function` and `floor` - the Metadata page of a tree store
+     * (ReGaHSS refuses it: its two lists are all there is, task 27).
+     */
+    async createEnum(id: string, name: Record<string, string>): Promise<boolean> {
+        try {
+            await this.#transport.request('meta.enum.create', id, name);
+            return true;
+        } catch (error) {
+            this.#notices.fromError(error, 'meta.enum.create');
+            return false;
+        }
+    }
+
+    /** The display names of a taxonomy; the whole record, as the contract wants it. */
+    async renameEnum(id: string, name: Record<string, string>): Promise<boolean> {
+        try {
+            await this.#transport.request('meta.enum.update', id, name);
+            return true;
+        } catch (error) {
+            this.#notices.fromError(error, 'meta.enum.update');
+            return false;
+        }
+    }
+
+    /** The taxonomy with every node in it; refused while anything is a member unless `detach`. */
+    async deleteEnum(id: string, detach: boolean): Promise<boolean> {
+        try {
+            await this.#transport.request('meta.enum.delete', id, detach);
+            return true;
+        } catch (error) {
+            this.#notices.fromError(error, 'meta.enum.delete');
             return false;
         }
     }

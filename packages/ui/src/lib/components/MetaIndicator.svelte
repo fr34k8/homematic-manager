@@ -1,6 +1,8 @@
 <script lang="ts">
     import type {MetaState} from '@homematic-manager/core';
 
+    import {metaMark, metaTitle} from './metaIndicator.js';
+
     interface Props {
         /** `undefined` before a store answered at all; the indicator is then not drawn. */
         state: MetaState | undefined;
@@ -13,12 +15,6 @@
         /** `revision {revision}, {count} objects` */
         detailText?: (state: MetaState) => string;
         onclick?: (() => void) | undefined;
-        /**
-         * The line inside the interface popup: one row under the host, half the height of an
-         * interface item, and not a control - the maintainer, 2026-09-10, asked for the store to be
-         * said where the connection is said, "nicht klickbar, nur als information".
-         */
-        compact?: boolean;
         testId?: string | undefined;
     }
 
@@ -31,64 +27,46 @@
         writableText = 'Writable',
         detailText = (entry: MetaState) => `${String(entry.revision)}, ${String(entry.objects)}`,
         onclick = undefined,
-        compact = false,
         testId = undefined,
     }: Props = $props();
 
-    type Mark = 'ok' | 'readonly' | 'bad';
-
-    const mark = $derived<Mark>(state === undefined || !state.reachable ? 'bad' : state.writable ? 'ok' : 'readonly');
+    const mark = $derived(metaMark(state));
     const label = $derived(state === undefined ? '' : providerLabel(state.provider));
-    const title = $derived.by(() => {
-        if (state === undefined) {
-            return '';
-        }
-        const parts = [
+    const title = $derived(
+        metaTitle(state, {
             label,
-            state.reachable ? reachableText : unreachableText,
-            state.reachable ? (state.writable ? writableText : readOnlyText) : undefined,
-            detailText(state),
-            state.implementation,
-            state.error,
-        ];
-        return parts.filter((part): part is string => part !== undefined && part !== '').join(' · ');
-    });
+            reachable: reachableText,
+            unreachable: unreachableText,
+            readOnly: readOnlyText,
+            writable: writableText,
+            detail: detailText,
+        }),
+    );
 </script>
 
 <!--
-    D-40, task 25: where the names, rooms and functions come from, beside the interface mark - so a
-    user sees where the name in the grid came from before they wonder why renaming it did not
-    change anything in the other application. One short word and one coloured dot: green when the
-    store takes writes, amber when it only answers reads, red when it does not answer at all.
+    D-40, task 25: where the names, rooms and functions come from - so a user sees where the name in
+    the grid came from before they wonder why renaming it did not change anything in the other
+    application. One short word and one coloured dot: green when the store takes writes, amber when
+    it only answers reads, red when it does not answer at all.
+
+    Since 2026-09-10 the app's own header does not draw this control any more: the store is an
+    entry of the interface picker, which draws the same dot and title through `metaIndicator.ts`.
 -->
 {#if state !== undefined}
-    {#if compact}
-        <div
-            class="hmm-meta hmm-meta-compact hmm-meta-{mark}"
-            {title}
-            aria-label={title}
-            data-mark={mark}
-            data-provider={state.provider}
-            data-testid={testId}
-        >
-            <span class="hmm-meta-dot" aria-hidden="true"></span>
-            <span class="hmm-meta-label">{label}</span>
-        </div>
-    {:else}
-        <button
-            type="button"
-            class="hmm-meta hmm-meta-{mark}"
-            {title}
-            aria-label={title}
-            data-mark={mark}
-            data-provider={state.provider}
-            data-testid={testId}
-            onclick={() => onclick?.()}
-        >
-            <span class="hmm-meta-dot" aria-hidden="true"></span>
-            <span class="hmm-meta-label">{label}</span>
-        </button>
-    {/if}
+    <button
+        type="button"
+        class="hmm-meta hmm-meta-{mark}"
+        {title}
+        aria-label={title}
+        data-mark={mark}
+        data-provider={state.provider}
+        data-testid={testId}
+        onclick={() => onclick?.()}
+    >
+        <span class="hmm-meta-dot" aria-hidden="true"></span>
+        <span class="hmm-meta-label">{label}</span>
+    </button>
 {/if}
 
 <style>
@@ -112,26 +90,6 @@
     .hmm-meta:hover {
         background: var(--hmm-control-bg-hover);
         color: var(--hmm-fg);
-    }
-
-    /*
-        Inside the interface popup: the full width of the menu, half the height of an interface item
-        (which is two lines), and no hover of its own - it says where the names come from, it is not
-        a place to click.
-    */
-    .hmm-meta-compact {
-        display: flex;
-        width: 100%;
-        height: 19px;
-        padding: 0 10px;
-        border-radius: 0;
-        border-bottom: 1px solid var(--hmm-border-muted);
-        cursor: default;
-    }
-
-    .hmm-meta-compact:hover {
-        background: none;
-        color: var(--hmm-fg-muted);
     }
 
     .hmm-meta-dot {

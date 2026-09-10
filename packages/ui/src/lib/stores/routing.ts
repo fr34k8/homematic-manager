@@ -7,12 +7,54 @@
  * parsing is now a pure function with tests instead of three copies inline.
  */
 
+import type {MetaState} from '@homematic-manager/core';
+
 /** The six tabs of 2.7, in the order the tab bar shows them. */
 export const TAB_IDS = ['devices', 'links', 'rssi', 'console', 'messages', 'events'] as const;
 
-export type TabId = (typeof TAB_IDS)[number];
+export type InterfaceTabId = (typeof TAB_IDS)[number];
 
-export const DEFAULT_TAB: TabId = 'devices';
+/**
+ * The tabs of the metadata store when it is the selection (the maintainer, 2026-09-10: "mach
+ * ReGaHSS doch zu einem eigenen interface"). ReGaHSS keeps rooms and functions as two flat lists
+ * and gets a tab for each; occulited keeps a tree of taxonomies and gets one tab for the tree.
+ */
+export const STORE_TAB_IDS = ['rooms', 'functions', 'metadata'] as const;
+
+export type StoreTabId = (typeof STORE_TAB_IDS)[number];
+
+export type TabId = InterfaceTabId | StoreTabId;
+
+export const DEFAULT_TAB: InterfaceTabId = 'devices';
+
+/**
+ * The name under which the metadata store sits in the interface picker and in the hash
+ * (`#/%23store/rooms`). A `#` cannot start the name of an interface process - the CCU's are
+ * `BidCos-RF`, `HmIP-RF`, `VirtualDevices` and the like, and a user-defined one is typed into a
+ * form that a hash would only confuse - so the name cannot collide with a real one.
+ */
+export const STORE_INTERFACE = '#store';
+
+export function isStoreInterface(interfaceName: string): boolean {
+    return interfaceName === STORE_INTERFACE;
+}
+
+export function isStoreTabId(value: string): value is StoreTabId {
+    return (STORE_TAB_IDS as readonly string[]).includes(value);
+}
+
+/**
+ * Which tabs the store offers, from its state: none without a store or while it does not answer,
+ * "Rooms" and "Functions" for a provider whose taxonomies are flat lists (ReGaHSS, task 27), and
+ * one "Metadata" tree for every store that nests (occulited, and this profile's own store, which
+ * is the same document model).
+ */
+export function storeTabs(state: MetaState | undefined): StoreTabId[] {
+    if (state === undefined || !state.reachable) {
+        return [];
+    }
+    return state.flat === true ? ['rooms', 'functions'] : ['metadata'];
+}
 
 export interface Route {
     /** Empty when the hash names no interface. */
@@ -21,7 +63,7 @@ export interface Route {
 }
 
 export function isTabId(value: string): value is TabId {
-    return (TAB_IDS as readonly string[]).includes(value);
+    return (TAB_IDS as readonly string[]).includes(value) || isStoreTabId(value);
 }
 
 /** `#/BidCos-RF/links` -> `{interfaceName: 'BidCos-RF', tab: 'links'}`. */
@@ -46,7 +88,7 @@ export function formatHash(interfaceName: string, tab: TabId): string {
  * HmIP got everything, which is why the class list on the `#links` tab reads BidCos-only but
  * `initDaemon` showed all of them again for HmIP.
  */
-export function tabsForInterface(interfaceType: string): TabId[] {
+export function tabsForInterface(interfaceType: string): InterfaceTabId[] {
     switch (interfaceType) {
         case 'BidCos-Wired':
             return ['devices', 'links', 'console', 'events'];

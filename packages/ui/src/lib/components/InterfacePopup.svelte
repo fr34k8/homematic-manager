@@ -1,9 +1,15 @@
 <script lang="ts">
     import type {InterfaceState} from '@homematic-manager/core';
-    import type {Snippet} from 'svelte';
 
     import ConnectionIndicator from './ConnectionIndicator.svelte';
-    import {detailParts, MARK_GLYPH, markOf, type InterfaceDetails, type InterfaceMark} from './interfacePopup.js';
+    import {
+        detailParts,
+        MARK_GLYPH,
+        markOf,
+        type InterfaceDetails,
+        type InterfaceMark,
+        type StoreEntry,
+    } from './interfacePopup.js';
 
     interface Props {
         /** Every configured interface, in configuration order - the backend answers in that order. */
@@ -29,12 +35,12 @@
         dutyCycleLabel?: (value: number) => string;
         onselect?: ((interfaceName: string) => void) | undefined;
         /**
-         * One line under the host, above the interfaces: what the caller wants said about this
-         * connection but not managed here - today the metadata store the names come from
-         * (the maintainer, 2026-09-10). It is rendered as it comes, and nothing in the popup's
-         * keyboard handling touches it.
+         * The metadata store as an entry of its own, under the host and above the interfaces
+         * (the maintainer, 2026-09-10: "mach ReGaHSS doch zu einem eigenen interface"). Absent
+         * where there is no store at all; selected, moved to and reported like an interface.
          */
-        info?: Snippet | undefined;
+        store?: StoreEntry | undefined;
+        storeTestId?: string | undefined;
         testId?: string | undefined;
     }
 
@@ -57,7 +63,8 @@
         devicesLabel = (count: number) => `${String(count)} devices`,
         dutyCycleLabel = (value: number) => `Duty cycle ${String(value)} %`,
         onselect = undefined,
-        info = undefined,
+        store = undefined,
+        storeTestId = undefined,
         testId = undefined,
     }: Props = $props();
 
@@ -68,7 +75,18 @@
     /** The option buttons, by index; `bind:this` fills and clears them. */
     let items = $state<Array<HTMLButtonElement | undefined>>([]);
 
-    const selectedIndex = $derived(interfaces.findIndex((state) => state.name === selected));
+    /**
+     * What the arrow keys move over, in the order the rows are drawn: the store first when it can
+     * be chosen at all, then every interface. A store that does not answer is drawn but skipped.
+     */
+    const optionIds = $derived([
+        ...(store !== undefined && store.selectable ? [store.id] : []),
+        ...interfaces.map((state) => state.name),
+    ]);
+    const selectedIndex = $derived(optionIds.indexOf(selected));
+    /** The trigger says the store's name, not the reserved id it is selected under. */
+    const selectedLabel = $derived(store !== undefined && store.id === selected ? store.label : selected);
+    const storeIndex = $derived(store !== undefined && store.selectable ? 0 : -1);
 
     /** The words beside the glyph; every state says what it is, not only the broken ones. */
     function markText(mark: InterfaceMark): string {
@@ -118,10 +136,10 @@
     }
 
     function move(delta: number): void {
-        if (interfaces.length === 0) {
+        if (optionIds.length === 0) {
             return;
         }
-        activeIndex = (activeIndex + delta + interfaces.length) % interfaces.length;
+        activeIndex = (activeIndex + delta + optionIds.length) % optionIds.length;
     }
 
     /**
@@ -171,7 +189,7 @@
             }
             case 'End': {
                 event.preventDefault();
-                activeIndex = interfaces.length - 1;
+                activeIndex = optionIds.length - 1;
                 break;
             }
             case 'Enter':
@@ -179,7 +197,7 @@
                 // `preventDefault` first: without it the browser turns the key into a click on the
                 // button and the item would be chosen twice.
                 event.preventDefault();
-                choose(interfaces[index]?.name ?? '');
+                choose(optionIds[index] ?? '');
                 break;
             }
             case 'Escape': {
@@ -241,7 +259,7 @@
             {subscribingText}
             testId={testId === undefined ? undefined : `${testId}-summary`}
         />
-        <span class="hmm-interface-trigger-name">{selected}</span>
+        <span class="hmm-interface-trigger-name">{selectedLabel}</span>
         <span class="hmm-interface-arrow" aria-hidden="true">▾</span>
     </button>
 
@@ -259,11 +277,53 @@
                 >
             </div>
 
-            {@render info?.()}
-
             <div class="hmm-interface-list" role="listbox" aria-label={listLabel}>
-                {#each interfaces as state, index (state.name)}
+                {#if store !== undefined}
+                    <!--
+                        The store the names, rooms and functions come from: its own row, half the
+                        height of an interface item and with a rule under it - it is not an
+                        interface process, but it is selected like one and has tabs of its own.
+                        One that does not answer stays visible, greyed, with the reason in its
+                        title; it is out of the keyboard's way because it is no button.
+                    -->
+                    {#if store.selectable}
+                        <button
+                            type="button"
+                            role="option"
+                            class="hmm-interface-store hmm-meta-{store.mark}"
+                            class:hmm-interface-item-current={store.id === selected}
+                            aria-selected={store.id === selected}
+                            tabindex={storeIndex === activeIndex ? 0 : -1}
+                            bind:this={items[storeIndex]}
+                            title={store.title}
+                            data-mark={store.mark}
+                            data-provider={store.provider}
+                            data-testid={storeTestId}
+                            onclick={() => choose(store.id)}
+                            onkeydown={(event) => onItemKeyDown(event, storeIndex)}
+                        >
+                            <span class="hmm-interface-store-dot" aria-hidden="true"></span>
+                            <span class="hmm-interface-store-label">{store.label}</span>
+                        </button>
+                    {:else}
+                        <div
+                            role="option"
+                            class="hmm-interface-store hmm-interface-store-off hmm-meta-{store.mark}"
+                            aria-selected="false"
+                            aria-disabled="true"
+                            title={store.title}
+                            data-mark={store.mark}
+                            data-provider={store.provider}
+                            data-testid={storeTestId}
+                        >
+                            <span class="hmm-interface-store-dot" aria-hidden="true"></span>
+                            <span class="hmm-interface-store-label">{store.label}</span>
+                        </div>
+                    {/if}
+                {/if}
+                {#each interfaces as state, offset (state.name)}
                     {@const mark = markOf(state)}
+                    {@const index = storeIndex + 1 + offset}
                     <button
                         type="button"
                         role="option"
@@ -412,6 +472,67 @@
         background: var(--hmm-accent-bg);
         color: var(--hmm-fg);
         box-shadow: inset 2px 0 0 var(--hmm-accent);
+    }
+
+    /*
+        The store's row: one line where an interface item has two, the full width of the list with
+        a rule under it, and the same current-marking as the items - it is a selection like them,
+        only a different kind of thing.
+    */
+    .hmm-interface-store {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 22px;
+        margin: 0 0 3px;
+        padding: 0 8px;
+        border: none;
+        border-bottom: 1px solid var(--hmm-border-muted);
+        border-radius: var(--hmm-radius) var(--hmm-radius) 0 0;
+        background: none;
+        color: var(--hmm-fg-muted);
+        font: inherit;
+        font-size: var(--hmm-font-size-small);
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .hmm-interface-store:hover:not(.hmm-interface-item-current):not(.hmm-interface-store-off) {
+        background: var(--hmm-control-bg-hover);
+        color: var(--hmm-fg);
+    }
+
+    .hmm-interface-store-off {
+        cursor: default;
+        opacity: 0.6;
+    }
+
+    .hmm-interface-store-label {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .hmm-interface-store-dot {
+        flex: 0 0 auto;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--hmm-fg-muted);
+    }
+
+    .hmm-meta-ok .hmm-interface-store-dot {
+        background: var(--hmm-ok);
+    }
+
+    .hmm-meta-readonly .hmm-interface-store-dot {
+        background: var(--hmm-warn);
+    }
+
+    .hmm-meta-bad .hmm-interface-store-dot {
+        background: var(--hmm-error);
     }
 
     .hmm-interface-item-head {

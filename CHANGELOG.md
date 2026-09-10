@@ -6,6 +6,36 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [Unreleased]
+
+### Changed
+
+- **The metadata store is an entry of the interface picker with pages of its own** (the maintainer,
+  2026-09-10: "mach ReGaHSS doch zu einem eigenen interface"). The store line under the host in the
+  picker — `ReGaHSS`, `occulited`, "This profile" — is selectable now, like an interface: half the
+  height of an interface item, with its dot and its state in the tooltip, reached by the arrow keys
+  above the first interface, and marked as current when it is the selection. A store that does not
+  answer is still shown, greyed, with the reason in its title. Selecting it loads nothing of the
+  interfaces and shows the store's tabs instead of the device tabs; going back to an interface
+  gives it the tab it had. The hash is `#/%23store/<tab>` and works as a bookmark.
+- **ReGaHSS has two tabs, "Rooms" and "Functions"**: one row per room or function in the grid the
+  device tab uses — name, devices, channels, the path in the address font — with add, rename,
+  delete and refresh on the toolbar. Enter or a double click on a row renames it; a deletion
+  asks first and lists what is still assigned there, then removes node and assignments in one
+  revision. Refresh reads ReGaHSS again — it has no change stream, so a room made in the WebUI
+  arrives here on request.
+- **occulited has one tab, "Metadata"**: the whole tree. Every taxonomy is a row, its nodes sit
+  under it to any depth with the depth drawn as indentation, and both levels are edited: a new
+  taxonomy from a name, rename and delete of a taxonomy with everything in it, add, add below,
+  rename, move (a dialog that picks the new parent) and delete of a node. The profile's own store
+  is the same document model and gets the same tab. The editor is self-contained (`MetadataEditor`
+  takes the trees, the objects, a translator and callbacks; the row building, indentation and
+  move targets are plain functions in `lib/util/metaTree.ts`) so that occulited's own web UI can
+  carry it over.
+- **The "Rooms and functions" dialog of the device grid is gone**; its toolbar button opens the
+  store's pages instead. The rooms and functions columns, the filters and "assign to room /
+  function" of the device grid are unchanged.
+
 ## [3.0.0-beta.11] — 2026-09-10
 
 Two reports from Baxxy13 against beta.10 and one change the maintainer asked for. Fixes only,

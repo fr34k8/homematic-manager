@@ -603,6 +603,30 @@ export const UI_MESSAGES: MessageCatalogue = {
         de: 'Räume sind auf diesem System eine flache Liste: keine Etagen, kein Raum unter einem anderen.',
         en: 'Rooms are a flat list on this system: no floors, no room below another.',
     },
+    // 2026-09-10: the store is an entry of the interface picker with pages of its own - two
+    // lists on ReGaHSS, the tree of taxonomies on occulited.
+    Metadata: {de: 'Metadaten', en: 'Metadata'},
+    Taxonomy: {de: 'Taxonomie', en: 'Taxonomy'},
+    'New taxonomy': {de: 'Neue Taxonomie', en: 'New taxonomy'},
+    'No taxonomies yet': {de: 'Noch keine Taxonomien', en: 'No taxonomies yet'},
+    '{count} taxonomies': {
+        de: {one: '{count} Taxonomie', other: '{count} Taxonomien'},
+        en: {one: '{count} taxonomy', other: '{count} taxonomies'},
+    },
+    '{count} rooms': {
+        de: {one: '{count} Raum', other: '{count} Räume'},
+        en: {one: '{count} room', other: '{count} rooms'},
+    },
+    '{count} functions': {
+        de: {one: '{count} Gewerk', other: '{count} Gewerke'},
+        en: {one: '{count} function', other: '{count} functions'},
+    },
+    'Select a row': {de: 'Eine Zeile auswählen', en: 'Select a row'},
+    'Select a node': {de: 'Einen Knoten auswählen', en: 'Select a node'},
+    'Select a taxonomy or a node': {
+        de: 'Eine Taxonomie oder einen Knoten auswählen',
+        en: 'Select a taxonomy or a node',
+    },
     'Names and rooms': {de: 'Namen und Räume', en: 'Names and rooms'},
     'Where names, rooms and functions are kept': {
         de: 'Wo Namen, Räume und Gewerke gespeichert sind',

@@ -295,6 +295,96 @@ describe('InterfacePopup', () => {
         expect(screen.getByTestId('interface-select-trigger').getAttribute('aria-expanded')).toBe('true');
     });
 
+    /** 2026-09-10: the metadata store is an entry of its own, above the interfaces. */
+    describe('the store entry', () => {
+        const store = {
+            id: '#store',
+            label: 'ReGaHSS',
+            mark: 'ok' as const,
+            title: 'ReGaHSS · Erreichbar · Schreibbar',
+            selectable: true,
+            provider: 'rega',
+        };
+
+        it('is not there without a store', async () => {
+            mount();
+            await openPopup();
+            expect(screen.queryByTestId('meta-store')).toBeNull();
+            expect(screen.getAllByRole('option')).toHaveLength(5);
+        });
+
+        it('is the first option, half an item high, with the dot and the title', async () => {
+            mount({store, storeTestId: 'meta-store'});
+            await openPopup();
+            const options = screen.getAllByRole('option');
+            expect(options).toHaveLength(6);
+            expect(options[0]?.getAttribute('data-testid')).toBe('meta-store');
+            const entry = screen.getByTestId('meta-store');
+            expect(entry.tagName).toBe('BUTTON');
+            expect(entry.textContent.trim()).toBe('ReGaHSS');
+            expect(entry.title).toBe('ReGaHSS · Erreichbar · Schreibbar');
+            expect(entry.dataset['mark']).toBe('ok');
+            expect(entry.dataset['provider']).toBe('rega');
+            expect(entry.getAttribute('aria-selected')).toBe('false');
+            if (document.body.getBoundingClientRect().width > 0) {
+                const item = screen.getByTestId('interface-item-BidCos-RF').getBoundingClientRect();
+                expect(entry.getBoundingClientRect().height).toBeLessThan(item.height * 0.75);
+            }
+        });
+
+        it('is chosen with the mouse and reported under its id; the trigger then says its name', async () => {
+            const {onselect} = mount({store, storeTestId: 'meta-store'});
+            await openPopup();
+            await fireEvent.click(screen.getByTestId('meta-store'));
+            expect(onselect).toHaveBeenCalledExactlyOnceWith('#store');
+            expect(screen.queryByRole('listbox')).toBeNull();
+        });
+
+        it('is marked as current when it is the selection', async () => {
+            mount({store, storeTestId: 'meta-store', selected: '#store'});
+            expect(trigger().textContent).toContain('ReGaHSS');
+            expect(trigger().textContent).not.toContain('#store');
+            await openPopup();
+            const entry = screen.getByTestId('meta-store');
+            expect(entry.getAttribute('aria-selected')).toBe('true');
+            expect(entry.classList.contains('hmm-interface-item-current')).toBe(true);
+            expect(screen.getByTestId('interface-item-BidCos-RF').getAttribute('aria-selected')).toBe('false');
+        });
+
+        it('is reached by the arrow keys above the first interface, and wraps to it from the end', async () => {
+            const {onselect} = mount({store, storeTestId: 'meta-store'});
+            await fireEvent.keyDown(trigger(), {key: 'ArrowDown'});
+            expect(document.activeElement).toBe(screen.getByTestId('interface-item-BidCos-RF'));
+            await fireEvent.keyDown(document.activeElement!, {key: 'ArrowUp'});
+            expect(document.activeElement).toBe(screen.getByTestId('meta-store'));
+            await fireEvent.keyDown(document.activeElement!, {key: 'ArrowUp'});
+            expect(document.activeElement).toBe(screen.getByTestId('interface-item-VirtualDevices'));
+            await fireEvent.keyDown(document.activeElement!, {key: 'Home'});
+            expect(document.activeElement).toBe(screen.getByTestId('meta-store'));
+            await fireEvent.keyDown(document.activeElement!, {key: 'Enter'});
+            expect(onselect).toHaveBeenCalledExactlyOnceWith('#store');
+            expect(document.activeElement).toBe(trigger());
+        });
+
+        it('is shown but not selectable while the store does not answer, with the reason in its title', async () => {
+            const {onselect} = mount({
+                store: {...store, mark: 'bad', selectable: false, title: 'ReGaHSS · Nicht erreichbar · box off'},
+                storeTestId: 'meta-store',
+            });
+            await openPopup();
+            const entry = screen.getByTestId('meta-store');
+            expect(entry.tagName).toBe('DIV');
+            expect(entry.getAttribute('aria-disabled')).toBe('true');
+            expect(entry.title).toContain('box off');
+            await fireEvent.click(entry);
+            expect(onselect).not.toHaveBeenCalled();
+            expect(screen.queryByRole('listbox')).not.toBeNull();
+            // and the keyboard skips it
+            await fireEvent.keyDown(screen.getByTestId('interface-item-BidCos-RF'), {key: 'ArrowUp'});
+            expect(document.activeElement).toBe(screen.getByTestId('interface-item-VirtualDevices'));
+        });
+    });
+
     describe.skipIf(document.body.getBoundingClientRect().width === 0)('its geometry', () => {
         it('opens below the trigger and inside the window', async () => {
             mount();

@@ -9,7 +9,15 @@ import type {
 
 import {resolveLanguage} from '../i18n/i18n.svelte.js';
 import type {NoticesStore} from './NoticesStore.svelte.js';
-import {DEFAULT_TAB, formatHash, parseHash, type TabId} from './routing.js';
+import {
+    DEFAULT_TAB,
+    formatHash,
+    isStoreInterface,
+    isStoreTabId,
+    parseHash,
+    type InterfaceTabId,
+    type TabId,
+} from './routing.js';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
@@ -84,6 +92,12 @@ export class AppStore {
     saveError = $state('');
     selectedInterface = $state('');
     tab = $state<TabId>(DEFAULT_TAB);
+    /**
+     * The tab of the last real interface, kept while the metadata store is the selection: whoever
+     * went from the Links tab to the rooms and back wants the Links tab back, not Devices
+     * (the maintainer's request of 2026-09-10 makes the store an entry of the interface picker).
+     */
+    interfaceTab = $state<InterfaceTabId>(DEFAULT_TAB);
     /**
      * Issue #25: what the Links tab should filter on when it is opened from somewhere else. Set by
      * the Devices tab's "show links", consumed and cleared by the Links tab on the next render, so
@@ -161,7 +175,13 @@ export class AppStore {
         if (route.interfaceName !== '') {
             this.selectedInterface = route.interfaceName;
         }
-        this.tab = route.tab;
+        // `#/BidCos-RF/rooms` names a tab of the store on an interface: the interface's default
+        if (isStoreTabId(route.tab)) {
+            this.tab = this.storeSelected ? route.tab : DEFAULT_TAB;
+        } else {
+            this.tab = route.tab;
+            this.interfaceTab = route.tab;
+        }
     }
 
     /** Writes interface and tab back into the hash, in the 2.x format. */
@@ -174,7 +194,15 @@ export class AppStore {
 
     setTab(tab: TabId): void {
         this.tab = tab;
+        if (!isStoreTabId(tab)) {
+            this.interfaceTab = tab;
+        }
         this.writeRoute();
+    }
+
+    /** The metadata store is the selection, not an interface process. */
+    get storeSelected(): boolean {
+        return isStoreInterface(this.selectedInterface);
     }
 
     setInterface(interfaceName: string): void {
@@ -299,7 +327,12 @@ export class AppStore {
             this.languageChoice = config.connection.language ?? 'auto';
             this.#applyLanguage();
         }
-        if (this.selectedInterface === '' || !config.connection.interfaces.includes(this.selectedInterface)) {
+        // The store is a selection the configuration does not list; `Stores.start` sends it back
+        // to the first interface when there turns out to be no store behind the hash.
+        if (
+            !this.storeSelected &&
+            (this.selectedInterface === '' || !config.connection.interfaces.includes(this.selectedInterface))
+        ) {
             this.selectedInterface = config.connection.interfaces[0] ?? '';
         }
         this.writeRoute();

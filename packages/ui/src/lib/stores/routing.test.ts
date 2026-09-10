@@ -1,6 +1,18 @@
 import {describe, expect, it} from 'vitest';
 
-import {DEFAULT_TAB, formatHash, isTabId, parseHash, TAB_IDS, tabsForInterface} from './routing.js';
+import {
+    DEFAULT_TAB,
+    formatHash,
+    isStoreInterface,
+    isStoreTabId,
+    isTabId,
+    parseHash,
+    STORE_INTERFACE,
+    STORE_TAB_IDS,
+    storeTabs,
+    TAB_IDS,
+    tabsForInterface,
+} from './routing.js';
 
 describe('the 2.x hash route', () => {
     it('keeps the six tabs in the 2.7 order', () => {
@@ -40,5 +52,34 @@ describe('tabsForInterface', () => {
         expect(tabsForInterface('BidCos-Wired')).toEqual(['devices', 'links', 'console', 'events']);
         expect(tabsForInterface('CUxD')).toEqual(['devices', 'console', 'events']);
         expect(tabsForInterface('')).not.toContain('rssi');
+    });
+});
+
+describe('the metadata store as a selection (2026-09-10)', () => {
+    it('has a reserved name that no interface process can carry, and it survives the hash', () => {
+        expect(STORE_INTERFACE.startsWith('#')).toBe(true);
+        expect(isStoreInterface(STORE_INTERFACE)).toBe(true);
+        expect(isStoreInterface('BidCos-RF')).toBe(false);
+        const hash = formatHash(STORE_INTERFACE, 'rooms');
+        expect(hash).toBe('#/%23store/rooms');
+        expect(parseHash(hash)).toEqual({interfaceName: STORE_INTERFACE, tab: 'rooms'});
+    });
+
+    it('knows the three store tabs beside the six of 2.7', () => {
+        expect(STORE_TAB_IDS).toEqual(['rooms', 'functions', 'metadata']);
+        expect(TAB_IDS).not.toContain('rooms');
+        expect(isTabId('metadata')).toBe(true);
+        expect(isStoreTabId('metadata')).toBe(true);
+        expect(isStoreTabId('devices')).toBe(false);
+        expect(parseHash('#/%23store/metadata').tab).toBe('metadata');
+    });
+
+    it('offers two lists for a flat store, one tree for a nesting one, nothing without a store', () => {
+        const state = {provider: 'rega' as const, reachable: true, writable: true, revision: 1, objects: 0};
+        expect(storeTabs({...state, flat: true})).toEqual(['rooms', 'functions']);
+        expect(storeTabs({...state, provider: 'occulite'})).toEqual(['metadata']);
+        expect(storeTabs({...state, provider: 'local'})).toEqual(['metadata']);
+        expect(storeTabs({...state, reachable: false, flat: true})).toEqual([]);
+        expect(storeTabs(undefined)).toEqual([]);
     });
 });

@@ -5,8 +5,9 @@
 
     import GithubLink from './lib/components/GithubLink.svelte';
     import InterfacePopup from './lib/components/InterfacePopup.svelte';
+    import type {StoreEntry} from './lib/components/interfacePopup.js';
     import Loader from './lib/components/Loader.svelte';
-    import MetaIndicator from './lib/components/MetaIndicator.svelte';
+    import {metaMark, metaTitle} from './lib/components/metaIndicator.js';
     import Notices from './lib/components/Notices.svelte';
     import RpcLogPanel from './lib/components/RpcLogPanel.svelte';
     import RpcProgress from './lib/components/RpcProgress.svelte';
@@ -15,7 +16,7 @@
     import UpdateNotice from './lib/components/UpdateNotice.svelte';
     import ToolbarButton from './lib/components/ToolbarButton.svelte';
     import {setStores} from './lib/stores/context.js';
-    import type {TabId} from './lib/stores/routing.js';
+    import {STORE_INTERFACE, type TabId} from './lib/stores/routing.js';
     import type {Stores} from './lib/stores/Stores.svelte.js';
     import ChangeSetDialog from './routes/ChangeSetDialog.svelte';
     import ConfigDialog from './routes/ConfigDialog.svelte';
@@ -23,6 +24,7 @@
     import DevicesPage from './routes/DevicesPage.svelte';
     import EventsPage from './routes/EventsPage.svelte';
     import LinksPage from './routes/LinksPage.svelte';
+    import MetadataPage from './routes/MetadataPage.svelte';
     import RadioPage from './routes/RadioPage.svelte';
     import ServiceMessagesPage from './routes/ServiceMessagesPage.svelte';
 
@@ -43,7 +45,7 @@
     const t = $derived(stores.i18n.t);
     const app = $derived(stores.app);
 
-    /** The provider names of the store indicator; `t` is reactive, so these are functions. */
+    /** The provider names of the store's entry in the picker; `t` is reactive, so these are functions. */
     const META_PROVIDER_LABELS: Record<'local' | 'occulite' | 'rega', () => string> = {
         local: () => t('This profile'),
         // The names of the programs, not of the products they are part of (the maintainer,
@@ -59,7 +61,40 @@
         console: 'RPC Console',
         messages: 'Service messages',
         events: 'Events',
+        // the store's own tabs (2026-09-10): two lists on ReGaHSS, one tree on occulited
+        rooms: 'Rooms',
+        functions: 'Functions',
+        metadata: 'Metadata',
     };
+
+    /**
+     * The metadata store as an entry of the interface picker (the maintainer, 2026-09-10: "mach
+     * ReGaHSS doch zu einem eigenen interface"). Absent where there is no store; shown but not
+     * selectable while it does not answer, with the reason in its title.
+     */
+    const storeEntry = $derived.by((): StoreEntry | undefined => {
+        const state = stores.taxonomy.state;
+        if (state === undefined) {
+            return undefined;
+        }
+        const label = META_PROVIDER_LABELS[state.provider]();
+        return {
+            id: STORE_INTERFACE,
+            label,
+            mark: metaMark(state),
+            title: metaTitle(state, {
+                label,
+                reachable: t('Reachable'),
+                unreachable: t('Unreachable'),
+                readOnly: t('Read-only'),
+                writable: t('Writable'),
+                detail: (entry) =>
+                    t('revision {revision}, {count} objects', {revision: entry.revision, count: entry.objects}),
+            }),
+            selectable: state.reachable,
+            provider: state.provider,
+        };
+    });
 
     /** The six tabs of 2.7 in its order, with the service-message count in brackets. */
     const tabs = $derived(
@@ -124,26 +159,6 @@
     );
 </script>
 
-<!--
-    D-40, task 25: which store the names, rooms and functions come from. It sat beside the interface
-    picker until 2026-09-10; the maintainer asked for it to move inside the picker, under the host
-    it belongs to, as one short line that is read and not clicked.
--->
-{#snippet storeLine()}
-    <MetaIndicator
-        state={stores.taxonomy.state}
-        providerLabel={(provider) => META_PROVIDER_LABELS[provider]()}
-        reachableText={t('Reachable')}
-        unreachableText={t('Unreachable')}
-        readOnlyText={t('Read-only')}
-        writableText={t('Writable')}
-        detailText={(state) =>
-            t('revision {revision}, {count} objects', {revision: state.revision, count: state.objects})}
-        compact
-        testId="meta-indicator"
-    />
-{/snippet}
-
 <div class="hmm-app" data-testid="app">
     <header class="hmm-header">
         <!--
@@ -169,7 +184,8 @@
             dutyCycleLabel={(value) => t('Duty cycle {value} %', {value})}
             testId="interface-select"
             onselect={(name) => void stores.selectInterface(name)}
-            info={storeLine}
+            store={storeEntry}
+            storeTestId="meta-indicator"
         />
 
         <Tabs {tabs} active={app.tab} label={t('Devices')} onselect={(id) => app.setTab(id as TabId)} />
@@ -263,6 +279,19 @@
         <div class="hmm-panel" id={`panel-${app.tab}`} role="tabpanel" aria-labelledby={`tab-${app.tab}`}>
             {#if app.selectedInterface === ''}
                 <p class="hmm-empty">{t('Select an interface')}</p>
+            {:else if app.storeSelected}
+                <!--
+                    2026-09-10: the store is the selection. ReGaHSS has its two lists as two
+                    tabs; every store that nests has the one tree, which is also what a flat store
+                    gets when the hash names a tab it does not have.
+                -->
+                {#if app.tab === 'rooms'}
+                    <MetadataPage enumId="room" />
+                {:else if app.tab === 'functions'}
+                    <MetadataPage enumId="function" />
+                {:else}
+                    <MetadataPage />
+                {/if}
             {:else if app.tab === 'devices'}
                 <DevicesPage />
             {:else if app.tab === 'links'}

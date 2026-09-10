@@ -222,171 +222,6 @@ describe('assigning the selection', () => {
     });
 });
 
-describe('the tree dialog', () => {
-    let transport: MockTransport;
-
-    beforeEach(() => {
-        transport = new MockTransport({demo: true});
-    });
-
-    async function openDialog(): Promise<Awaited<ReturnType<typeof mountApp>>> {
-        const mounted = await mountApp({transport, hash: '#/BidCos-RF/devices'});
-        await fireEvent.click(screen.getByTestId('devices-taxonomy'));
-        await waitFor(() => expect(screen.getByTestId('taxonomy-dialog')).toBeTruthy());
-        return mounted;
-    }
-
-    function nodeLabels(): string[] {
-        return [...screen.getByTestId('taxonomy-dialog').querySelectorAll('[role=option]')].map(
-            (node) => node.querySelector('.hmm-tax-node-name')?.textContent ?? '',
-        );
-    }
-
-    it('lists the rooms as a tree with their member counts, and the functions as a list', async () => {
-        await openDialog();
-        expect(nodeLabels()).toEqual([
-            'Erdgeschoss',
-            'Küche',
-            'Wohnzimmer',
-            'Flur',
-            'Obergeschoss',
-            'Bad',
-            'Schlafzimmer',
-            'Außen',
-        ]);
-        expect(screen.getByTestId('taxonomy-node-room/eg').textContent).toContain('3');
-        expect(screen.getByTestId('taxonomy-node-room/eg/kueche').style.paddingLeft).toBe('26px');
-        expect(screen.getByTestId('taxonomy-hint').textContent).toContain('Etage');
-
-        await fireEvent.click(screen.getByTestId('taxonomy-tab-function'));
-        expect(nodeLabels()).toEqual(['Licht', 'Heizung', 'Sicherheit']);
-        expect(screen.queryByTestId('taxonomy-add-below')).toBeNull();
-        expect(screen.queryByTestId('taxonomy-move')).toBeNull();
-        expect(screen.queryByTestId('taxonomy-hint')).toBeNull();
-    });
-
-    it('adds a room at the top, then a room below it - which is what a floor is', async () => {
-        await openDialog();
-        await fireEvent.click(screen.getByTestId('taxonomy-add'));
-        await fireEvent.input(screen.getByTestId('taxonomy-name'), {target: {value: 'Keller'}});
-        await fireEvent.keyDown(screen.getByTestId('taxonomy-name'), {key: 'Enter'});
-        await waitFor(() => expect(transport.lastCall('meta.node.create')).toEqual(['room', undefined, 'Keller']));
-        await waitFor(() => expect(nodeLabels()).toContain('Keller'));
-        // the new node is selected, so "add below" acts on it
-        expect(screen.getByTestId('taxonomy-node-room/keller').getAttribute('aria-selected')).toBe('true');
-
-        await fireEvent.click(screen.getByTestId('taxonomy-add-below'));
-        expect(screen.getByTestId('taxonomy-form').textContent).toContain('Keller');
-        await fireEvent.input(screen.getByTestId('taxonomy-name'), {target: {value: 'Werkstatt'}});
-        await fireEvent.click(screen.getByTestId('taxonomy-apply'));
-        await waitFor(() =>
-            expect(transport.lastCall('meta.node.create')).toEqual(['room', 'room/keller', 'Werkstatt']),
-        );
-        await waitFor(() => expect(screen.getByTestId('taxonomy-node-room/keller/werkstatt')).toBeTruthy());
-    });
-
-    it('renames and moves a room; the members follow the move', async () => {
-        const {stores} = await openDialog();
-        await fireEvent.click(screen.getByTestId('taxonomy-node-room/eg/kueche'));
-        await fireEvent.click(screen.getByTestId('taxonomy-rename'));
-        expect(screen.getByTestId<HTMLInputElement>('taxonomy-name').value).toBe('Küche');
-        await fireEvent.input(screen.getByTestId('taxonomy-name'), {target: {value: 'Kochen'}});
-        await fireEvent.click(screen.getByTestId('taxonomy-apply'));
-        await waitFor(() =>
-            expect(transport.lastCall('meta.node.update')).toEqual(['room/eg/kueche', {name: 'Kochen'}]),
-        );
-        await waitFor(() => expect(nodeLabels()).toContain('Kochen'));
-
-        await fireEvent.click(screen.getByTestId('taxonomy-move'));
-        const parent = screen.getByTestId<HTMLSelectElement>('taxonomy-parent');
-        // not under itself, otherwise anywhere - the top level first
-        expect([...parent.options].map((option) => option.value)).toEqual([
-            '',
-            'room/eg',
-            'room/eg/wohnzimmer',
-            'room/eg/flur',
-            'room/og',
-            'room/og/bad',
-            'room/og/schlafzimmer',
-            'room/aussen',
-        ]);
-        await fireEvent.change(parent, {target: {value: 'room/og'}});
-        await fireEvent.click(screen.getByTestId('taxonomy-apply'));
-        await waitFor(() =>
-            expect(transport.lastCall('meta.node.update')).toEqual(['room/eg/kueche', {parent: 'room/og'}]),
-        );
-        await waitFor(() => expect(screen.getByTestId('taxonomy-node-room/og/kueche')).toBeTruthy());
-        expect(stores.taxonomy.view('BidCos-RF.MEQ0123456:1')?.enums).toContain('room/og/kueche');
-    });
-
-    it('deletes an empty node at once, and lists the members of a full one before detaching them', async () => {
-        const {stores} = await openDialog();
-        await fireEvent.click(screen.getByTestId('taxonomy-node-room/aussen'));
-        await fireEvent.click(screen.getByTestId('taxonomy-delete'));
-        // Außen has one member on the HmIP interface
-        expect(screen.getByTestId('taxonomy-members').textContent).toContain(
-            'Schaltaktor Terrasse:4 (000A1B2C3D4E5F:4)',
-        );
-        expect(screen.getByTestId('taxonomy-apply').textContent).toBe('Löschen und Zuordnungen entfernen');
-        await fireEvent.click(screen.getByTestId('taxonomy-apply'));
-        await waitFor(() => expect(transport.lastCall('meta.node.delete')).toEqual(['room/aussen', true]));
-        await waitFor(() => expect(nodeLabels()).not.toContain('Außen'));
-        expect(stores.taxonomy.view('HmIP-RF.000A1B2C3D4E5F:4')?.rooms).toEqual([]);
-
-        // the floor lists everything below it
-        await fireEvent.click(screen.getByTestId('taxonomy-node-room/eg'));
-        await fireEvent.click(screen.getByTestId('taxonomy-delete'));
-        expect(screen.getByTestId('taxonomy-members').querySelectorAll('li')).toHaveLength(3);
-        await fireEvent.click(within(screen.getByTestId('taxonomy-form')).getByText('Abbrechen'));
-
-        await fireEvent.click(screen.getByTestId('taxonomy-tab-function'));
-        await fireEvent.click(screen.getByTestId('taxonomy-add'));
-        await fireEvent.input(screen.getByTestId('taxonomy-name'), {target: {value: 'Rollladen'}});
-        await fireEvent.click(screen.getByTestId('taxonomy-apply'));
-        await waitFor(() => expect(screen.getByTestId('taxonomy-node-function/rollladen')).toBeTruthy());
-        await fireEvent.click(screen.getByTestId('taxonomy-delete'));
-        expect(screen.getByTestId('taxonomy-form').textContent).toContain('nichts zugeordnet');
-        expect(screen.getByTestId('taxonomy-apply').textContent).toBe('Löschen');
-        await fireEvent.click(screen.getByTestId('taxonomy-apply'));
-        await waitFor(() => expect(transport.lastCall('meta.node.delete')).toEqual(['function/rollladen', false]));
-    });
-
-    it('reads the store again from the refresh button (task 27: ReGa has no change stream)', async () => {
-        await openDialog();
-        await fireEvent.click(screen.getByTestId('taxonomy-refresh'));
-        await waitFor(() => expect(transport.countOf('meta.refresh')).toBe(1));
-    });
-
-    it('hides "add below" and "move" and says why when the store is flat (ReGa)', async () => {
-        await openDialog();
-        transport.emit('meta.changed', {
-            provider: 'local',
-            reachable: true,
-            writable: true,
-            revision: 1,
-            objects: 0,
-            flat: true,
-        });
-        await waitFor(() => expect(screen.queryByTestId('taxonomy-add-below')).toBeNull());
-        expect(screen.queryByTestId('taxonomy-move')).toBeNull();
-        expect(screen.getByTestId('taxonomy-hint').textContent).toContain('flache Liste');
-    });
-
-    it('greys every action out when the store does not take writes', async () => {
-        await openDialog();
-        transport.emit('meta.changed', {
-            provider: 'occulite',
-            reachable: true,
-            writable: false,
-            revision: 1,
-            objects: 0,
-        });
-        await waitFor(() => expect(screen.getByTestId<HTMLButtonElement>('taxonomy-add').disabled).toBe(true));
-        await fireEvent.click(screen.getByTestId('taxonomy-node-room/aussen'));
-        expect(screen.getByTestId<HTMLButtonElement>('taxonomy-delete').disabled).toBe(true);
-    });
-});
-
 describe('the store indicator and the settings section', () => {
     let transport: MockTransport;
 
@@ -396,12 +231,14 @@ describe('the store indicator and the settings section', () => {
 
     it('names the provider in the interface popup and colours its state', async () => {
         await mountApp({transport, hash: '#/BidCos-RF/devices'});
-        // 2026-09-10: the line lives inside the interface picker now, under the host
+        // 2026-09-10: the store is an entry of the interface picker, under the host
         expect(screen.queryByTestId('meta-indicator')).toBeNull();
         await fireEvent.click(screen.getByTestId('interface-select-trigger'));
-        const indicator = screen.getByTestId('meta-indicator');
-        // it is read, not clicked
-        expect(indicator.tagName).toBe('DIV');
+        let indicator = screen.getByTestId('meta-indicator');
+        // a selectable entry, like an interface, with the state in its title
+        expect(indicator.tagName).toBe('BUTTON');
+        expect(indicator.getAttribute('role')).toBe('option');
+        expect(indicator.getAttribute('aria-selected')).toBe('false');
         expect(indicator.textContent.trim()).toBe('Dieses Profil');
         expect(indicator.dataset['mark']).toBe('ok');
         expect(indicator.title).toContain('Revision 7, 6 Objekte');
@@ -427,7 +264,11 @@ describe('the store indicator and the settings section', () => {
             objects: 12,
             error: 'box off',
         });
-        await waitFor(() => expect(indicator.dataset['mark']).toBe('bad'));
+        // unreachable: still there, no longer a button, the reason in its title
+        await waitFor(() => expect(screen.getByTestId('meta-indicator').tagName).toBe('DIV'));
+        indicator = screen.getByTestId('meta-indicator');
+        expect(indicator.dataset['mark']).toBe('bad');
+        expect(indicator.getAttribute('aria-disabled')).toBe('true');
         expect(indicator.title).toContain('box off');
 
         transport.emit('meta.changed', {
@@ -438,8 +279,8 @@ describe('the store indicator and the settings section', () => {
             objects: 40,
             flat: true,
         });
-        await waitFor(() => expect(indicator.textContent.trim()).toBe('ReGaHSS'));
-        expect(indicator.dataset['mark']).toBe('ok');
+        await waitFor(() => expect(screen.getByTestId('meta-indicator').textContent.trim()).toBe('ReGaHSS'));
+        expect(screen.getByTestId('meta-indicator').dataset['mark']).toBe('ok');
     });
 
     it('is not drawn at all without a store', async () => {

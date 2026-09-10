@@ -18,6 +18,7 @@ import {LinksStore} from './LinksStore.svelte.js';
 import {NamesStore} from './NamesStore.svelte.js';
 import {NoticesStore} from './NoticesStore.svelte.js';
 import {ServiceMessagesStore} from './ServiceMessagesStore.svelte.js';
+import {STORE_INTERFACE} from './routing.js';
 import {createStores} from './Stores.svelte.js';
 import {WriteLogStore} from './WriteLogStore.svelte.js';
 
@@ -859,6 +860,82 @@ describe('Stores', () => {
         await stores.selectInterface('BidCos-Wired');
         expect(stores.app.tab).toBe('devices');
         expect(router.location.hash).toBe('#/BidCos-Wired/devices');
+    });
+
+    it('selects the metadata store like an interface, loads nothing for it and gives the tab back', async () => {
+        const transport = new MockTransport({demo: true});
+        const router = fakeRouter('#/BidCos-RF/links');
+        const stores = createStores(transport, {
+            location: router.location,
+            onHashChange: router.onHashChange,
+            storage: new MemoryStorage(),
+        });
+        await stores.start();
+        transport.reset();
+
+        await stores.selectInterface(STORE_INTERFACE);
+        expect(stores.app.storeSelected).toBe(true);
+        // the demo store is this profile's own, a tree: one tab
+        expect(stores.tabs).toEqual(['metadata']);
+        expect(stores.app.tab).toBe('metadata');
+        expect(router.location.hash).toBe('#/%23store/metadata');
+        expect(transport.countOf('devices.list')).toBe(0);
+        expect(transport.countOf('links.list')).toBe(0);
+        expect(transport.countOf('serviceMessages.list')).toBe(0);
+
+        // a flat store (ReGaHSS) has two, and a tab it does not have falls to the first
+        transport.emit('meta.changed', {
+            provider: 'rega',
+            reachable: true,
+            writable: true,
+            revision: 1,
+            objects: 0,
+            flat: true,
+        });
+        expect(stores.tabs).toEqual(['rooms', 'functions']);
+        await stores.selectInterface(STORE_INTERFACE);
+        expect(stores.app.tab).toBe('rooms');
+        stores.app.setTab('functions');
+        expect(router.location.hash).toBe('#/%23store/functions');
+
+        // back to an interface: the Links tab it left, not Devices
+        await stores.selectInterface('HmIP-RF');
+        expect(stores.app.tab).toBe('links');
+        expect(router.location.hash).toBe('#/HmIP-RF/links');
+        expect(transport.countOf('devices.list')).toBe(1);
+    });
+
+    it('starts on the store when the hash names it, and falls back without a store', async () => {
+        const transport = new MockTransport({demo: true});
+        const router = fakeRouter('#/%23store/metadata');
+        const stores = createStores(transport, {
+            location: router.location,
+            onHashChange: router.onHashChange,
+            storage: new MemoryStorage(),
+        });
+        await stores.start();
+        expect(stores.app.selectedInterface).toBe(STORE_INTERFACE);
+        expect(stores.app.tab).toBe('metadata');
+        expect(transport.countOf('devices.list')).toBe(0);
+
+        // the same hash on a host whose store does not answer: the first interface, as 2.x did
+        // for an unknown name
+        const bare = new MockTransport({demo: true});
+        bare.result('meta.get', {
+            state: {provider: 'occulite', reachable: false, writable: false, revision: 0, objects: 0},
+            enums: {},
+            objects: {},
+        });
+        const bareRouter = fakeRouter('#/%23store/metadata');
+        const bareStores = createStores(bare, {
+            location: bareRouter.location,
+            onHashChange: bareRouter.onHashChange,
+            storage: new MemoryStorage(),
+        });
+        await bareStores.start();
+        expect(bareStores.app.selectedInterface).toBe('BidCos-RF');
+        expect(bareStores.app.tab).toBe('devices');
+        expect(bareRouter.location.hash).toBe('#/BidCos-RF/devices');
     });
 
     it('selectInterface with no interface loads nothing', async () => {
