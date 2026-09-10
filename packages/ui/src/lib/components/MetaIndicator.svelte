@@ -4,7 +4,7 @@
     interface Props {
         /** `undefined` before a store answered at all; the indicator is then not drawn. */
         state: MetaState | undefined;
-        /** The provider as the user should read it: "ReGa", "openccu-lite", "this profile". */
+        /** The provider as the user should read it: "ReGaHSS", "occulited", "this profile". */
         providerLabel: (provider: MetaState['provider']) => string;
         reachableText?: string;
         unreachableText?: string;
@@ -13,6 +13,12 @@
         /** `revision {revision}, {count} objects` */
         detailText?: (state: MetaState) => string;
         onclick?: (() => void) | undefined;
+        /**
+         * The line inside the interface popup: one row under the host, half the height of an
+         * interface item, and not a control - the maintainer, 2026-09-10, asked for the store to be
+         * said where the connection is said, "nicht klickbar, nur als information".
+         */
+        compact?: boolean;
         testId?: string | undefined;
     }
 
@@ -25,6 +31,7 @@
         writableText = 'Writable',
         detailText = (entry: MetaState) => `${String(entry.revision)}, ${String(entry.objects)}`,
         onclick = undefined,
+        compact = false,
         testId = undefined,
     }: Props = $props();
 
@@ -55,19 +62,33 @@
     store takes writes, amber when it only answers reads, red when it does not answer at all.
 -->
 {#if state !== undefined}
-    <button
-        type="button"
-        class="hmm-meta hmm-meta-{mark}"
-        {title}
-        aria-label={title}
-        data-mark={mark}
-        data-provider={state.provider}
-        data-testid={testId}
-        onclick={() => onclick?.()}
-    >
-        <span class="hmm-meta-dot" aria-hidden="true"></span>
-        <span class="hmm-meta-label">{label}</span>
-    </button>
+    {#if compact}
+        <div
+            class="hmm-meta hmm-meta-compact hmm-meta-{mark}"
+            {title}
+            aria-label={title}
+            data-mark={mark}
+            data-provider={state.provider}
+            data-testid={testId}
+        >
+            <span class="hmm-meta-dot" aria-hidden="true"></span>
+            <span class="hmm-meta-label">{label}</span>
+        </div>
+    {:else}
+        <button
+            type="button"
+            class="hmm-meta hmm-meta-{mark}"
+            {title}
+            aria-label={title}
+            data-mark={mark}
+            data-provider={state.provider}
+            data-testid={testId}
+            onclick={() => onclick?.()}
+        >
+            <span class="hmm-meta-dot" aria-hidden="true"></span>
+            <span class="hmm-meta-label">{label}</span>
+        </button>
+    {/if}
 {/if}
 
 <style>
@@ -91,6 +112,26 @@
     .hmm-meta:hover {
         background: var(--hmm-control-bg-hover);
         color: var(--hmm-fg);
+    }
+
+    /*
+        Inside the interface popup: the full width of the menu, half the height of an interface item
+        (which is two lines), and no hover of its own - it says where the names come from, it is not
+        a place to click.
+    */
+    .hmm-meta-compact {
+        display: flex;
+        width: 100%;
+        height: 19px;
+        padding: 0 10px;
+        border-radius: 0;
+        border-bottom: 1px solid var(--hmm-border-muted);
+        cursor: default;
+    }
+
+    .hmm-meta-compact:hover {
+        background: none;
+        color: var(--hmm-fg-muted);
     }
 
     .hmm-meta-dot {

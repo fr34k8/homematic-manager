@@ -394,9 +394,14 @@ describe('the store indicator and the settings section', () => {
         transport = new MockTransport({demo: true});
     });
 
-    it('names the provider beside the interface mark and colours its state', async () => {
+    it('names the provider in the interface popup and colours its state', async () => {
         await mountApp({transport, hash: '#/BidCos-RF/devices'});
+        // 2026-09-10: the line lives inside the interface picker now, under the host
+        expect(screen.queryByTestId('meta-indicator')).toBeNull();
+        await fireEvent.click(screen.getByTestId('interface-select-trigger'));
         const indicator = screen.getByTestId('meta-indicator');
+        // it is read, not clicked
+        expect(indicator.tagName).toBe('DIV');
         expect(indicator.textContent.trim()).toBe('Dieses Profil');
         expect(indicator.dataset['mark']).toBe('ok');
         expect(indicator.title).toContain('Revision 7, 6 Objekte');
@@ -410,7 +415,7 @@ describe('the store indicator and the settings section', () => {
             implementation: 'occulited 0.1.0',
         });
         await waitFor(() => expect(indicator.dataset['mark']).toBe('readonly'));
-        expect(indicator.textContent.trim()).toBe('openccu-lite');
+        expect(indicator.textContent.trim()).toBe('occulited');
         expect(indicator.title).toContain('occulited 0.1.0');
         expect(indicator.title).toContain('Nur lesen');
 
@@ -433,18 +438,19 @@ describe('the store indicator and the settings section', () => {
             objects: 40,
             flat: true,
         });
-        await waitFor(() => expect(indicator.textContent.trim()).toBe('ReGa'));
+        await waitFor(() => expect(indicator.textContent.trim()).toBe('ReGaHSS'));
         expect(indicator.dataset['mark']).toBe('ok');
     });
 
     it('is not drawn at all without a store', async () => {
         await mountApp({transport: new MockTransport(), hash: ''});
+        await fireEvent.click(screen.getByTestId('interface-select-trigger'));
         expect(screen.queryByTestId('meta-indicator')).toBeNull();
     });
 
-    it('opens the settings, whose section stores the provider choice and the token', async () => {
+    it('has its section in the settings, which stores the provider choice and the token', async () => {
         await mountApp({transport, hash: '#/BidCos-RF/devices'});
-        await fireEvent.click(screen.getByTestId('meta-indicator'));
+        await fireEvent.click(screen.getByTestId('settings-button'));
         await waitFor(() => expect(screen.getByTestId('config-dialog')).toBeTruthy());
         expect(screen.getByTestId('config-meta-state').textContent).toContain('Erreichbar');
         expect(screen.getByTestId('config-meta-state').textContent).toContain('Schreibbar');
@@ -454,8 +460,8 @@ describe('the store indicator and the settings section', () => {
         expect([...provider.options].map((option) => option.textContent)).toEqual([
             'Automatisch',
             'Dieses Profil',
-            'openccu-lite',
-            'ReGa',
+            'occulited',
+            'ReGaHSS',
         ]);
         await fireEvent.change(provider, {target: {value: 'occulite'}});
         await fireEvent.input(screen.getByTestId('config-meta-token'), {target: {value: 'olt_secret'}});

@@ -46,8 +46,10 @@
     /** The provider names of the store indicator; `t` is reactive, so these are functions. */
     const META_PROVIDER_LABELS: Record<'local' | 'occulite' | 'rega', () => string> = {
         local: () => t('This profile'),
-        occulite: () => 'openccu-lite',
-        rega: () => 'ReGa',
+        // The names of the programs, not of the products they are part of (the maintainer,
+        // 2026-09-10): the store behind an openccu-lite is `occulited`, the one of a CCU is ReGaHSS.
+        occulite: () => 'occulited',
+        rega: () => 'ReGaHSS',
     };
 
     const TAB_LABELS: Record<TabId, string> = {
@@ -122,6 +124,26 @@
     );
 </script>
 
+<!--
+    D-40, task 25: which store the names, rooms and functions come from. It sat beside the interface
+    picker until 2026-09-10; the maintainer asked for it to move inside the picker, under the host
+    it belongs to, as one short line that is read and not clicked.
+-->
+{#snippet storeLine()}
+    <MetaIndicator
+        state={stores.taxonomy.state}
+        providerLabel={(provider) => META_PROVIDER_LABELS[provider]()}
+        reachableText={t('Reachable')}
+        unreachableText={t('Unreachable')}
+        readOnlyText={t('Read-only')}
+        writableText={t('Writable')}
+        detailText={(state) =>
+            t('revision {revision}, {count} objects', {revision: state.revision, count: state.objects})}
+        compact
+        testId="meta-indicator"
+    />
+{/snippet}
+
 <div class="hmm-app" data-testid="app">
     <header class="hmm-header">
         <!--
@@ -147,23 +169,7 @@
             dutyCycleLabel={(value) => t('Duty cycle {value} %', {value})}
             testId="interface-select"
             onselect={(name) => void stores.selectInterface(name)}
-        />
-
-        <!--
-            D-40, task 25: which store the names, rooms and functions come from, next to the
-            interface mark. A click opens the settings, where the store has its own section.
-        -->
-        <MetaIndicator
-            state={stores.taxonomy.state}
-            providerLabel={(provider) => META_PROVIDER_LABELS[provider]()}
-            reachableText={t('Reachable')}
-            unreachableText={t('Unreachable')}
-            readOnlyText={t('Read-only')}
-            writableText={t('Writable')}
-            detailText={(state) =>
-                t('revision {revision}, {count} objects', {revision: state.revision, count: state.objects})}
-            testId="meta-indicator"
-            onclick={() => (app.configDialogOpen = true)}
+            info={storeLine}
         />
 
         <Tabs {tabs} active={app.tab} label={t('Devices')} onselect={(id) => app.setTab(id as TabId)} />

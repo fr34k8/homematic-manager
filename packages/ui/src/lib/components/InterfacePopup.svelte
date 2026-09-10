@@ -1,5 +1,6 @@
 <script lang="ts">
     import type {InterfaceState} from '@homematic-manager/core';
+    import type {Snippet} from 'svelte';
 
     import ConnectionIndicator from './ConnectionIndicator.svelte';
     import {detailParts, MARK_GLYPH, markOf, type InterfaceDetails, type InterfaceMark} from './interfacePopup.js';
@@ -27,6 +28,13 @@
         devicesLabel?: (count: number) => string;
         dutyCycleLabel?: (value: number) => string;
         onselect?: ((interfaceName: string) => void) | undefined;
+        /**
+         * One line under the host, above the interfaces: what the caller wants said about this
+         * connection but not managed here - today the metadata store the names come from
+         * (the maintainer, 2026-09-10). It is rendered as it comes, and nothing in the popup's
+         * keyboard handling touches it.
+         */
+        info?: Snippet | undefined;
         testId?: string | undefined;
     }
 
@@ -49,6 +57,7 @@
         devicesLabel = (count: number) => `${String(count)} devices`,
         dutyCycleLabel = (value: number) => `Duty cycle ${String(value)} %`,
         onselect = undefined,
+        info = undefined,
         testId = undefined,
     }: Props = $props();
 
@@ -249,6 +258,8 @@
                     >{backendConnected ? connectedText : notConnectedText}</span
                 >
             </div>
+
+            {@render info?.()}
 
             <div class="hmm-interface-list" role="listbox" aria-label={listLabel}>
                 {#each interfaces as state, index (state.name)}

@@ -173,8 +173,9 @@
     const metaProviderLabels: Record<MetaProviderChoice, () => string> = {
         auto: () => t('Automatic'),
         local: () => t('This profile'),
-        occulite: () => 'openccu-lite',
-        rega: () => 'ReGa',
+        // the programs, not the products around them (the maintainer, 2026-09-10)
+        occulite: () => 'occulited',
+        rega: () => 'ReGaHSS',
     };
     const metaState = $derived(stores.taxonomy.state);
     const metaStateLine = $derived.by(() => {
