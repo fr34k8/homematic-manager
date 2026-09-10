@@ -6,6 +6,52 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [3.0.0-beta.11] — 2026-09-10
+
+Two reports from Baxxy13 against beta.10 and one change the maintainer asked for. Fixes only,
+nothing new.
+
+- **RSSI values that cannot be a receive level are read for what they are** (#154). A level in dBm
+  is always negative, and yet the grid showed `37 dBm`, elsewhere `-208` and `-128`. Three
+  different things arrive in that field. eQ-3's placeholders: `65536` ("keine Informationen", as
+  the WebUI's own API documents it), `0` and `1` for "nothing received in this direction since the
+  start", `±256` and `-65536` in the same role. The radio chip's `128` / `-128` (`0x80`), which
+  means "no RSSI available". And real levels that lost their sign or carry an offset of 256 on the
+  way through ReGaHss, which creates the maintenance datapoints as an unsigned byte although the
+  paramset says `INTEGER`. They are separated now: `130…255` is `value - 256`, `-255…-130` is
+  `-value - 256`, a bare `2…126` is the level without its minus, and every placeholder becomes
+  "no value" — the dash the grid already drew for `65536`. The reported `37 dBm` is -37 dBm, next
+  to the -38 dBm of the other direction; a `-208` is -48 dBm. The mapping is the one Home
+  Assistant's `aiohomematic` applies; OpenCCU's WebUI does the `- 256` half of it in its
+  maintenance dialog. What no eQ-3 source confirms is the last rule, that a small positive value is
+  only a missing minus — if a positive value ever turns up that is nonsense as a negative one, it
+  belongs in the issue.
+
+- **The Funk tab is back for HmIP** (#155). It was BidCos-RF's alone, on the assumption that HmIP
+  has no RSSI matrix. It has: hmipserver answers no `rssiInfo`, but the levels sit in the
+  maintenance channel as `RSSI_DEVICE` and `RSSI_PEER`, arrive as events, and the matrix behind the
+  tab has been built from them all along — 2.x showed exactly that, and OpenCCU's WebUI assembles
+  its HmIP list the same way. The tab is offered again, with the access point above and the level
+  pair below, and without the parts that exist only on BidCos: `setBidcosInterface`, the receiver
+  marker, the `INTERFACE` and `ROAMING` columns and "assign the best receiver".
+
+### Changed
+
+- **The store the names come from is said inside the interface picker** (the maintainer). It was a
+  second control beside the picker — a dot and one word. It is now one line inside the picker,
+  under the host it belongs to and above the interfaces, half the height of an interface item and
+  separated by a rule: something to read, not to click. The settings, where the store is chosen,
+  stay one click away on the gear.
+- **The stores are called by their own names**: `occulited` instead of "openccu-lite" and `ReGaHSS`
+  instead of "ReGa", in the picker and in the settings. Those are the programs; the other two are
+  the products they are part of.
+
+### Known issues
+
+- Everything under beta.10's "Known issues" still applies: #143 is not fixed, #149 and #150 are
+  half fixed and wait on the reporter, and "Since" of a service message is still the moment this
+  app first saw it.
+
 ## [3.0.0-beta.10] — 2026-09-10
 
 Six reports from the beta.9 testers, all of one day: Herbert-Testmann on the Funk tab (#151), the
@@ -617,6 +663,7 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
+[3.0.0-beta.11]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.11
 [3.0.0-beta.10]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.10
 [3.0.0-beta.9]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.9
 [3.0.0-beta.8]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.8
