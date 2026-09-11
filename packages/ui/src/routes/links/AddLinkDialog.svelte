@@ -165,7 +165,12 @@
     }
 </script>
 
-<Dialog bind:open title={t('Create link')} width="760px" testId="add-link-dialog">
+<!--
+    Task 30: 650 px tall at least, so the channel lists open inside a dialog rather than in a box a
+    few rows high, and wide enough for the two lists and the pair table. The window still bounds
+    both, so a phone gets a dialog that fits.
+-->
+<Dialog bind:open title={t('Create link')} width="920px" minHeight={650} testId="add-link-dialog">
     <div class="hmm-add-link">
         <span>{t('Sender')}</span>
         <MultiSelect
@@ -292,6 +297,8 @@
         grid-template-columns: 90px auto 1fr;
         gap: 8px;
         align-items: center;
+        /* the extra height is for the lists: more rows open than the widget's default 260 px */
+        --hmm-multiselect-list-height: 400px;
     }
 
     .hmm-add-link-roles {

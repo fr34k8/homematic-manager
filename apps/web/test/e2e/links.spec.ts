@@ -8,6 +8,8 @@
  * matrix is what decides that these two may be linked and the BidCos actor may not.
  */
 
+import type {Locator} from '@playwright/test';
+
 import {HMIP_BUTTON, HMIP_DIMMER, expect, simulatorReady, test} from './fixtures.js';
 
 const SENDER = `${HMIP_BUTTON}:1`;
@@ -97,6 +99,65 @@ test('a link is created, its paramset written and the link removed again', async
 
     await page.getByTestId('links-refresh').click();
     await expect(page.locator(`[data-row-id="${LINK_ROW}"]`)).toHaveCount(0);
+});
+
+/** `inner` is drawn inside `outer`, and `outer` did not have to scroll to show it. */
+async function expectInside(inner: Locator, outer: Locator): Promise<void> {
+    const a = await inner.boundingBox();
+    const b = await outer.boundingBox();
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    expect(a!.y).toBeGreaterThanOrEqual(b!.y - 1);
+    expect(a!.y + a!.height).toBeLessThanOrEqual(b!.y + b!.height + 1);
+    expect(a!.x + a!.width).toBeLessThanOrEqual(b!.x + b!.width + 1);
+    expect(await outer.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
+}
+
+/**
+ * Task 30: the dialog opened a few rows tall and the channel lists unfolded inside that small box.
+ * At 1280x800 it is 650 px tall at least and wider than the 760 px it was, and both lists open
+ * inside it; on a phone the window bounds it and the buttons stay on the screen.
+ */
+test('the create-link dialog is tall and wide enough for its lists, and fits a phone', async ({page, host}) => {
+    await page.setViewportSize({width: 1280, height: 800});
+    await page.goto(`${host.url}#/HmIP-RF/links`);
+    await page.getByTestId('links-add').click();
+    const dialog = page.getByTestId('add-link-dialog');
+    await expect(dialog).toHaveAttribute('open', '');
+    const frame = await dialog.boundingBox();
+    expect(frame!.height).toBeGreaterThanOrEqual(650);
+    expect(frame!.width).toBeGreaterThan(760);
+    const body = dialog.locator('.hmm-dialog-body');
+
+    const senders = page.getByTestId('add-link-senders');
+    const sendersToggle = senders.getByRole('button').first();
+    await sendersToggle.click();
+    await expectInside(senders.locator('.hmm-multiselect-menu'), body);
+    await senders.getByRole('option', {name: new RegExp(SENDER)}).click();
+    await sendersToggle.click();
+
+    const receivers = page.getByTestId('add-link-receivers');
+    await receivers.getByRole('button').first().click();
+    await expect(receivers.getByRole('option').first()).toBeVisible();
+    await expectInside(receivers.locator('.hmm-multiselect-menu'), body);
+    await receivers.getByRole('button').first().click();
+    await dialog.getByRole('button', {name: 'Cancel'}).click();
+    await expect(dialog).not.toHaveAttribute('open');
+
+    await page.setViewportSize({width: 360, height: 640});
+    await page.getByTestId('links-add').click();
+    await expect(dialog).toHaveAttribute('open', '');
+    const phone = await dialog.boundingBox();
+    expect(phone!.x).toBeGreaterThanOrEqual(0);
+    expect(phone!.y).toBeGreaterThanOrEqual(0);
+    expect(phone!.x + phone!.width).toBeLessThanOrEqual(360);
+    expect(phone!.y + phone!.height).toBeLessThanOrEqual(640);
+    for (const button of await dialog.locator('.hmm-dialog-buttons button').all()) {
+        const place = await button.boundingBox();
+        expect(place!.x).toBeGreaterThanOrEqual(0);
+        expect(place!.x + place!.width).toBeLessThanOrEqual(360);
+        expect(place!.y + place!.height).toBeLessThanOrEqual(640);
+    }
 });
 
 test('a sender with no possible receiver says so', async ({page, host}) => {

@@ -40,6 +40,22 @@ export type ResizeEdge = 'n' | 'e' | 's' | 'w' | 'se';
 
 export const DEFAULT_LIMITS: SizeLimits = {minWidth: 320, minHeight: 160};
 
+/** What a dialog leaves free around itself: its CSS `max-height` is `100vh` minus this. */
+export const VIEWPORT_MARGIN = 32;
+
+/**
+ * The limits of a drag on this window.
+ *
+ * `resizeDialog` lets the minimum win over the viewport, which was harmless while no dialog asked
+ * for more than 320 px. Task 30's "Create link" dialog asks for 650, and on a 640 px phone the
+ * first touch on an edge would have made it 650 tall and pushed its buttons off the screen. So the
+ * height floor is capped the way the opened dialog is, at the viewport minus the margin; the width
+ * floor is left as it is.
+ */
+export function fitLimits(limits: SizeLimits, viewport: Viewport): SizeLimits {
+    return {...limits, minHeight: Math.max(0, Math.min(limits.minHeight, viewport.height - VIEWPORT_MARGIN))};
+}
+
 function clamp(value: number, low: number, high: number): number {
     return Math.min(Math.max(value, low), Math.max(low, high));
 }

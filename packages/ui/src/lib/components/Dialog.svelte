@@ -3,6 +3,8 @@
 
     import {
         DEFAULT_LIMITS,
+        VIEWPORT_MARGIN,
+        fitLimits,
         moveDialog,
         recallDialog,
         rememberDialog,
@@ -41,7 +43,17 @@
          * do, their parameter rows are two columns that shrink.
          */
         minWidth?: number | undefined;
-        minHeight?: number;
+        /**
+         * The shortest this dialog opens at and the shortest the user may drag it, in px.
+         *
+         * Without one a dialog without a `height` is as tall as its content, and the drag floor is
+         * `DEFAULT_LIMITS.minHeight`. With one (task 30) the body may be taller than its content -
+         * the "Create link" dialog opened a few rows tall and its channel lists unfolded inside that
+         * small box. Either way it stays inside the window: the minimum is `min(minHeight, 100vh -
+         * 32px)`, the same margin as the `max-height`, so a short window keeps the buttons on
+         * screen and the body scrolls. A box the user dragged replaces it.
+         */
+        minHeight?: number | undefined;
         /** Draggable by the title bar, resizable by the edges and the bottom-right corner. */
         movable?: boolean;
         testId?: string | undefined;
@@ -59,7 +71,7 @@
         buttons = undefined,
         closeLabel = 'Close',
         minWidth = undefined,
-        minHeight = DEFAULT_LIMITS.minHeight,
+        minHeight = undefined,
         movable = true,
         testId = undefined,
     }: Props = $props();
@@ -81,7 +93,7 @@
         minWidth:
             minWidth ??
             (Number.isNaN(designedWidth) ? DEFAULT_LIMITS.minWidth : Math.max(DEFAULT_LIMITS.minWidth, designedWidth)),
-        minHeight,
+        minHeight: minHeight ?? DEFAULT_LIMITS.minHeight,
     });
 
     /**
@@ -151,7 +163,7 @@
             geometry =
                 edge === 'move'
                     ? moveDialog(start, dx, dy, viewport())
-                    : resizeDialog(start, edge, dx, dy, viewport(), limits);
+                    : resizeDialog(start, edge, dx, dy, viewport(), fitLimits(limits, viewport()));
         };
         const onEnd = (): void => {
             window.removeEventListener('pointermove', onMove);
@@ -192,6 +204,9 @@
     class:hmm-dialog-placed={geometry !== undefined}
     style:width={geometry === undefined ? width : `${geometry.width}px`}
     style:height={geometry === undefined ? height : `${geometry.height}px`}
+    style:min-height={geometry === undefined && minHeight !== undefined
+        ? `min(${minHeight}px, calc(100vh - ${VIEWPORT_MARGIN}px))`
+        : undefined}
     style:left={geometry === undefined ? undefined : `${geometry.left}px`}
     style:top={geometry === undefined ? undefined : `${geometry.top}px`}
     data-testid={testId}

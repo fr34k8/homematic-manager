@@ -16,10 +16,16 @@
  * box as zero, so the file skips them there rather than passing on nothing.
  */
 
-import {fireEvent, screen, waitFor, within} from '@testing-library/svelte';
+import {fireEvent, render, screen, waitFor, within} from '@testing-library/svelte';
 import {beforeEach, describe, expect, it} from 'vitest';
 
-import {forgetDialogGeometry, recallPanelHeight} from '../lib/components/dialogGeometry.js';
+import Dialog from '../lib/components/Dialog.svelte';
+import {
+    DEFAULT_LIMITS,
+    VIEWPORT_MARGIN,
+    forgetDialogGeometry,
+    recallPanelHeight,
+} from '../lib/components/dialogGeometry.js';
 import type {Stores} from '../lib/stores/Stores.svelte.js';
 import {MockTransport} from '../lib/transport/MockTransport.js';
 import {mountApp} from '../testHarness.js';
@@ -47,6 +53,18 @@ function expectNoOverflow(dialog: HTMLElement): void {
     // And the page behind it stays where it was.
     const page = document.documentElement;
     expect(page.scrollWidth).toBeLessThanOrEqual(page.clientWidth);
+}
+
+/** `inner` is drawn entirely inside `outer`, and `outer` did not have to scroll to show it. */
+function expectInside(inner: HTMLElement, outer: HTMLElement): void {
+    const a = inner.getBoundingClientRect();
+    const b = outer.getBoundingClientRect();
+    expect(a.height).toBeGreaterThan(0);
+    expect(Math.round(a.top)).toBeGreaterThanOrEqual(Math.round(b.top));
+    expect(Math.round(a.bottom)).toBeLessThanOrEqual(Math.round(b.bottom));
+    expect(Math.round(a.left)).toBeGreaterThanOrEqual(Math.round(b.left));
+    expect(Math.round(a.right)).toBeLessThanOrEqual(Math.round(b.right));
+    expect(outer.scrollHeight).toBeLessThanOrEqual(outer.clientHeight);
 }
 
 function box(dialog: HTMLElement): {width: number; height: number} {
@@ -246,6 +264,35 @@ describe.skipIf(!hasLayout)('dialogs at 1280x800', () => {
         expectNoOverflow(dialog);
     });
 
+    /**
+     * Task 30: the dialog opened a few rows tall and its channel lists unfolded inside that small
+     * box. It is 650 px at least now, wider than the 760 it was, and each list opens inside the
+     * body without the body having to scroll.
+     */
+    it('the add-link dialog is at least 650 px tall and wider than 760, and its lists open uncut', async () => {
+        await mountApp({transport: new MockTransport({demo: true}), hash: '#/HmIP-RF/links'});
+        await fireEvent.click(screen.getByTestId('links-add'));
+        const dialog = await waitFor(() => screen.getByTestId('add-link-dialog'));
+        expect(box(dialog).height).toBeGreaterThanOrEqual(650);
+        expect(box(dialog).width).toBeGreaterThan(760);
+        const body = dialog.querySelector<HTMLElement>('.hmm-dialog-body')!;
+
+        const senders = screen.getByTestId('add-link-senders');
+        await fireEvent.click(within(senders).getByRole('button'));
+        expectInside(senders.querySelector<HTMLElement>('.hmm-multiselect-menu')!, body);
+        // the wall button of the demo, which has receivers
+        await fireEvent.input(within(senders).getByLabelText('Filter'), {target: {value: '0001D8A9B7C6D5:1'}});
+        await fireEvent.click(within(senders).getAllByRole('option')[0]!);
+        await fireEvent.click(within(senders).getAllByRole('button')[0]!);
+        expect(senders.querySelector('.hmm-multiselect-menu')).toBeNull();
+
+        const receivers = screen.getByTestId('add-link-receivers');
+        await fireEvent.click(within(receivers).getByRole('button'));
+        expect(within(receivers).getAllByRole('option').length).toBeGreaterThan(0);
+        expectInside(receivers.querySelector<HTMLElement>('.hmm-multiselect-menu')!, body);
+        expectNoOverflow(dialog);
+    });
+
     it('the rename dialog fits', async () => {
         await mountApp({transport: new MockTransport({demo: true}), hash: '#/BidCos-RF/devices'});
         await fireEvent.click(document.querySelector<HTMLElement>(`[data-row-id="${SWITCH}"]`)!);
@@ -289,6 +336,49 @@ describe.skipIf(!hasLayout)('dialogs at 1280x800', () => {
         await fireEvent.click(screen.getByTestId('radio-set-interface'));
         const dialog = await waitFor(() => screen.getByTestId('set-interface-dialog'));
         expectNoOverflow(dialog);
+    });
+});
+
+/**
+ * Task 30: `Dialog`'s `minHeight`. A dialog may be taller than its content, never shorter than the
+ * minimum, never taller than the window, and a box the user dragged replaces the minimum.
+ */
+describe.skipIf(!hasLayout)('a dialog with a minimum height', () => {
+    beforeEach(() => {
+        expect(window.innerHeight).toBe(800);
+        forgetDialogGeometry();
+    });
+
+    function openDialog(minHeight: number | undefined): HTMLElement {
+        render(Dialog, {props: {open: true, title: 'Minimum', testId: 'minimum-dialog', minHeight}});
+        return screen.getByTestId('minimum-dialog');
+    }
+
+    it('is as tall as its content without one, as before', () => {
+        const dialog = openDialog(undefined);
+        expect(box(dialog).height).toBeLessThan(DEFAULT_LIMITS.minHeight);
+        expect(dialog.style.minHeight).toBe('');
+    });
+
+    it('opens at the minimum when its content is shorter', () => {
+        expect(box(openDialog(500)).height).toBe(500);
+    });
+
+    it('is clamped to the window when the window is shorter than the minimum', () => {
+        const dialog = openDialog(5000);
+        expect(box(dialog).height).toBe(window.innerHeight - VIEWPORT_MARGIN);
+        expectNoOverflow(dialog);
+    });
+
+    it('yields to a size the user dragged', async () => {
+        const dialog = openDialog(500);
+        await drag(handleOf(dialog, 'se'), 0, 60);
+        expect(box(dialog).height).toBe(560);
+        expect(dialog.style.minHeight).toBe('');
+
+        // and the minimum is the floor of that drag, like the designed width is for the width
+        await drag(handleOf(dialog, 'se'), 0, -2000);
+        expect(box(dialog).height).toBe(500);
     });
 });
 

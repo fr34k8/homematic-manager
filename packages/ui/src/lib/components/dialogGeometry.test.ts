@@ -3,7 +3,9 @@ import {beforeEach, describe, expect, it} from 'vitest';
 import {
     DEFAULT_LIMITS,
     PANEL_MIN_HEIGHT,
+    VIEWPORT_MARGIN,
     defaultPanelHeight,
+    fitLimits,
     forgetDialogGeometry,
     moveDialog,
     panelLimits,
@@ -85,6 +87,29 @@ describe('resizeDialog', () => {
             width: DEFAULT_LIMITS.minWidth,
             height: DEFAULT_LIMITS.minHeight,
         });
+    });
+});
+
+/** Task 30: the first dialog whose minimum height is taller than a phone. */
+describe('fitLimits', () => {
+    it('leaves a floor alone that the window has room for', () => {
+        expect(fitLimits({minWidth: 920, minHeight: 650}, viewport)).toEqual({minWidth: 920, minHeight: 650});
+    });
+
+    it('caps the height floor at the window minus the margin, so a drag on a phone keeps the buttons on it', () => {
+        const phone = {width: 360, height: 640};
+        const limits = fitLimits({minWidth: 320, minHeight: 650}, phone);
+        expect(limits).toEqual({minWidth: 320, minHeight: 640 - VIEWPORT_MARGIN});
+
+        // the box the dialog opened at there, nudged by its bottom edge
+        const opened: DialogBox = {left: 16, top: 16, width: 328, height: 608};
+        const dragged = resizeDialog(opened, 's', 0, -10, phone, limits);
+        expect(dragged.height).toBe(608);
+        expect(dragged.top + dragged.height).toBeLessThanOrEqual(phone.height);
+    });
+
+    it('never gives a negative floor on a window shorter than the margin', () => {
+        expect(fitLimits(DEFAULT_LIMITS, {width: 100, height: 20}).minHeight).toBe(0);
     });
 });
 

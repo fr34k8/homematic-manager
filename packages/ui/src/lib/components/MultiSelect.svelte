@@ -324,7 +324,8 @@
         list-style: none;
         margin: 0;
         padding: 0;
-        max-height: 260px;
+        /* a dialog with room for more rows says so through the property (task 30) */
+        max-height: var(--hmm-multiselect-list-height, 260px);
         overflow: auto;
     }
 
