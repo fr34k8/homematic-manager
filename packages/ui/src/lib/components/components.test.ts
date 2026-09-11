@@ -175,6 +175,110 @@ describe('MultiSelect', () => {
         render(MultiSelect, {props: {options, selected: ['gone'], multiple: false}});
         expect(screen.getByRole('button', {name: /gone/})).toBeTruthy();
     });
+
+    /** Task 31: the link dialog's entries - channel name, device name, `index: TYPE`, no address. */
+    const channels = [
+        {
+            value: '000A1B2C3D4E5F:3',
+            label: 'Living room light',
+            hint: 'Wall switch',
+            description: '3: VIRTUAL_SWITCH_TRANSMITTER',
+        },
+        {value: 'MEQ0123456:1', label: 'Kitchen', hint: 'Socket', description: '1: SWITCH'},
+    ];
+
+    it('filters by label, hint, description and value', () => {
+        const found = (filter: string): string[] => filterOptions(channels, filter).map((option) => option.value);
+        expect(found('living')).toEqual(['000A1B2C3D4E5F:3']);
+        expect(found('SOCKET')).toEqual(['MEQ0123456:1']);
+        expect(found('virtual_switch')).toEqual(['000A1B2C3D4E5F:3']);
+        // the address is not printed any more, and is still found
+        expect(found('meq0123')).toEqual(['MEQ0123456:1']);
+        expect(found('5F:3')).toEqual(['000A1B2C3D4E5F:3']);
+        expect(found('nothing like it')).toEqual([]);
+        // and a plain entry is still found by its label only when that is all it has
+        expect(filterOptions(options, 'hmip').map((option) => option.value)).toEqual(['HmIP-RF']);
+    });
+
+    it('steps over entries with a hint as over any other', () => {
+        expect(step(channels, 0, 1)).toBe(1);
+        expect(step(channels, 1, 1)).toBe(1);
+    });
+
+    it('draws an entry with a hint or a description on two lines, and a plain one on one', async () => {
+        render(MultiSelect, {
+            props: {options: [...channels, {value: 'plain', label: 'Plain'}], selected: [], placeholder: 'Select'},
+        });
+        await fireEvent.click(screen.getByRole('button', {name: /Select/}));
+        const [first, , plain] = screen.getAllByRole('option');
+
+        expect(first!.classList.contains('hmm-multiselect-two-lines')).toBe(true);
+        expect(first!.querySelector('.hmm-multiselect-label')?.textContent).toBe('Living room light');
+        expect(first!.querySelector('.hmm-multiselect-hint')?.textContent).toBe('Wall switch');
+        expect(first!.querySelector('.hmm-multiselect-description')?.textContent).toBe('3: VIRTUAL_SWITCH_TRANSMITTER');
+        expect(first!.querySelector('.hmm-multiselect-line')?.getAttribute('title')).toBe(
+            'Living room light Wall switch',
+        );
+        expect(first!.querySelector('.hmm-multiselect-description')?.getAttribute('title')).toBe(
+            '3: VIRTUAL_SWITCH_TRANSMITTER',
+        );
+        // label and hint share the first line, the description is the line under it
+        const label = first!.querySelector('.hmm-multiselect-label')!.getBoundingClientRect();
+        const hint = first!.querySelector('.hmm-multiselect-hint')!.getBoundingClientRect();
+        const description = first!.querySelector('.hmm-multiselect-description')!.getBoundingClientRect();
+        expect(hint.left).toBeGreaterThanOrEqual(label.right);
+        expect(Math.round(hint.bottom)).toBeLessThanOrEqual(Math.round(description.top) + 1);
+
+        expect(plain!.classList.contains('hmm-multiselect-two-lines')).toBe(false);
+        expect(plain!.querySelector('.hmm-multiselect-lines')).toBeNull();
+        expect(plain!.textContent).toContain('Plain');
+        expect(plain!.getBoundingClientRect().height).toBeLessThan(first!.getBoundingClientRect().height);
+    });
+
+    it('cuts a long first line with an ellipsis rather than wrapping it', async () => {
+        const long = {
+            value: 'x:1',
+            label: 'A channel name far longer than any list is wide '.repeat(4),
+            hint: 'and a device name that is longer still '.repeat(4),
+            description: '1: SWITCH',
+        };
+        render(MultiSelect, {props: {options: [long], selected: [], placeholder: 'Select'}});
+        await fireEvent.click(screen.getByRole('button', {name: /Select/}));
+        const option = screen.getByRole('option');
+        const label = option.querySelector<HTMLElement>('.hmm-multiselect-label')!;
+
+        expect(getComputedStyle(label).textOverflow).toBe('ellipsis');
+        expect(label.scrollWidth).toBeGreaterThan(label.clientWidth);
+        expect(label.clientWidth).toBeGreaterThan(0);
+        // still two lines: the first one did not wrap
+        const lineHeight = option.querySelector<HTMLElement>('.hmm-multiselect-line')!.getBoundingClientRect().height;
+        expect(lineHeight).toBeLessThan(24);
+    });
+
+    it('cuts the device name before the channel name', async () => {
+        render(MultiSelect, {
+            props: {
+                options: [
+                    {
+                        value: 'x:1',
+                        label: 'Living room light',
+                        hint: 'and a device name that is far longer than the list is wide '.repeat(3),
+                        description: '1: SWITCH',
+                    },
+                ],
+                selected: [],
+                placeholder: 'Select',
+            },
+        });
+        await fireEvent.click(screen.getByRole('button', {name: /Select/}));
+        const option = screen.getByRole('option');
+        const label = option.querySelector<HTMLElement>('.hmm-multiselect-label')!;
+        const hint = option.querySelector<HTMLElement>('.hmm-multiselect-hint')!;
+
+        expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth);
+        expect(hint.scrollWidth).toBeGreaterThan(hint.clientWidth);
+        expect(getComputedStyle(hint).textOverflow).toBe('ellipsis');
+    });
 });
 
 describe('ContextMenu', () => {

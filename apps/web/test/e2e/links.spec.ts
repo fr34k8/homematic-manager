@@ -33,7 +33,8 @@ test('a link is created, its paramset written and the link removed again', async
     const senders = page.getByTestId('add-link-senders');
     const sendersToggle = senders.getByRole('button').first();
     await sendersToggle.click();
-    await senders.getByRole('option', {name: new RegExp(SENDER)}).click();
+    // Since task 31 an entry prints names, not the address; the filter still finds the address.
+    await pickByAddress(senders, SENDER);
     // A multi-select popup stays open after a pick, and it covers the row below it - so it has to
     // be closed before the receiver picker can be clicked at all.
     await sendersToggle.click();
@@ -44,7 +45,7 @@ test('a link is created, its paramset written and the link removed again', async
     const receivers = page.getByTestId('add-link-receivers');
     const receiversToggle = receivers.getByRole('button').first();
     await receiversToggle.click();
-    await receivers.getByRole('option', {name: new RegExp(RECEIVER)}).click();
+    await pickByAddress(receivers, RECEIVER);
     await receiversToggle.click();
 
     await page.getByTestId('add-link-create').click();
@@ -101,6 +102,14 @@ test('a link is created, its paramset written and the link removed again', async
     await expect(page.locator(`[data-row-id="${LINK_ROW}"]`)).toHaveCount(0);
 });
 
+/** Types the address into an open picker's filter, expects exactly one entry and chooses it. */
+async function pickByAddress(picker: Locator, address: string): Promise<void> {
+    await picker.getByLabel('Filter').fill(address);
+    await expect(picker.getByRole('option')).toHaveCount(1);
+    await picker.getByRole('option').click();
+    await picker.getByLabel('Filter').fill('');
+}
+
 /** `inner` is drawn inside `outer`, and `outer` did not have to scroll to show it. */
 async function expectInside(inner: Locator, outer: Locator): Promise<void> {
     const a = await inner.boundingBox();
@@ -133,7 +142,7 @@ test('the create-link dialog is tall and wide enough for its lists, and fits a p
     const sendersToggle = senders.getByRole('button').first();
     await sendersToggle.click();
     await expectInside(senders.locator('.hmm-multiselect-menu'), body);
-    await senders.getByRole('option', {name: new RegExp(SENDER)}).click();
+    await pickByAddress(senders, SENDER);
     await sendersToggle.click();
 
     const receivers = page.getByTestId('add-link-receivers');
@@ -166,7 +175,71 @@ test('a sender with no possible receiver says so', async ({page, host}) => {
 
     const senders = page.getByTestId('add-link-senders');
     await senders.getByRole('button').first().click();
-    // The dimmer's receiver channel is not a sender at all, so it is not in the list.
-    await expect(senders.getByRole('option', {name: new RegExp(`${HMIP_DIMMER}:3`)})).toHaveCount(0);
-    await expect(senders.getByRole('option', {name: new RegExp(SENDER)})).toHaveCount(1);
+    // The dimmer's receiver channel is not a sender at all, so its address finds nothing here.
+    await senders.getByLabel('Filter').fill(`${HMIP_DIMMER}:3`);
+    await expect(senders.getByRole('option')).toHaveCount(0);
+    await senders.getByLabel('Filter').fill(SENDER);
+    await expect(senders.getByRole('option')).toHaveCount(1);
+});
+
+/**
+ * Task 31: the receiver list shows the channel name, the device name after it and `index: TYPE`
+ * under it, not the address; part of the address still finds the channel; a long name is cut with
+ * an ellipsis; the muted text follows the theme; and at phone width the list stays on the screen.
+ */
+test('the channel lists show two-line entries that the filter finds by address', async ({page, host}) => {
+    // A device name longer than any list is wide, set the way a user sets one: through ReGa.
+    const LONG =
+        'Dimmer in the living room on the ground floor next to the terrace door, north wall, ' +
+        'behind the sofa and left of the window that looks onto the garden and the old apple tree';
+    await page.setViewportSize({width: 1280, height: 800});
+    await page.goto(`${host.url}#/HmIP-RF/devices`);
+    await page.locator(`[data-row-id="${HMIP_DIMMER}"]`).click();
+    await page.getByTestId('devices-rename').click();
+    await page.getByTestId('rename-input').fill(LONG);
+    await page.getByTestId('rename-save').click();
+    await expect(page.getByTestId('rename-dialog')).not.toHaveAttribute('open');
+
+    await page.goto(`${host.url}#/HmIP-RF/links`);
+    await page.getByTestId('links-add').click();
+    const senders = page.getByTestId('add-link-senders');
+    await senders.getByRole('button').first().click();
+    await pickByAddress(senders, SENDER);
+    await senders.getByRole('button').first().click();
+
+    const receivers = page.getByTestId('add-link-receivers');
+    await receivers.getByRole('button').first().click();
+    // part of the address, which is no longer printed (the first eight characters: the dimmer on the
+    // other firmware shares the end of the address, not the start)
+    await receivers.getByLabel('Filter').fill(HMIP_DIMMER.slice(0, 8));
+    const entry = receivers.getByRole('option');
+    await expect(entry).toHaveCount(1);
+    await expect(entry.locator('.hmm-multiselect-label')).toHaveText('Dimmer:3');
+    await expect(entry.locator('.hmm-multiselect-hint')).toHaveText(LONG);
+    await expect(entry.locator('.hmm-multiselect-description')).toHaveText('3: SWITCH_VIRTUAL_RECEIVER');
+    await expect(entry).not.toContainText(HMIP_DIMMER);
+    await expect(entry.locator('.hmm-multiselect-line')).toHaveAttribute('title', `Dimmer:3 ${LONG}`);
+
+    // the long device name is cut, not wrapped: the row is two lines tall
+    const hint = entry.locator('.hmm-multiselect-hint');
+    expect(await hint.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    expect(await hint.evaluate((element) => getComputedStyle(element).textOverflow)).toBe('ellipsis');
+    const row = await entry.boundingBox();
+    expect(row!.height).toBeLessThan(48);
+
+    // the muted text is the theme's, in light and in dark
+    const muted = async (): Promise<string> => hint.evaluate((element) => getComputedStyle(element).color);
+    const light = await muted();
+    await page.emulateMedia({colorScheme: 'dark'});
+    await expect.poll(muted).not.toBe(light);
+    const menuBackground = await receivers
+        .locator('.hmm-multiselect-menu')
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(menuBackground).not.toBe('rgb(255, 255, 255)');
+
+    // phone width: the open list stays inside the screen
+    await page.setViewportSize({width: 360, height: 640});
+    const menu = await receivers.locator('.hmm-multiselect-menu').boundingBox();
+    expect(menu!.x).toBeGreaterThanOrEqual(0);
+    expect(menu!.x + menu!.width).toBeLessThanOrEqual(360);
 });

@@ -175,6 +175,11 @@
         }
     }
 
+    /** Task 31: only an entry that brings a hint or a description is drawn on two lines. */
+    function twoLines(option: MultiSelectOption): boolean {
+        return Boolean(option.hint) || Boolean(option.description);
+    }
+
     function autofocus(element: HTMLInputElement): void {
         element.focus();
     }
@@ -233,6 +238,7 @@
                             type="button"
                             id={`${uid}-${i}`}
                             class="hmm-multiselect-option"
+                            class:hmm-multiselect-two-lines={twoLines(option)}
                             class:hmm-multiselect-selected={selectedSet.has(option.value)}
                             class:hmm-multiselect-highlight={i === highlight}
                             role="option"
@@ -248,7 +254,26 @@
                                     >{selectedSet.has(option.value) ? '☑' : '☐'}</span
                                 >
                             {/if}
-                            <span>{option.label}</span>
+                            {#if twoLines(option)}
+                                <span class="hmm-multiselect-lines">
+                                    <span
+                                        class="hmm-multiselect-line"
+                                        title={[option.label, option.hint].filter(Boolean).join(' ')}
+                                    >
+                                        <span class="hmm-multiselect-label">{option.label}</span>
+                                        {#if option.hint}
+                                            <span class="hmm-multiselect-hint">{option.hint}</span>
+                                        {/if}
+                                    </span>
+                                    {#if option.description}
+                                        <span class="hmm-multiselect-description" title={option.description}
+                                            >{option.description}</span
+                                        >
+                                    {/if}
+                                </span>
+                            {:else}
+                                <span>{option.label}</span>
+                            {/if}
                         </button>
                     </li>
                 {/each}
@@ -289,8 +314,9 @@
         z-index: 50;
         top: calc(100% + 2px);
         left: 0;
-        min-width: 220px;
-        max-width: 360px;
+        /* a caller whose entries need more room says so through the properties (task 31) */
+        min-width: var(--hmm-multiselect-menu-min-width, 220px);
+        max-width: var(--hmm-multiselect-menu-max-width, 360px);
         border: 1px solid var(--hmm-border-strong);
         border-radius: var(--hmm-radius);
         background: var(--hmm-bg);
@@ -340,6 +366,55 @@
         font: inherit;
         text-align: left;
         cursor: pointer;
+    }
+
+    /* Task 31: label and hint on the first line, the description under them. The checkbox stays
+       centred on both lines through the row's own `align-items`. Every line is cut with an
+       ellipsis rather than wrapped, and the hint gives way before the label does. */
+    .hmm-multiselect-two-lines {
+        padding: 4px 8px;
+    }
+
+    .hmm-multiselect-lines {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .hmm-multiselect-line {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        min-width: 0;
+        white-space: nowrap;
+    }
+
+    .hmm-multiselect-label {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* The hint only gets what the label leaves: a basis of 0 means the channel name is cut only
+       when it alone is wider than the line. */
+    .hmm-multiselect-hint {
+        flex: 1 1 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: var(--hmm-font-size-small);
+        color: var(--hmm-fg-muted);
+    }
+
+    .hmm-multiselect-description {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: var(--hmm-font-mono);
+        font-size: var(--hmm-font-size-small);
+        color: var(--hmm-fg-muted);
     }
 
     .hmm-multiselect-option:hover:not(:disabled),

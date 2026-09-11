@@ -6,6 +6,7 @@
     import MultiSelect from '../../lib/components/MultiSelect.svelte';
     import type {MultiSelectOption} from '../../lib/components/multiSelect.js';
     import {getStores} from '../../lib/stores/context.js';
+    import {channelOption} from '../../lib/util/linkChannels.js';
 
     interface Props {
         open?: boolean;
@@ -84,12 +85,9 @@
         [...new Set(receivers.flatMap((address) => parseRoles(index?.get(address)?.LINK_TARGET_ROLES)))].join(' '),
     );
 
+    /** Task 31: channel name, device name, `index: TYPE` - see `channelOption`. */
     function option(channel: DeviceDescription): MultiSelectOption {
-        const name = stores.names.name(channel.ADDRESS);
-        return {
-            value: channel.ADDRESS,
-            label: name === undefined ? `${channel.ADDRESS} (${channel.TYPE})` : `${name} — ${channel.ADDRESS}`,
-        };
+        return channelOption(channel, (address) => stores.names.name(address));
     }
 
     /** Every sender/receiver combination, in the order 2.x created them, with its own name. */
@@ -299,6 +297,10 @@
         align-items: center;
         /* the extra height is for the lists: more rows open than the widget's default 260 px */
         --hmm-multiselect-list-height: 400px;
+        /* task 31: a channel name and a device name side by side on the first line; never wider
+           than a phone leaves next to the label column */
+        --hmm-multiselect-menu-min-width: min(480px, calc(100vw - 160px));
+        --hmm-multiselect-menu-max-width: min(640px, calc(100vw - 160px));
     }
 
     .hmm-add-link-roles {

@@ -159,9 +159,9 @@ describe('the add-link dialog', () => {
         const senderValues = within(senders)
             .getAllByRole('option')
             .map((option) => option.textContent);
-        // MEQ0123456:1 is a SWITCH receiver with no LINK_SOURCE_ROLES: not a sender.
-        expect(senderValues.join('|')).not.toContain('MEQ0123456:1');
-        expect(senderValues.join('|')).toContain('JEQ0234567:1');
+        // MEQ0123456:1 ("Licht Küche:1") is a SWITCH receiver with no LINK_SOURCE_ROLES: not a sender.
+        expect(senderValues.join('|')).not.toContain('Licht Küche:1');
+        expect(senderValues.join('|')).toContain('Taster Flur:1');
 
         await fireEvent.click(within(senders).getAllByRole('option')[0]!);
 
@@ -172,8 +172,32 @@ describe('the add-link dialog', () => {
             .map((option) => option.textContent)
             .join('|');
         // The BidCoS-RF virtual keys share the SWITCH role with the dimmer and the switch actuator.
-        expect(receiverValues).toContain('MEQ0123456:1');
-        expect(receiverValues).toContain('GEQ0567890:1');
+        expect(receiverValues).toContain('Licht Küche:1');
+        expect(receiverValues).toContain('Dimmer Wohnzimmer:1');
+    });
+
+    /**
+     * Task 31: an entry is the channel name, the device name after it and `index: TYPE` under it.
+     * The address is not printed any more - it is what the filter still finds.
+     */
+    it('lists channel name, device name and index: TYPE, and finds a channel by its address', async () => {
+        await mountApp({transport, hash: '#/BidCos-RF/links'});
+        await fireEvent.click(screen.getByTestId('links-add'));
+
+        const senders = screen.getByTestId('add-link-senders');
+        await fireEvent.click(within(senders).getByRole('button'));
+        await fireEvent.input(within(senders).getByLabelText('Filter'), {target: {value: 'jeq0234567:1'}});
+        const [entry, ...rest] = within(senders).getAllByRole('option');
+        expect(rest).toHaveLength(0);
+        expect(entry!.classList.contains('hmm-multiselect-two-lines')).toBe(true);
+        expect(entry!.querySelector('.hmm-multiselect-label')?.textContent).toBe('Taster Flur:1');
+        expect(entry!.querySelector('.hmm-multiselect-hint')?.textContent).toBe('Taster Flur');
+        expect(entry!.querySelector('.hmm-multiselect-description')?.textContent).toMatch(/^1: [A-Z_]+$/);
+        expect(entry!.textContent).not.toContain('JEQ0234567');
+
+        // part of a device name and part of a type find it as well
+        await fireEvent.input(within(senders).getByLabelText('Filter'), {target: {value: 'taster flur'}});
+        expect(within(senders).getAllByRole('option').length).toBeGreaterThanOrEqual(2);
     });
 
     it('creates one link per sender/receiver combination and reloads the grid', async () => {

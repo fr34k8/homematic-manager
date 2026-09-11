@@ -48,6 +48,28 @@ describe('ConfigDialog', () => {
         transport = new MockTransport({demo: true});
     });
 
+    /** Task 31: the two-line entries are the link dialog's; the interface list keeps one line each. */
+    it('keeps its interface list at one plain line per entry', async () => {
+        await open(transport);
+        const trigger = screen.getByLabelText('Schnittstellen');
+        await fireEvent.click(trigger);
+        const root = trigger.closest<HTMLElement>('.hmm-multiselect')!;
+        const options = await waitFor(() => {
+            const found = within(root).getAllByRole('option');
+            expect(found.length).toBeGreaterThan(0);
+            return found;
+        });
+        for (const option of options) {
+            expect(option.classList.contains('hmm-multiselect-two-lines')).toBe(false);
+            expect(option.querySelector('.hmm-multiselect-lines')).toBeNull();
+            expect(getComputedStyle(option).paddingTop).toBe('2px');
+            expect(getComputedStyle(option).paddingLeft).toBe('6px');
+        }
+        const menu = root.querySelector<HTMLElement>('.hmm-multiselect-menu')!;
+        expect(getComputedStyle(menu).maxWidth).toBe('360px');
+        expect(getComputedStyle(root.querySelector<HTMLElement>('.hmm-multiselect-list')!).maxHeight).toBe('260px');
+    });
+
     it('shows the whole ConnectionConfig of the backend', async () => {
         await open(transport);
 

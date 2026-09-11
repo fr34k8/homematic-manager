@@ -3,15 +3,32 @@ export interface MultiSelectOption {
     readonly value: string;
     readonly label: string;
     readonly disabled?: boolean;
+    /**
+     * Small, muted text after the label on the first line - the device a channel belongs to
+     * (task 31). An entry with a `hint` or a `description` is drawn on two lines; one with neither
+     * looks exactly as before.
+     */
+    readonly hint?: string | undefined;
+    /** A small, muted, monospaced second line - `3: VIRTUAL_SWITCH_TRANSMITTER`. */
+    readonly description?: string | undefined;
 }
 
-/** The entries whose label contains the filter text, case-insensitively. */
+/**
+ * The entries whose label, hint, description or value contains the filter text, case-insensitively.
+ *
+ * The value is searched as well because the link dialog no longer prints the address (task 31):
+ * someone who works by address types part of it and still finds the channel.
+ */
 export function filterOptions(options: readonly MultiSelectOption[], filter: string): MultiSelectOption[] {
     const needle = filter.trim().toLowerCase();
     if (needle === '') {
         return [...options];
     }
-    return options.filter((option) => option.label.toLowerCase().includes(needle));
+    return options.filter((option) =>
+        [option.label, option.hint, option.description, option.value].some(
+            (text) => text !== undefined && text.toLowerCase().includes(needle),
+        ),
+    );
 }
 
 /**
