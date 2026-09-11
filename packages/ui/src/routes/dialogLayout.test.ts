@@ -18,6 +18,7 @@
 
 import {fireEvent, render, screen, waitFor, within} from '@testing-library/svelte';
 import {beforeEach, describe, expect, it} from 'vitest';
+import {page} from 'vitest/browser';
 
 import Dialog from '../lib/components/Dialog.svelte';
 import {
@@ -379,6 +380,44 @@ describe.skipIf(!hasLayout)('a dialog with a minimum height', () => {
         // and the minimum is the floor of that drag, like the designed width is for the width
         await drag(handleOf(dialog, 'se'), 0, -2000);
         expect(box(dialog).height).toBe(500);
+    });
+});
+
+/**
+ * Task 30 on a phone. The dialog is bounded by the window, and its buttons - whose German labels are
+ * the long ones, and this suite runs in German - wrap instead of running off the left edge.
+ */
+describe.skipIf(!hasLayout)('the add-link dialog on a 360x640 phone', () => {
+    beforeEach(() => {
+        forgetDialogGeometry();
+    });
+
+    it('fits the screen with every button on it', async () => {
+        await page.viewport(360, 640);
+        try {
+            await mountApp({transport: new MockTransport({demo: true}), hash: '#/HmIP-RF/links'});
+            await fireEvent.click(screen.getByTestId('links-add'));
+            const dialog = await waitFor(() => screen.getByTestId('add-link-dialog'));
+
+            const frame = dialog.getBoundingClientRect();
+            expect(Math.round(frame.left)).toBeGreaterThanOrEqual(0);
+            expect(Math.round(frame.top)).toBeGreaterThanOrEqual(0);
+            expect(Math.round(frame.right)).toBeLessThanOrEqual(360);
+            expect(Math.round(frame.bottom)).toBeLessThanOrEqual(640);
+
+            const buttons = [...dialog.querySelectorAll<HTMLElement>('.hmm-dialog-buttons button')];
+            expect(buttons).toHaveLength(4);
+            for (const button of buttons) {
+                const place = button.getBoundingClientRect();
+                expect(Math.round(place.left)).toBeGreaterThanOrEqual(Math.round(frame.left));
+                expect(Math.round(place.right)).toBeLessThanOrEqual(Math.round(frame.right));
+                expect(Math.round(place.bottom)).toBeLessThanOrEqual(Math.round(frame.bottom));
+            }
+            const row = dialog.querySelector<HTMLElement>('.hmm-dialog-buttons')!;
+            expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
+        } finally {
+            await page.viewport(1280, 800);
+        }
     });
 });
 

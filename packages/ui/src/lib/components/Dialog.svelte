@@ -335,9 +335,13 @@
         flex-shrink: 0;
     }
 
+    /* Wraps only when the buttons do not fit on one line - on a phone, where the German labels of
+       the "Create link" dialog ran off the left edge (task 30). Every dialog whose buttons fit looks
+       as before. */
     .hmm-dialog-buttons {
         display: flex;
         flex: 0 0 auto;
+        flex-wrap: wrap;
         justify-content: flex-end;
         gap: 6px;
         padding: 6px 10px;
