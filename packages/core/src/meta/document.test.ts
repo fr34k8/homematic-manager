@@ -310,7 +310,6 @@ describe('parseDocumentOrEmpty', () => {
             enums: {
                 room: {name: {de: 'Räume', en: 'Rooms'}, tree: []},
                 function: {name: {de: 'Gewerke', en: 'Functions'}, tree: []},
-                floor: {name: {de: 'Etagen', en: 'Floors'}, tree: []},
             },
         });
         expect(errors.map((error) => error.code)).toEqual(['format-unsupported']);

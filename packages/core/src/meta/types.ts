@@ -185,14 +185,17 @@ export interface MetaVersion {
     readonly implementation?: string;
 }
 
-/** The three enums a fresh store carries. They are ordinary enums; a user may delete them. */
+/**
+ * The two enums a fresh store carries, what a CCU has: rooms and functions. They are ordinary
+ * enums; a user may delete them or add more. A floor is a room with rooms below it, so there is no
+ * default for it (a store from before 2026-09-11 may still carry a `floor` enum; it is kept).
+ */
 export const DEFAULT_ENUMS: Readonly<Record<string, MetaEnum>> = Object.freeze({
     room: {name: {de: 'Räume', en: 'Rooms'}, tree: []},
     function: {name: {de: 'Gewerke', en: 'Functions'}, tree: []},
-    floor: {name: {de: 'Etagen', en: 'Floors'}, tree: []},
 });
 
-/** An empty store: revision 0 and the three defaults, exactly as `occulited` creates one. */
+/** An empty store: revision 0 and the two defaults, exactly as `occulited` creates one. */
 export function emptyDocument(): MetaDocument {
     return {
         format: META_FORMAT,
@@ -201,7 +204,6 @@ export function emptyDocument(): MetaDocument {
         enums: {
             room: {name: {...DEFAULT_ENUMS['room']?.name}, tree: []},
             function: {name: {...DEFAULT_ENUMS['function']?.name}, tree: []},
-            floor: {name: {...DEFAULT_ENUMS['floor']?.name}, tree: []},
         },
     };
 }

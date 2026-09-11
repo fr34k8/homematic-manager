@@ -72,7 +72,7 @@ export interface MetaReplay {
 }
 
 export interface MetaStoreOptions {
-    /** The document to start from; an empty store (revision 0, three default enums) by default. */
+    /** The document to start from; an empty store (revision 0, the two default enums) by default. */
     readonly document?: MetaDocument;
     readonly eventHistory?: number;
     /** Called once per event, after the mutation that produced it has been applied. */

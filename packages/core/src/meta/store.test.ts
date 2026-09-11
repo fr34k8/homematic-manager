@@ -111,7 +111,7 @@ describe('the plain reads', () => {
     it('objects and enums hand out everything, keyed', () => {
         const store = furnished();
         expect(Object.keys(store.objects())).toEqual(['BidCos-RF.JEQ0230153:1']);
-        expect(Object.keys(store.enums())).toEqual(['room', 'function', 'floor']);
+        expect(Object.keys(store.enums())).toEqual(['room', 'function']);
         expect(store.enums()['room']?.tree[0]?.children?.[0]?.name).toBe('Bad');
     });
 

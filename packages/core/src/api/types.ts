@@ -572,7 +572,7 @@ export interface ApiMethods {
      * of the change stream sees one change and not forty.
      */
     'meta.assign': {params: [refs: string[], path: string, on: boolean]; result: null};
-    /** A new taxonomy beside `room`, `function` and `floor`. */
+    /** A new taxonomy beside `room` and `function`. */
     'meta.enum.create': {params: [id: string, name: Record<string, string>]; result: null};
     'meta.enum.update': {params: [id: string, name: Record<string, string>]; result: null};
     /** Refused while it has members unless `detach` is true; the UI lists them first. */

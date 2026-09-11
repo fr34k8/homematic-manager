@@ -46,11 +46,11 @@ afterEach(async () => {
 });
 
 describe('the local metadata provider', () => {
-    it('starts empty, with the three default taxonomies', async () => {
+    it('starts empty, with the two default taxonomies', async () => {
         const store = provider();
         await store.start();
         expect(store.state()).toMatchObject({provider: 'local', reachable: true, writable: true, revision: 0});
-        expect(Object.keys(store.document().enums).sort()).toEqual(['floor', 'function', 'room']);
+        expect(Object.keys(store.document().enums).sort()).toEqual(['function', 'room']);
     });
 
     it('persists a name and a membership and reads them back in a new instance', async () => {
