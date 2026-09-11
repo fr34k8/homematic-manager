@@ -88,13 +88,6 @@
                 "name": "Heizung"
               }
             ]
-          },
-          "floor": {
-            "name": {
-              "de": "Etagen",
-              "en": "Floors"
-            },
-            "tree": []
           }
         }
       },
@@ -175,13 +168,6 @@
                 "name": "Heizung"
               }
             ]
-          },
-          "floor": {
-            "name": {
-              "de": "Etagen",
-              "en": "Floors"
-            },
-            "tree": []
           }
         }
       },

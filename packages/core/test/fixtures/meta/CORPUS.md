@@ -27,7 +27,7 @@ semantics without changing a fixture here, that is the bug.
 }
 ```
 
-- `start`: `"empty"` means a fresh store (revision 0, the three default enums with empty trees).
+- `start`: `"empty"` means a fresh store (revision 0, the two default enums with empty trees).
 - `ops` run in order. Each `expect` is either `{"ok": true, "revision": N}` (N is the revision
   after the op), `{"ok": true, "unchanged": true}` (a no-op that must not bump the revision),
   `{"error": "<code>"}`, or, for reads, the expected value.

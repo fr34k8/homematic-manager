@@ -16,8 +16,7 @@
         },
         "enums": {
           "room": {"name": {"en": "Rooms", "de": "Räume"}, "tree": [{"id": "eg", "name": "EG"}]},
-          "function": {"name": {"en": "Functions", "de": "Gewerke"}, "tree": []},
-          "floor": {"name": {"en": "Floors", "de": "Etagen"}, "tree": []}
+          "function": {"name": {"en": "Functions", "de": "Gewerke"}, "tree": []}
         }
       },
       "expect": {"ok": true, "revision": 1}
@@ -36,8 +35,7 @@
         },
         "enums": {
           "room": {"name": {"en": "Rooms", "de": "Räume"}, "tree": [{"id": "eg", "name": "EG"}]},
-          "function": {"name": {"en": "Functions", "de": "Gewerke"}, "tree": []},
-          "floor": {"name": {"en": "Floors", "de": "Etagen"}, "tree": []}
+          "function": {"name": {"en": "Functions", "de": "Gewerke"}, "tree": []}
         }
       },
       "expect": {"ok": true, "unchanged": true}
@@ -56,8 +54,7 @@
         },
         "enums": {
           "room": {"name": {"en": "Rooms", "de": "Räume"}, "tree": [{"id": "eg", "name": "EG"}]},
-          "function": {"name": {"en": "Functions", "de": "Gewerke"}, "tree": []},
-          "floor": {"name": {"en": "Floors", "de": "Etagen"}, "tree": []}
+          "function": {"name": {"en": "Functions", "de": "Gewerke"}, "tree": []}
         }
       },
       "expect": {"ok": true, "unchanged": true}
@@ -76,8 +73,7 @@
         },
         "enums": {
           "room": {"name": {"en": "Rooms", "de": "Räume"}, "tree": [{"id": "eg", "name": "EG"}]},
-          "function": {"name": {"en": "Functions", "de": "Gewerke"}, "tree": []},
-          "floor": {"name": {"en": "Floors", "de": "Etagen"}, "tree": []}
+          "function": {"name": {"en": "Functions", "de": "Gewerke"}, "tree": []}
         }
       },
       "expect": {"ok": true, "revision": 2}

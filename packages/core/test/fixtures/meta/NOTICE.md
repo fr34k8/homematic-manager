@@ -1,7 +1,8 @@
 # The openccu-lite conformance corpus
 
 A verbatim copy of `fixtures/` from [openccu-lite](https://github.com/hobbyquaker/openccu-lite)
-(Apache-2.0, © Sebastian Raff), taken from commit `b8d8a0d` on 2026-09-06.
+(Apache-2.0, © Sebastian Raff), taken from `occulited` commit `018591a` on 2026-09-11 (a fresh
+store starts with `room` and `function` only; `floor` is no default any more).
 
 It is the contract of that project's **D-16**: the metadata store has two implementations - Go in
 `occulited`, TypeScript in `packages/core/src/meta/` here - and both run this corpus in their own
