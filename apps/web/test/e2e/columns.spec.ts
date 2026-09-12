@@ -5,6 +5,9 @@
  * wenn die Spaltenbreite anpassbar wäre. Oder es erscheint ein MouseOver mit dem vollständigen
  * Inhalt des Feldes." Both are in the shared `DataTable`, so the Devices tab stands in for every
  * grid here; what is driven is the real mouse on the real handle, and a real reload of the page.
+ *
+ * Task 42 adds what task 40 left out: the handle of a column only the channel sub-grid has, and the
+ * tooltip of a cut-off cell reached with the keyboard.
  */
 
 import type {Locator, Page} from '@playwright/test';
@@ -112,5 +115,84 @@ test('a cut-off cell shows its full text on hover, a cell that fits shows nothin
     await addressCell.hover();
     // longer than the tooltip delay: a tooltip that was going to appear has appeared by now
     await page.waitForTimeout(900);
+    await expect(tooltip).toHaveCount(0);
+});
+
+test('a column only the channel sub-grid has is dragged, kept over a reload and reset on its own', async ({
+    page,
+    host,
+}) => {
+    let table = await openDevices(page, host.url);
+    const typeHeader = (): Locator => table.getByRole('columnheader', {name: 'TYPE', exact: true});
+    const direction = (): Locator => table.locator('.hmm-tr-subhead .hmm-td[data-column-key="DIRECTION"]');
+    const channelDirection = (): Locator =>
+        table.locator(`[data-row-id="${HMIP_DIMMER}:3"] .hmm-td[data-column-key="DIRECTION"]`);
+    const expand = async (): Promise<void> => {
+        await table.locator(`[data-row-id="${HMIP_DIMMER}"]`).getByRole('button', {name: 'Expand row'}).click();
+        await expect(direction()).toHaveCount(1);
+    };
+
+    // a width in the head first, so that the sub-grid's reset can be seen to leave it alone
+    await drag(page, table.getByTestId('devices-table-resize-TYPE'), 60);
+    await expand();
+    const typeWidth = await widthOf(typeHeader());
+    const designed = await widthOf(direction());
+
+    await drag(page, table.getByTestId('devices-table-sub-resize-DIRECTION'), 120);
+    await expect.poll(() => widthOf(direction())).toBeGreaterThanOrEqual(designed + 117);
+    const dragged = await widthOf(direction());
+    expect(dragged).toBeLessThanOrEqual(designed + 123);
+    // the channel's cell stands under its label, and the head's column kept its pixels
+    expect(Math.abs((await widthOf(channelDirection())) - dragged)).toBeLessThanOrEqual(1);
+    expect(await widthOf(typeHeader())).toBe(typeWidth);
+
+    // kept like the head's widths, per profile, under the sub-grid's own table id
+    const stored = await page.evaluate(
+        () =>
+            JSON.parse(localStorage.getItem('hmm.columnWidths') ?? '{}') as Record<
+                string,
+                Record<string, Record<string, number>>
+            >,
+    );
+    const profiles = Object.values(stored);
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]?.['devices-channels']).toEqual({DIRECTION: dragged});
+    expect(Object.keys(profiles[0]?.['devices'] ?? {})).toEqual(['TYPE']);
+
+    await page.reload();
+    table = await openDevices(page, host.url);
+    await expand();
+    await expect.poll(() => widthOf(direction())).toBe(dragged);
+
+    await direction().click({button: 'right'});
+    await page.getByTestId('devices-table-columns-menu').getByRole('menuitem', {name: 'Reset column widths'}).click();
+    await expect.poll(() => widthOf(direction())).toBe(designed);
+    expect(await widthOf(typeHeader())).toBe(typeWidth);
+});
+
+test('Tab onto a cut-off column label shows its full text; Escape and moving on hide it', async ({page, host}) => {
+    const table = await openDevices(page, host.url);
+    await drag(page, table.getByTestId('devices-table-resize-ADDRESS'), -600);
+    const header = table.getByRole('columnheader', {name: 'ADDRESS', exact: true});
+    await expect.poll(() => header.evaluate((cell) => cell.scrollWidth > cell.clientWidth)).toBe(true);
+    const tooltip = page.getByRole('tooltip');
+    // the mouse off the grid, so that only the keyboard can show anything
+    await page.mouse.move(1, 1);
+    await expect(tooltip).toHaveCount(0);
+
+    await table.getByTestId('devices-table-resize-name').focus();
+    await page.keyboard.press('Tab');
+    await expect(header.getByRole('button')).toBeFocused();
+    await expect(tooltip).toHaveText('ADDRESS');
+
+    await page.keyboard.press('Escape');
+    await expect(tooltip).toHaveCount(0);
+
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(tooltip).toHaveText('ADDRESS');
+    // on to the column's handle, which names itself
+    await page.keyboard.press('Tab');
+    await expect(table.getByTestId('devices-table-resize-ADDRESS')).toBeFocused();
     await expect(tooltip).toHaveCount(0);
 });
