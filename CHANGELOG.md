@@ -37,6 +37,13 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
   no such list, it is asked once, as before. A service-message read that keeps failing for another reason
   is logged once, not every five minutes, and once more when it works again. Baxxy13 found it on OpenCCU
   with CUxD installed.
+- **An extra interface such as CCU-Jack can be switched on** (#135). Baxxy13 added his CCU-Jack under "Extra
+  interfaces" on beta.13 and it never connected. Only the interfaces ticked under "Configured interfaces" are
+  connected, and that list offered the built-in interfaces and whatever was ticked already, never an extra
+  interface. It now lists every extra interface that has a name, after the built-in ones. One added in the dialog is
+  ticked by itself as soon as it has a name, a rename keeps the tick, and removing it removes the tick. An extra
+  interface that is already saved without a tick stays as it is: tick it once under "Configured interfaces"
+  ("Konfigurierte Schnittstellen") and save.
 
 ## [3.0.0-beta.14] — 2026-09-12
 
