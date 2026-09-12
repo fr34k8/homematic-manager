@@ -6,6 +6,18 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [Unreleased]
+
+### Fixed
+
+- **The CCU addon says so when its backend did not start.** `rc.d/hmm start` answered "OK" as soon
+  as the process was forked, so a backend that could not run looked started: on openccu-lite, where
+  the addon runs as its own user, a pidfile left behind by root after a live install kept it from
+  starting after a crash, and the service page, the Zusatzsoftware list and systemd all showed it as
+  running. The start now refuses with the reason when the stale pidfile cannot be removed or the
+  addon's `var/` cannot be written, checks that the backend is still alive three seconds after the
+  start, and otherwise reports FAILED with the last lines of `var/hmm.log` and exit code 1.
+
 ## [3.0.0-beta.13] — 2026-09-12
 
 The decisions of the issue round of 2026-09-12 (#147, #144, #150), the two reports that came in on
