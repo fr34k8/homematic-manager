@@ -8,6 +8,16 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+### New
+
+- **Grid columns can be resized** (#157). In every table — devices, links, Funk, service messages,
+  events, the metadata pages — the right edge of a column header can be dragged, and a double click on
+  it fits the column to its content. The arrow keys move a focused edge, Enter fits.
+- **Column widths are remembered** per table and connection profile, in this browser or app, and the
+  right-click menu on the column headers resets them ("Reset column widths") or fits one column.
+- **A cell whose text is cut off shows its full text as a tooltip** (#157), only where something is
+  actually cut off, with the app's own tooltip rather than the browser's.
+
 ### Changed
 
 - **Callback address and ports set at start win over the settings dialog.** In the Docker image
