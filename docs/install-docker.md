@@ -53,12 +53,12 @@ neither has Podman in a rootless user namespace with the default settings.
 ## Variant 2: bridge network with published ports
 
 Two things have to be added: the address the CCU should call back to, and the two callback ports,
-published **unchanged** — the CCU connects to precisely the port it was told, so `-p 12126:2126`
+published **unchanged** — the CCU connects to precisely the port it was told, so `-p 12031:2031`
 would not work.
 
 ```sh
 docker run -d --name homematic-manager \
-    -p 8090:8090 -p 2126:2126 -p 2127:2127 \
+    -p 8090:8090 -p 2031:2031 -p 2032:2032 \
     -v homematic-manager-data:/data \
     -e HMM_CCU=ccu3.local \
     -e HMM_CALLBACK_IP=192.168.1.10 \
@@ -67,16 +67,22 @@ docker run -d --name homematic-manager \
 ```
 
 `HMM_CALLBACK_IP` is the address of the **Docker host** on the CCU's network, not the container's.
-`2126` is the XML-RPC callback (every built-in interface off the CCU speaks XML-RPC, D-28) and
-`2127` the BIN-RPC one (CUxD, which is its own daemon on port 8701). They are the image's defaults;
-change them with `HMM_CALLBACK_XMLRPC_PORT` and `HMM_CALLBACK_BINRPC_PORT` and publish whatever you
-set — hm2mqtt.js uses the same pair, so one of the two has to move when both run on the same host.
+`2031` is the XML-RPC callback (every built-in interface off the CCU speaks XML-RPC, D-28) and
+`2032` the BIN-RPC one (CUxD, which is its own daemon on port 8701). They are the image's defaults,
+the same pair the CCU addon uses; change them with `HMM_CALLBACK_XMLRPC_PORT` and
+`HMM_CALLBACK_BINRPC_PORT` and publish whatever you set.
+
+> **Changed in 3.0.0-beta.16:** until beta.15 the image used **2126/2127**, which is also
+> hm2mqtt.js's default pair. A container that publishes `-p 2126:2126 -p 2127:2127` receives no
+> events after the update: change the mapping to `2031`/`2032`, or keep the old pair with
+> `-e HMM_CALLBACK_XMLRPC_PORT=2126 -e HMM_CALLBACK_BINRPC_PORT=2127`. With `--network host` nothing
+> has to change, unless a firewall on the Docker host opens the callback ports by number.
 
 What is set this way wins over the settings dialog: `HMM_CALLBACK_IP` and the two ports are shown
 there read-only with "Set at start (`HMM_CALLBACK_XMLRPC_PORT` / `--callback-xmlrpc-port`)", and a
 value saved in the dialog before stays in `/data/config.json` without effect for as long as the
 variable is set (the log says so once at start). The interface popup in the header shows, under each
-interface, the callback URL the CCU was told — `http://192.168.1.10:2126` — with "Publish this port
+interface, the callback URL the CCU was told — `http://192.168.1.10:2031` — with "Publish this port
 unchanged" beside it.
 
 `compose.yml` in the repository root has both variants written out.
@@ -112,8 +118,8 @@ The image sets these by default:
 | `HMM_PORT` | `8090` | |
 | `HMM_DATA_DIR` | `/data` | the volume |
 | `HMM_ISSUE_COOKIE` | `true` | see below |
-| `HMM_CALLBACK_XMLRPC_PORT` | `2126` | a freely picked port cannot be published |
-| `HMM_CALLBACK_BINRPC_PORT` | `2127` | likewise |
+| `HMM_CALLBACK_XMLRPC_PORT` | `2031` | a freely picked port cannot be published; the addon's pair (2126 until beta.15) |
+| `HMM_CALLBACK_BINRPC_PORT` | `2032` | likewise (2127 until beta.15) |
 | `HMM_IN_CONTAINER` | `true` | the interface popup reminds you to publish the callback ports unchanged |
 
 ## Authentication, and what the default means
@@ -187,10 +193,11 @@ The `latest` tag is not moved by a pre-release, so an alpha or beta never become
 | Symptom | Look at |
 | --- | --- |
 | The UI loads and stays disconnected | The socket was refused. With `HMM_ISSUE_COOKIE=false` and no `?token=` that is expected; otherwise check a reverse proxy in front passes the upgrade through. |
-| Interfaces green, no state ever changes | The callback. On a bridge network `HMM_CALLBACK_IP` must be the **Docker host's** address, and 2126/2127 must be published unchanged. The interface popup shows the callback URL each interface was given; that address and port are what the CCU connects to. `--network host` avoids the whole question. |
+| Interfaces green, no state ever changes | The callback. On a bridge network `HMM_CALLBACK_IP` must be the **Docker host's** address, and 2031/2032 must be published unchanged. The interface popup shows the callback URL each interface was given; that address and port are what the CCU connects to. `--network host` avoids the whole question. |
+| No events after the update to beta.16 | The image's callback ports moved from 2126/2127 to 2031/2032. Publish `-p 2031:2031 -p 2032:2032` instead, or set `HMM_CALLBACK_XMLRPC_PORT=2126` and `HMM_CALLBACK_BINRPC_PORT=2127` to keep the old mapping. |
 | Interfaces stay red | The CCU's XML-RPC API firewall setting, or the wrong `HMM_CCU`. |
 | Everything is gone after a recreate | `/data` was not on a volume. |
-| Port 2126 or 2127 already in use | The log says `callback server: the xmlrpc port 2126 set by HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port is in use`, and the interface popup shows "Callback port 2126 is in use" under every interface of that protocol. They stay unsubscribed: a fixed port never falls back to a free one, because a free port is one nobody published. hm2mqtt.js defaults to the same pair. Move one with `HMM_CALLBACK_XMLRPC_PORT` / `HMM_CALLBACK_BINRPC_PORT`, publish what you set, and restart. |
+| Port 2031 or 2032 already in use | The log says `callback server: the xmlrpc port 2031 set by HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port is in use`, and the interface popup shows "Callback port 2031 is in use" under every interface of that protocol. They stay unsubscribed: a fixed port never falls back to a free one, because a free port is one nobody published. Typically a second Homematic Manager container on the same host network. Move one with `HMM_CALLBACK_XMLRPC_PORT` / `HMM_CALLBACK_BINRPC_PORT`, publish what you set, and restart. |
 | Device pictures are missing | They are fetched from the CCU and cached in `/data/images`. With TLS the CCU's certificate is self-signed and cannot be accepted, so the small bundled set answers instead. |
 | The QR scanner says the camera needs https | Browsers hand out a camera in a secure context only: https, or `localhost`. Reach the UI over https (a reverse proxy with a certificate, see above) or open it on the machine itself; otherwise type the SGTIN and the key in by hand. |
 | `--network host` does nothing useful | Docker Desktop on macOS/Windows and rootless Podman have no real host network. Use variant 2, or run in an LXC or a VM. |

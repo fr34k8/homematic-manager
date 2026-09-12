@@ -70,9 +70,11 @@ LABEL org.opencontainers.image.title="Homematic Manager" \
 # `HMM_ISSUE_COOKIE=false` where that is not acceptable.
 #
 # The callback ports are pinned because a port the backend picks freely is a port no one can
-# publish. hm2mqtt.js uses the same pair, so change one of them when both run with host networking.
-# Since task 38 a pinned port wins over the settings dialog, which shows it read-only, and a pinned
-# port that is taken is an error rather than a free port nobody published.
+# publish. Since 3.0.0-beta.16 they are 2031/2032, the CCU addon's pair (task 35, D-43), so every
+# install type that pins uses one pair; until beta.15 the image had 2126/2127, which is also
+# hm2mqtt.js's default and made the second of the two fail to bind on one host (task 38, D-46).
+# A pinned port wins over the settings dialog, which shows it read-only, and a pinned port that is
+# taken is an error rather than a free port nobody published.
 #
 # `HMM_IN_CONTAINER` makes the interface popup say, beside each callback URL, that its port has to
 # be published unchanged.
@@ -82,8 +84,8 @@ ENV NODE_ENV=production \
     HMM_DATA_DIR=/data \
     HMM_ISSUE_COOKIE=true \
     HMM_IN_CONTAINER=true \
-    HMM_CALLBACK_XMLRPC_PORT=2126 \
-    HMM_CALLBACK_BINRPC_PORT=2127
+    HMM_CALLBACK_XMLRPC_PORT=2031 \
+    HMM_CALLBACK_BINRPC_PORT=2032
 
 # The tarball is mounted rather than copied, so it leaves no layer behind. The package bundles
 # `@homematic-manager/{backend,core}`; npm pulls its four registry dependencies (binrpc,
@@ -96,10 +98,10 @@ RUN --mount=from=build,source=/pack,target=/pack \
 RUN mkdir -p /data && chown node:node /data
 VOLUME /data
 
-# 8090 is the UI and the API socket. 2126/2127 are the callback ports the interface processes push
+# 8090 is the UI and the API socket. 2031/2032 are the callback ports the interface processes push
 # events to - they only need publishing when the container is not on the host network, and then
 # HMM_CALLBACK_IP must name the address the CCU reaches this host on (docs/install-docker.md).
-EXPOSE 8090/tcp 2126/tcp 2127/tcp
+EXPOSE 8090/tcp 2031/tcp 2032/tcp
 
 USER node
 WORKDIR /data

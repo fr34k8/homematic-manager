@@ -49,13 +49,14 @@ services:
     environment:
       HMM_CCU: ccu3.local
       HMM_CALLBACK_IP: 192.168.1.10
-      # the image's defaults, spelled out because the published ports have to match them
-      HMM_CALLBACK_XMLRPC_PORT: 2126
-      HMM_CALLBACK_BINRPC_PORT: 2127
+      # the image's defaults since 3.0.0-beta.16 (2126/2127 before), spelled out because the
+      # published ports have to match them
+      HMM_CALLBACK_XMLRPC_PORT: 2031
+      HMM_CALLBACK_BINRPC_PORT: 2032
     ports:
       - '8090:8090'
-      - '2126:2126'
-      - '2127:2127'
+      - '2031:2031'
+      - '2032:2032'
     volumes:
       - homematic-manager-data:/data
 

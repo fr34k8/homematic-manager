@@ -203,6 +203,11 @@ jobs:
           # `--demo` redirects `/` to `/?demo`, hence -L; anything but 200 fails the job
           [ "$code" = 200 ]
 
+      # Task 38: 2031/2032 by default, moved by the environment, and a taken fixed port is one clear
+      # error with no free port instead - against the image, not a unit test's idea of it
+      - name: Its callback ports
+        run: sh scripts/docker-callback-test.sh homematic-manager:ci
+
       # D-27 wants a broken SBOM step found on a push and not at a tag, so the image SBOM is
       # generated here too - the release workflow does the same against the pushed digest.
       - name: SBOM of the image (D-27)

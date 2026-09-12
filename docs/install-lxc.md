@@ -151,11 +151,11 @@ numbers:
 
 ```sh
 homematic-manager-web --install --ccu ccu3.local --host 0.0.0.0 \
-    --callback-xmlrpc-port 2126 --callback-binrpc-port 2127
+    --callback-xmlrpc-port 2031 --callback-binrpc-port 2032
 ```
 
-Those two numbers are also hm2mqtt.js's defaults, so one of the two has to move if both run on the
-same box.
+2031/2032 is the pair the CCU addon and the Docker image use. hm2mqtt.js defaults to 2126/2127, so
+pick something else than that pair if both run on the same box.
 
 `--callback-ip` is not needed here — the backend finds the container's address itself and offers the
 candidates in the settings dialog. That option exists for the case an LXC does not have: a container
@@ -225,7 +225,7 @@ A fresh install pulls six packages in total.
 | The QR scanner says the camera needs https | Browsers hand out a camera in a secure context only: https, or `localhost`. Reach the UI over https (a reverse proxy with a certificate, see above) or open it on the machine itself; otherwise type the SGTIN and the key in by hand. |
 | Names are missing, ReGa shows red | ReGa is optional (D-2). Allow "Remote Homematic-Script API" in the CCU's firewall to get the CCU's names, or carry on with the local ones. |
 | Device pictures are missing | They are fetched from the CCU and cached under `/var/lib/homematic-manager/images`. With TLS the CCU's self-signed certificate cannot be accepted, and a small bundled set answers instead. |
-| The callback ports collide with hm2mqtt | Both default to 2126/2127. Move one of them. |
+| The callback ports collide with hm2mqtt | hm2mqtt.js defaults to 2126/2127. A Homematic Manager pinned to the same pair cannot bind; pin 2031/2032 instead, or leave the ports free. |
 
 ## See also
 
