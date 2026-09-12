@@ -194,6 +194,44 @@ describe('ConfigDialog', () => {
         expect(transport.countOf('config.set')).toBe(0);
     });
 
+    /**
+     * Task 32 (#149): the notice during the reconnect is a status, not a footnote - a live region
+     * with a turning ring in front of the text, for as long as `config.set` has not answered.
+     */
+    it('announces the reconnect as a status with a spinner while config.set runs', async () => {
+        await open(transport);
+        let answer: (() => void) | undefined;
+        transport.respond(
+            'config.set',
+            (connection) =>
+                new Promise((resolve) => {
+                    answer = () => resolve({...DEMO_CONFIG, connection});
+                }),
+        );
+        await fireEvent.click(screen.getByTestId('config-clear-cache'));
+        await fireEvent.click(screen.getByTestId('config-save'));
+
+        const notice = await waitFor(() => screen.getByTestId('config-saving'));
+        expect(notice.getAttribute('role')).toBe('status');
+        expect(notice.getAttribute('aria-live')).toBe('polite');
+        expect(within(notice).getByTestId('config-saving-spinner').getAttribute('aria-hidden')).toBe('true');
+        expect(notice.textContent).toContain('Wird gespeichert');
+        expect(screen.queryByTestId('config-error')).toBeNull();
+
+        answer?.();
+        await waitFor(() => expect(screen.queryByTestId('config-saving')).toBeNull());
+    });
+
+    it('shows only the error, not the notice, when the save fails', async () => {
+        await open(transport);
+        transport.fail('config.set', 'callback port already in use');
+        await fireEvent.click(screen.getByTestId('config-clear-cache'));
+        await fireEvent.click(screen.getByTestId('config-save'));
+
+        await waitFor(() => expect(screen.getByTestId('config-error').textContent).toContain('already in use'));
+        expect(screen.queryByTestId('config-saving')).toBeNull();
+    });
+
     it('reports a rejected config.set and stays open', async () => {
         const stores = await open(transport);
         transport.fail('config.set', 'callback port already in use');

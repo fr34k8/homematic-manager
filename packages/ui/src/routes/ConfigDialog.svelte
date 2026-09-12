@@ -668,8 +668,17 @@
                 CCU it took eleven seconds before the dialog closed, with nothing to say that
                 anything was happening. It says so now, next to the buttons, and the button itself
                 is disabled while it runs.
+
+                Task 32, the same reporter: grey text beside the buttons is easy to miss when one does
+                not know it will appear. It is an accent pill with a turning ring now - the accent and
+                not the warning colour, because a reconnect that takes a while is nothing to worry
+                about - and a polite live region, so a screen reader says it as well.
             -->
-            <span class="hmm-config-busy" data-testid="config-saving">{t('Saving and reconnecting…')}</span>
+            <span class="hmm-config-busy" role="status" aria-live="polite" data-testid="config-saving"
+                ><span class="hmm-config-busy-spinner" aria-hidden="true" data-testid="config-saving-spinner"></span>{t(
+                    'Saving and reconnecting…',
+                )}</span
+            >
         {/if}
         {#if stores.app.saveError !== ''}
             <!-- #149: a modal dialog is drawn above the notices, so the failure has to be said here. -->
@@ -687,9 +696,52 @@
 </Dialog>
 
 <style>
+    /*
+        Task 32: a pill in the accent, with the ring of the toolbar's busy icon in front. The text
+        is `--hmm-fg` and not `--hmm-accent`: the accent on its own tint measures 4.4:1 in light
+        and 3.9:1 in dark, under the 4.5:1 a label needs, while the foreground on the tint is
+        9.5:1 and 7.2:1. The colour is carried by the tint, the border and the ring (the border
+        against the button row's background: 4.8:1 light, 6.0:1 dark).
+    */
     .hmm-config-busy {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         margin-right: auto;
-        color: var(--hmm-fg-muted);
+        padding: 2px 10px 2px 8px;
+        border: 1px solid var(--hmm-accent);
+        border-radius: 999px;
+        background: var(--hmm-accent-bg);
+        color: var(--hmm-fg);
+        font-weight: 600;
+    }
+
+    /* The same turn as `hmm-toolbar-spin`: one revolution a second, linear. */
+    .hmm-config-busy-spinner {
+        flex: 0 0 auto;
+        width: 10px;
+        height: 10px;
+        border: 2px solid var(--hmm-accent);
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: hmm-config-spin 1s linear infinite;
+    }
+
+    @keyframes hmm-config-spin {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* Standing still, as the toolbar's icon does: the pill and the text still say it. */
+    @media (prefers-reduced-motion: reduce) {
+        .hmm-config-busy-spinner {
+            animation: none;
+        }
     }
 
     .hmm-config-error {
