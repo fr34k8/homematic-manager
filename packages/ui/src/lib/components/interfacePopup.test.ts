@@ -261,6 +261,71 @@ describe('InterfacePopup', () => {
         expect(line('CUxD')).toBe('binrpc · Port 8701');
     });
 
+    it('B-28: tells an interface that answers, one that refuses and one that times out apart, and retries the last', async () => {
+        const interfaces = [
+            state('Answers', {type: 'custom', port: 2121}),
+            state('Refuses', {
+                type: 'custom',
+                port: 2122,
+                connected: false,
+                absent: true,
+                error: 'connect ECONNREFUSED',
+            }),
+            state('Silent', {
+                type: 'custom',
+                port: 2123,
+                connected: false,
+                unreachable: true,
+                error: 'Silent (ccu:2123, xmlrpc): init timed out after 10000 ms',
+            }),
+        ];
+        const onretry = vi.fn();
+        mount({interfaces, selected: 'Answers', notAnsweringText: 'Antwortet nicht', retryText: 'Erneut', onretry});
+        await openPopup();
+
+        const item = (name: string): HTMLElement => screen.getByTestId(`interface-item-${name}`);
+        const mark = (name: string): string =>
+            item(name).querySelector('.hmm-interface-mark')!.getAttribute('data-mark')!;
+        expect([mark('Answers'), mark('Refuses'), mark('Silent')]).toEqual(['ok', 'absent', 'bad']);
+        expect(item('Answers').textContent).toContain('Verbunden');
+        expect(item('Refuses').textContent).toContain('Nicht vorhanden');
+        expect(item('Silent').textContent).toContain('Antwortet nicht');
+        expect(item('Silent').textContent).not.toContain('Nicht verbunden');
+        expect(item('Silent').getAttribute('title')).toContain('timed out');
+
+        // the retry is for the one that does not answer, not for the one that is not there
+        const retry = screen.getByTestId('interface-select-retry');
+        expect(retry.textContent).toBe('Erneut');
+        await fireEvent.click(retry);
+        expect(onretry).toHaveBeenCalledExactlyOnceWith(['Silent']);
+        // and it leaves the popup open, so the marks can be seen to change
+        expect(screen.getByRole('listbox')).toBeTruthy();
+    });
+
+    it('B-28: has no retry button without an interface that is not answering, or without a handler', async () => {
+        mount({onretry: vi.fn()});
+        await openPopup();
+        // VirtualDevices in the fixture failed without the flag, BidCos-Wired is absent
+        expect(screen.queryByTestId('interface-select-retry')).toBeNull();
+    });
+
+    it('B-28: reaches the retry button with Tab and comes back with Shift+Tab', async () => {
+        const interfaces = [state('BidCos-RF'), state('Silent', {connected: false, unreachable: true})];
+        mount({interfaces, onretry: vi.fn()});
+        await openPopup();
+        const first = screen.getByTestId('interface-item-BidCos-RF');
+        expect(document.activeElement).toBe(first);
+        await fireEvent.keyDown(first, {key: 'Tab'});
+        const retry = screen.getByTestId('interface-select-retry');
+        expect(document.activeElement).toBe(retry);
+        await fireEvent.keyDown(retry, {key: 'Tab', shiftKey: true});
+        expect(document.activeElement).toBe(first);
+        await fireEvent.keyDown(first, {key: 'Tab'});
+        await fireEvent.keyDown(retry, {key: 'Escape'});
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(document.activeElement).toBe(trigger());
+    });
+
     it('marks the current selection and nothing else', async () => {
         mount({selected: 'HmIP-RF'});
         await openPopup();

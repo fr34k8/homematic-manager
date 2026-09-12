@@ -4,7 +4,7 @@ import type {AddressInfo} from 'node:net';
 
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
-import {delay, localIPv4Addresses, probePort, withTimeout} from './net.js';
+import {delay, localIPv4Addresses, probePort, probePortState, withTimeout} from './net.js';
 
 describe('localIPv4Addresses', () => {
     it('keeps external IPv4 addresses and drops loopback, IPv6 and duplicates', () => {
@@ -85,6 +85,66 @@ describe('probePort', () => {
         });
         await expect(probePort('10.0.0.1', 2001, {connect: connect as never})).resolves.toBe(true);
         expect(destroy).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('probePortState (B-28)', () => {
+    /** A socket that emits `event` with `payload` right after the connect is started. */
+    function fakeConnect(event: string, payload?: unknown): typeof net.connect {
+        const socket = new EventEmitter() as net.Socket & EventEmitter;
+        socket.destroy = vi.fn() as never;
+        return vi.fn(() => {
+            setTimeout(() => socket.emit(event, payload), 0);
+            return socket;
+        }) as never;
+    }
+
+    it('tells a refused port from one that does not answer', async () => {
+        const refused = Object.assign(new Error('connect ECONNREFUSED'), {code: 'ECONNREFUSED'});
+        await expect(probePortState('10.0.0.1', 2121, {connect: fakeConnect('error', refused)})).resolves.toBe(
+            'refused',
+        );
+        await expect(probePortState('10.0.0.1', 2121, {connect: fakeConnect('timeout'), timeoutMs: 10})).resolves.toBe(
+            'unreachable',
+        );
+        const noRoute = Object.assign(new Error('connect EHOSTUNREACH'), {code: 'EHOSTUNREACH'});
+        await expect(probePortState('10.0.0.1', 2121, {connect: fakeConnect('error', noRoute)})).resolves.toBe(
+            'unreachable',
+        );
+    });
+
+    it('finds the refusal in the aggregate of happy eyeballs', async () => {
+        const aggregate = Object.assign(new Error('all attempts failed'), {
+            errors: [
+                Object.assign(new Error('v6'), {code: 'ENETUNREACH'}),
+                Object.assign(new Error('v4'), {code: 'ECONNREFUSED'}),
+            ],
+        });
+        await expect(probePortState('ccu.lan', 2121, {connect: fakeConnect('error', aggregate)})).resolves.toBe(
+            'refused',
+        );
+    });
+
+    it('is open for a port that accepts, and refused for a real closed one', async () => {
+        const server = net.createServer();
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const {port} = server.address() as AddressInfo;
+        try {
+            await expect(probePortState('127.0.0.1', port)).resolves.toBe('open');
+        } finally {
+            await new Promise((resolve) => server.close(resolve));
+        }
+        // the same race as above: a freed port can be taken by a parallel test file, so up to five tries
+        let result = 'open';
+        for (let attempt = 1; result === 'open' && attempt <= 5; attempt += 1) {
+            const closed = net.createServer();
+            await new Promise<void>((resolve) => closed.listen(0, '127.0.0.1', resolve));
+            const free = (closed.address() as AddressInfo).port;
+            await new Promise((resolve) => closed.close(resolve));
+            result = await probePortState('127.0.0.1', free, {timeoutMs: 500});
+        }
+        // WSL's loopback leaves a SYN to a closed port unanswered, which is the timeout path
+        expect(['refused', 'unreachable']).toContain(result);
     });
 });
 

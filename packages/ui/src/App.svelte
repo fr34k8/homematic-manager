@@ -182,6 +182,13 @@
             connectedText={t('Connected')}
             notConnectedText={t('Not connected')}
             notPresentText={t('Not present')}
+            notAnsweringText={t('Not answering')}
+            retryText={t('Retry now')}
+            onretry={(names) => {
+                for (const name of names) {
+                    void stores.interfaces.reconnect(name);
+                }
+            }}
             subscribingText={t('Subscribing')}
             allConnectedText={t('All interfaces are connected')}
             someNotConnectedText={t('Not every interface is connected')}

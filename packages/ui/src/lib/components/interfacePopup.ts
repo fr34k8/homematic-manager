@@ -39,6 +39,17 @@ export function markOf(state: InterfaceState): InterfaceMark {
 }
 
 /**
+ * B-28: the interfaces the popup offers to try again at once - configured, not connected and not
+ * answering (a timeout, no route). One that refuses is not present and would only refuse again; the
+ * watchdog keeps its own slow retry for those.
+ */
+export function notAnsweringNames(states: readonly InterfaceState[]): string[] {
+    return states
+        .filter((state) => !state.connected && state.subscribing !== true && state.unreachable === true)
+        .map((state) => state.name);
+}
+
+/**
  * One mark for the whole CCU - what the header shows now that the per-interface marks live in the
  * popup.
  *

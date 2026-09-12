@@ -743,14 +743,16 @@ export const DEMO_INTERFACE_STATES: InterfaceState[] = [
         lastEvent: Date.parse('2026-09-05T09:59:58Z'),
     },
     {
-        // configured, listening, but the subscription failed: the one state that is really a fault
-        // and the only one the popup paints red. The error text is what its title carries.
+        // configured, and the subscription failed: the one state that is really a fault and the only
+        // one the popup paints red. The error text is what its title carries; a timeout is "not
+        // answering" (B-28), which the popup offers to try again.
         name: 'VirtualDevices',
         type: 'VirtualDevices',
         protocol: 'xmlrpc',
         host: 'demo.local',
         port: 9292,
         connected: false,
+        unreachable: true,
         error: 'VirtualDevices: init timed out after 10000 ms',
     },
 ];

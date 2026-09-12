@@ -9,6 +9,7 @@ import {
     isApiError,
     isConnectionRefused,
     isMethodUnsupported,
+    isNotAnswering,
     isRpcFault,
     rpcFaultError,
     toApiError,
@@ -176,6 +177,46 @@ describe('isConnectionRefused', () => {
         const a: {message: string; cause?: unknown} = {message: 'a'};
         a.cause = a;
         expect(isConnectionRefused(a)).toBe(false);
+    });
+});
+
+describe('isNotAnswering (B-28)', () => {
+    it("is the RPC client's timeout and a host without a route, along the cause chain", () => {
+        expect(isNotAnswering(connectionError('CCU-Jack (10.0.0.5:2121, xmlrpc): init timed out after 10000 ms'))).toBe(
+            true,
+        );
+        expect(isNotAnswering(Object.assign(new Error('connect'), {code: 'ETIMEDOUT'}))).toBe(true);
+        expect(
+            isNotAnswering(connectionError('CUxD: init failed', Object.assign(new Error('x'), {code: 'EHOSTUNREACH'}))),
+        ).toBe(true);
+        expect(
+            isNotAnswering(
+                Object.assign(new Error('all attempts failed'), {
+                    errors: [Object.assign(new Error('v4'), {code: 'ENETUNREACH'})],
+                }),
+            ),
+        ).toBe(true);
+        expect(isNotAnswering(new Error('connect EHOSTDOWN 10.0.0.9:8701'))).toBe(true);
+    });
+
+    it('is never a refused port, a fault or anything else', () => {
+        expect(isNotAnswering(Object.assign(new Error('connect ECONNREFUSED'), {code: 'ECONNREFUSED'}))).toBe(false);
+        // a refusal wins even beside a timeout of the other address family
+        expect(
+            isNotAnswering(
+                Object.assign(new Error('all attempts failed'), {
+                    errors: [
+                        Object.assign(new Error('v6'), {code: 'ETIMEDOUT'}),
+                        Object.assign(new Error('v4'), {code: 'ECONNREFUSED'}),
+                    ],
+                }),
+            ),
+        ).toBe(false);
+        expect(isNotAnswering(rpcFaultError('x', {faultCode: -2, faultString: 'Unknown'}))).toBe(false);
+        expect(isNotAnswering(undefined)).toBe(false);
+        const a: {message: string; cause?: unknown} = {message: 'a'};
+        a.cause = a;
+        expect(isNotAnswering(a)).toBe(false);
     });
 });
 

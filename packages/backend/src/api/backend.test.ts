@@ -171,7 +171,7 @@ async function harness(
                 handler = incoming;
                 return servers;
             },
-            probe: () => Promise.resolve(true),
+            probe: () => Promise.resolve('open' as const),
             watchdogIntervalMs: 0,
         },
         ...options.backend,
@@ -840,7 +840,7 @@ describe('config', () => {
                     callbackUrl: () => 'http://127.0.0.1:1',
                     stop: () => Promise.resolve(),
                 }),
-                probe: () => Promise.resolve(false),
+                probe: () => Promise.resolve('refused' as const),
                 watchdogIntervalMs: 0,
             },
         });

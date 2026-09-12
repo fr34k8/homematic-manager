@@ -209,6 +209,39 @@ export function isConnectionRefused(value: unknown): boolean {
     return /\bECONNREFUSED\b/.test(errorMessage(value));
 }
 
+/** The socket codes of a host that did not answer in time or cannot be reached at all. */
+const NOT_ANSWERING_CODES: ReadonlySet<string> = new Set(['ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'EHOSTDOWN']);
+
+/**
+ * B-28: did the interface not answer - a timeout, or no route to its host?
+ *
+ * The counterpart of {@link isConnectionRefused}, and deliberately not the same state: a refused
+ * port means the process is not there, a call that times out means it is slow or its host is away
+ * for a moment. A CCU-Jack or a remote CUxD that does not answer for a minute must stay what it is,
+ * a configured interface that is not answering, and be tried again - not "not present".
+ *
+ * `RpcClient` rejects a call that runs past its timeout with a `kind: 'connection'` error whose text
+ * says "timed out", so the text is looked at as well as the codes along the `cause` chain.
+ */
+export function isNotAnswering(value: unknown): boolean {
+    if (isConnectionRefused(value)) {
+        return false;
+    }
+    let current: unknown = value;
+    for (let depth = 0; current !== undefined && current !== null && depth < 10; depth += 1) {
+        const candidate = current as {code?: unknown; errors?: unknown; cause?: unknown};
+        if (typeof candidate.code === 'string' && NOT_ANSWERING_CODES.has(candidate.code)) {
+            return true;
+        }
+        if (Array.isArray(candidate.errors) && candidate.errors.some((entry) => isNotAnswering(entry))) {
+            return true;
+        }
+        current = candidate.cause;
+    }
+    const text = errorMessage(value);
+    return /\btimed out\b/i.test(text) || /\b(ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EHOSTDOWN)\b/.test(text);
+}
+
 /**
  * Task 38: a callback server's bind failed because another process holds the port - hm2mqtt.js on
  * the same pair, or a second container on the host network. Looked for along the `cause` chain and

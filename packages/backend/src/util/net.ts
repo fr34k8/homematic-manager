@@ -39,30 +39,48 @@ export interface ProbeOptions {
     readonly connect?: typeof net.connect;
 }
 
-/** True when a TCP connection to `host:port` is accepted within the timeout. Never throws. */
-export function probePort(host: string, port: number, options: ProbeOptions = {}): Promise<boolean> {
+/**
+ * What a port probe found.
+ *
+ * B-28: `refused` and `unreachable` are different answers. A refused connection means nothing listens
+ * there - the interface process is not installed, the normal state of BidCos-Wired on a CCU without a
+ * wired gateway. A connection that times out, or a host without a route, says nothing about the
+ * process: a slow CCU-Jack, a remote CUxD on a box that is rebooting. Only the first may be shown as
+ * "not present".
+ */
+export type PortProbe = 'open' | 'refused' | 'unreachable';
+
+/** Whether a TCP connection to `host:port` is accepted, refused, or not answered in time. Never throws. */
+export function probePortState(host: string, port: number, options: ProbeOptions = {}): Promise<PortProbe> {
     const timeoutMs = options.timeoutMs ?? 2000;
     const connect = options.connect ?? net.connect;
-    return new Promise<boolean>((resolve) => {
+    return new Promise<PortProbe>((resolve) => {
         let settled = false;
-        const done = (open: boolean): void => {
+        const done = (result: PortProbe): void => {
             if (settled) {
                 return;
             }
             settled = true;
             socket.destroy();
-            resolve(open);
+            resolve(result);
         };
         const socket = connect({host, port, timeout: timeoutMs}, () => {
-            done(true);
+            done('open');
         });
-        socket.on('error', () => {
-            done(false);
+        socket.on('error', (error: NodeJS.ErrnoException & {errors?: NodeJS.ErrnoException[]}) => {
+            // node's happy-eyeballs connect aggregates the per-address failures in `errors`
+            const codes = [error.code, ...(error.errors ?? []).map((entry) => entry.code)];
+            done(codes.includes('ECONNREFUSED') ? 'refused' : 'unreachable');
         });
         socket.on('timeout', () => {
-            done(false);
+            done('unreachable');
         });
     });
+}
+
+/** True when a TCP connection to `host:port` is accepted within the timeout. Never throws. */
+export async function probePort(host: string, port: number, options: ProbeOptions = {}): Promise<boolean> {
+    return (await probePortState(host, port, options)) === 'open';
 }
 
 /** Resolves after `ms`; the timer never keeps the process alive. */

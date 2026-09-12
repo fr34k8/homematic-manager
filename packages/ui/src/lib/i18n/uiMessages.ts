@@ -28,6 +28,9 @@ export const UI_MESSAGES: MessageCatalogue = {
     Connected: {de: 'Verbunden', en: 'Connected'},
     'Not connected': {de: 'Nicht verbunden', en: 'Not connected'},
     'Not present': {de: 'Nicht vorhanden', en: 'Not present'},
+    // B-28: an interface whose init or probe timed out, and the popup's button that tries those at once
+    'Not answering': {de: 'Antwortet nicht', en: 'Not answering'},
+    'Retry now': {de: 'Jetzt erneut versuchen', en: 'Retry now'},
     Subscribing: {de: 'Anmeldung läuft', en: 'Subscribing'},
     'Pending changes': {de: 'Offene Änderungen', en: 'Pending changes'},
     // D-32: shown only where the host has a login at all - the CCU addon in --auth-mode rega

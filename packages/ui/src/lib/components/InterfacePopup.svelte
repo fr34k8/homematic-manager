@@ -7,6 +7,7 @@
         detailParts,
         MARK_GLYPH,
         markOf,
+        notAnsweringNames,
         type InterfaceDetails,
         type InterfaceMark,
         type StoreEntry,
@@ -27,6 +28,12 @@
         connectedText?: string;
         notConnectedText?: string;
         notPresentText?: string;
+        /** B-28: a `bad` interface whose `init` or probe timed out says this instead of "not connected". */
+        notAnsweringText?: string;
+        /** B-28: the button under the list that tries every interface that is not answering at once. */
+        retryText?: string;
+        /** B-28: without it there is no retry button; called with the names of the interfaces not answering. */
+        onretry?: ((interfaceNames: string[]) => void) | undefined;
         subscribingText?: string;
         allConnectedText?: string;
         someNotConnectedText?: string;
@@ -64,6 +71,9 @@
         connectedText = 'Connected',
         notConnectedText = 'Not connected',
         notPresentText = 'Not present',
+        notAnsweringText = 'Not answering',
+        retryText = 'Retry now',
+        onretry = undefined,
         subscribingText = 'Subscribing',
         allConnectedText = 'All interfaces are connected',
         someNotConnectedText = 'Not every interface is connected',
@@ -85,6 +95,9 @@
     let activeIndex = $state(0);
     let root = $state<HTMLDivElement | undefined>(undefined);
     let trigger = $state<HTMLButtonElement | undefined>(undefined);
+    let retryButton = $state<HTMLButtonElement | undefined>(undefined);
+    /** B-28: what the retry button tries; the button is only there while this is not empty. */
+    const retryNames = $derived(onretry === undefined ? [] : notAnsweringNames(interfaces));
     /** The option buttons, by index; `bind:this` fills and clears them. */
     let items = $state<Array<HTMLButtonElement | undefined>>([]);
 
@@ -101,8 +114,15 @@
     const selectedLabel = $derived(store !== undefined && store.id === selected ? store.label : selected);
     const storeIndex = $derived(store !== undefined && store.selectable ? 0 : -1);
 
-    /** The words beside the glyph; every state says what it is, not only the broken ones. */
-    function markText(mark: InterfaceMark): string {
+    /**
+     * The words beside the glyph; every state says what it is, not only the broken ones. B-28: of
+     * the broken ones, an interface that did not answer in time says so - it is neither missing nor
+     * refusing, and trying again is what helps.
+     */
+    function markText(mark: InterfaceMark, state: InterfaceState): string {
+        if (mark === 'bad' && state.unreachable === true) {
+            return notAnsweringText;
+        }
         switch (mark) {
             case 'ok': {
                 return connectedText;
@@ -219,6 +239,12 @@
                 break;
             }
             case 'Tab': {
+                // B-28: forwards, the retry button under the list is the one stop left inside
+                if (!event.shiftKey && retryButton !== undefined) {
+                    event.preventDefault();
+                    retryButton.focus();
+                    break;
+                }
                 // Leaving by keyboard closes it, but the focus goes where the user sent it.
                 close(false);
                 break;
@@ -226,6 +252,18 @@
             default: {
                 break;
             }
+        }
+    }
+
+    function onRetryKeyDown(event: KeyboardEvent): void {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            close(true);
+        } else if (event.key === 'Tab' && event.shiftKey) {
+            event.preventDefault();
+            items[activeIndex]?.focus();
+        } else if (event.key === 'Tab') {
+            close(false);
         }
     }
 
@@ -359,7 +397,7 @@
                             <span class="hmm-interface-item-name">{state.name}</span>
                             <span class="hmm-interface-mark hmm-interface-mark-{mark}" data-mark={mark}>
                                 <span class="hmm-interface-glyph" aria-hidden="true">{MARK_GLYPH[mark]}</span>
-                                {markText(mark)}
+                                {markText(mark, state)}
                             </span>
                         </span>
                         <span class="hmm-interface-item-line">{lineOf(state)}</span>
@@ -374,6 +412,24 @@
                     </button>
                 {/each}
             </div>
+
+            {#if retryNames.length > 0}
+                <!--
+                    B-28: an interface that does not answer is retried by the watchdog, with a wait
+                    that grows to five minutes. The button tries now. It sits under the list, not in
+                    an item: an option that holds a second button is not an option any more.
+                -->
+                <div class="hmm-interface-foot">
+                    <button
+                        type="button"
+                        class="hmm-interface-retry"
+                        bind:this={retryButton}
+                        data-testid={testId === undefined ? undefined : `${testId}-retry`}
+                        onclick={() => onretry?.(retryNames)}
+                        onkeydown={onRetryKeyDown}>{retryText}</button
+                    >
+                </div>
+            {/if}
         </div>
     {/if}
 </div>
@@ -615,5 +671,28 @@
 
     .hmm-interface-mark-busy {
         color: var(--hmm-warn);
+    }
+
+    .hmm-interface-foot {
+        display: flex;
+        justify-content: flex-end;
+        padding: 4px 8px 6px;
+        border-top: 1px solid var(--hmm-border-muted);
+    }
+
+    .hmm-interface-retry {
+        height: 22px;
+        padding: 0 10px;
+        border: 1px solid var(--hmm-border);
+        border-radius: var(--hmm-radius);
+        background: var(--hmm-control-bg);
+        color: inherit;
+        font: inherit;
+        font-size: var(--hmm-font-size-small);
+        cursor: pointer;
+    }
+
+    .hmm-interface-retry:hover {
+        background: var(--hmm-control-bg-hover);
     }
 </style>

@@ -3,12 +3,19 @@ import os from 'node:os';
 
 import {describe, expect, it, vi} from 'vitest';
 
-import type {ConnectionConfig, InterfaceState, RpcProtocol, RpcValue} from '@homematic-manager/core';
+import type {
+    ConnectionConfig,
+    InterfaceState,
+    RpcProtocol,
+    RpcValue,
+    UserDefinedInterface,
+} from '@homematic-manager/core';
 
 import {BackendError} from '../errors.js';
 import {normaliseConnection} from '../config/defaults.js';
 import {RpcClient, type RpcClientOptions} from '../rpc/client.js';
 import type {CallbackHandler, CallbackServerSet} from '../rpc/server.js';
+import type {PortProbe} from '../util/net.js';
 import {InterfaceManager, callbackBindHost, firstBidcosInterfaceAddress} from './manager.js';
 
 /** A callback server set that binds nothing. */
@@ -78,7 +85,7 @@ function harness(
     options: {
         connection?: Partial<ConnectionConfig>;
         answers?: Record<string, Answer>;
-        probe?: (host: string, port: number) => Promise<boolean>;
+        probe?: (host: string, port: number) => Promise<PortProbe>;
         initBackoffMs?: number;
     } = {},
 ): Harness {
@@ -109,7 +116,7 @@ function harness(
         createClient: clients.create,
         createCallbackServers: () => servers,
         ...(options.initBackoffMs === undefined ? {} : {initBackoffMs: options.initBackoffMs}),
-        ...(options.probe ? {probe: options.probe} : {probe: () => Promise.resolve(true)}),
+        ...(options.probe ? {probe: options.probe} : {probe: () => Promise.resolve<PortProbe>('open')}),
     });
     return {manager, states, notices, connected, servers, clients, clock};
 }
@@ -375,7 +382,7 @@ describe('the default callback ports', () => {
             onNotice: (level, message) => notices.push({level, message}),
             watchdogIntervalMs: 0,
             createClient: clients.create,
-            probe: () => Promise.resolve(true),
+            probe: () => Promise.resolve<PortProbe>('open'),
             callbackHost: '127.0.0.1',
             defaultCallbackPorts,
         });
@@ -468,7 +475,7 @@ describe('the default callback ports', () => {
                 watchdogIntervalMs: 0,
                 initBackoffMs: 0,
                 createClient: clients.create,
-                probe: () => Promise.resolve(true),
+                probe: () => Promise.resolve<PortProbe>('open'),
                 callbackHost: '127.0.0.1',
                 // a default pair is there and must not be used: the configured port is fixed
                 defaultCallbackPorts: {xmlrpc: 2031, binrpc: 2032},
@@ -548,7 +555,7 @@ describe('the default callback ports', () => {
             watchdogIntervalMs: 0,
             createClient: clients.create,
             createCallbackServers: () => servers,
-            probe: () => Promise.resolve(true),
+            probe: () => Promise.resolve<PortProbe>('open'),
         });
         await manager.start();
         const [error] = notices.filter((notice) => notice.level === 'error');
@@ -576,7 +583,7 @@ describe('the default callback ports', () => {
             watchdogIntervalMs: 0,
             createClient: fakeClients().create,
             createCallbackServers: () => servers,
-            probe: () => Promise.resolve(true),
+            probe: () => Promise.resolve<PortProbe>('open'),
         });
         await expect(manager.start()).rejects.toThrow('EADDRNOTAVAIL');
     });
@@ -626,7 +633,7 @@ describe('where the callback servers listen', () => {
             onNotice: () => undefined,
             watchdogIntervalMs: 0,
             createClient: clients.create,
-            probe: () => Promise.resolve(true),
+            probe: () => Promise.resolve<PortProbe>('open'),
         });
         await manager.start();
         const ports = clients.calls
@@ -799,7 +806,7 @@ describe('client, reconnect and stop', () => {
 describe('the background port probe', () => {
     it('reports which interfaces answered', async () => {
         const open = new Set([2001, 2010]);
-        const h = harness({probe: (_host, port) => Promise.resolve(open.has(port))});
+        const h = harness({probe: (_host, port) => Promise.resolve(open.has(port) ? 'open' : 'refused')});
         await h.manager.start();
         await expect(h.manager.probeInterfaces()).resolves.toEqual(['BidCos-RF', 'HmIP-RF']);
         expect(h.manager.detected).toEqual(['BidCos-RF', 'HmIP-RF']);
@@ -809,12 +816,114 @@ describe('the background port probe', () => {
         const h = harness({
             connection: {interfaces: ['BidCos-RF', 'HmIP-RF'], autoDetect: false},
             answers: {'HmIP-RF': () => new Error('refused')},
-            probe: (_host, port) => Promise.resolve(port === 2001),
+            probe: (_host, port) => Promise.resolve(port === 2001 ? 'open' : 'refused'),
         });
         await h.manager.start();
         await h.manager.probeInterfaces();
         const warnings = h.notices.filter((notice) => notice.level === 'warn');
         expect(warnings.map((notice) => notice.interfaceName)).toEqual(['HmIP-RF']);
+        expect(h.manager.states()[1]).toMatchObject({name: 'HmIP-RF', absent: true});
+        expect(h.manager.states()[1]?.unreachable).toBeUndefined();
+    });
+
+    it('B-28: a built-in port that does not answer is not answering, never "not present"', async () => {
+        let silent = true;
+        const h = harness({
+            connection: {interfaces: ['BidCos-RF', 'HmIP-RF'], autoDetect: false},
+            answers: {
+                'HmIP-RF': () =>
+                    silent
+                        ? new BackendError({
+                              message: 'HmIP-RF (ccu.lan:2010, xmlrpc): init timed out after 10000 ms',
+                              kind: 'connection',
+                          })
+                        : '',
+            },
+            probe: (_host, port) => Promise.resolve(port === 2010 ? 'unreachable' : 'open'),
+        });
+        await h.manager.start();
+        const hmip = (): InterfaceState | undefined => h.manager.states().find((state) => state.name === 'HmIP-RF');
+        // the failed `init` says it first
+        expect(hmip()).toMatchObject({connected: false, unreachable: true});
+        expect(hmip()?.absent).toBeUndefined();
+
+        await h.manager.probeInterfaces();
+        expect(hmip()).toMatchObject({connected: false, unreachable: true});
+        expect(hmip()?.absent).toBeUndefined();
+        // one notice, the `init`'s; the probe does not say it again
+        expect(h.notices.filter((notice) => notice.interfaceName === 'HmIP-RF')).toHaveLength(1);
+
+        // it answers again: the mark goes with the success
+        silent = false;
+        h.clock.value += 60_000;
+        await h.manager.reconnect('HmIP-RF');
+        expect(hmip()?.connected).toBe(true);
+        expect(hmip()?.unreachable).toBeUndefined();
+    });
+
+    it('B-28: probes a user-defined interface where it is configured, and keeps its three answers apart', async () => {
+        const extra = (name: string, port: number): UserDefinedInterface => ({
+            name,
+            host: '10.0.0.5',
+            port,
+            protocol: 'xmlrpc',
+        });
+        const seen: string[] = [];
+        const byPort: Record<number, PortProbe> = {2121: 'open', 2122: 'refused', 2123: 'unreachable'};
+        const h = harness({
+            connection: {
+                interfaces: ['Answers', 'Refuses', 'Silent'],
+                extraInterfaces: [extra('Answers', 2121), extra('Refuses', 2122), extra('Silent', 2123)],
+                autoDetect: false,
+            },
+            answers: {
+                Refuses: () => Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:2122'), {code: 'ECONNREFUSED'}),
+                // a slow CCU-Jack: nothing refused, nothing answered in time
+                Silent: () =>
+                    new BackendError({
+                        message: 'Silent (10.0.0.5:2123, xmlrpc): init timed out after 10000 ms',
+                        kind: 'connection',
+                    }),
+            },
+            probe: (host, port) => {
+                seen.push(`${host}:${String(port)}`);
+                return Promise.resolve(byPort[port] ?? 'refused');
+            },
+        });
+        await h.manager.start();
+        await h.manager.probeInterfaces();
+
+        // asked where they are, not on the CCU's built-in ports
+        expect(seen).toEqual(expect.arrayContaining(['10.0.0.5:2121', '10.0.0.5:2122', '10.0.0.5:2123']));
+        const byName = Object.fromEntries(h.manager.states().map((state) => [state.name, state]));
+        expect(byName['Answers']).toMatchObject({connected: true});
+        expect(byName['Answers']?.absent).toBeUndefined();
+        expect(byName['Answers']?.unreachable).toBeUndefined();
+        expect(byName['Refuses']).toMatchObject({connected: false, absent: true});
+        expect(byName['Refuses']?.unreachable).toBeUndefined();
+        // until beta.15 this one was marked absent, because the built-in probe never looks at it
+        expect(byName['Silent']).toMatchObject({connected: false, unreachable: true});
+        expect(byName['Silent']?.absent).toBeUndefined();
+        // and it stays configured
+        expect(h.manager.names()).toEqual(['Answers', 'Refuses', 'Silent']);
+    });
+
+    it('B-28: a probe that times out on an interface whose init was refused turns it from absent into not answering', async () => {
+        const h = harness({
+            connection: {interfaces: ['BidCos-RF', 'HmIP-RF'], autoDetect: false},
+            answers: {
+                'HmIP-RF': () => Object.assign(new Error('connect ECONNREFUSED 1.2.3.4:2010'), {code: 'ECONNREFUSED'}),
+            },
+            probe: (_host, port) => Promise.resolve(port === 2010 ? 'unreachable' : 'open'),
+        });
+        await h.manager.start();
+        expect(h.manager.states()[1]?.absent).toBe(true);
+        await h.manager.probeInterfaces();
+        expect(h.manager.states()[1]?.absent).toBeUndefined();
+        expect(h.manager.states()[1]?.unreachable).toBe(true);
+        expect(h.notices.some((notice) => notice.level === 'warn' && notice.message.includes('does not answer'))).toBe(
+            true,
+        );
     });
 
     it('probes the TLS ports when TLS is on', async () => {
@@ -823,7 +932,7 @@ describe('the background port probe', () => {
             connection: {tls: true},
             probe: (_host, port) => {
                 seen.push(port);
-                return Promise.resolve(false);
+                return Promise.resolve('refused');
             },
         });
         await h.manager.probeInterfaces();
@@ -832,7 +941,7 @@ describe('the background port probe', () => {
     });
 
     it('is started in the background when autoDetect is on and skipped when it is off', async () => {
-        const probe = vi.fn(() => Promise.resolve(true));
+        const probe = vi.fn(() => Promise.resolve<PortProbe>('open'));
         const off = harness({connection: {autoDetect: false}, probe});
         await off.manager.start();
         expect(probe).not.toHaveBeenCalled();

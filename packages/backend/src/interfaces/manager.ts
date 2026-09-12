@@ -35,11 +35,18 @@ import {
     isKnownInterface,
 } from '@homematic-manager/core';
 
-import {configError, connectionError, errorMessage, isAddressInUse, isConnectionRefused} from '../errors.js';
+import {
+    configError,
+    connectionError,
+    errorMessage,
+    isAddressInUse,
+    isConnectionRefused,
+    isNotAnswering,
+} from '../errors.js';
 import {interfaceTargets, type InterfaceTarget} from '../config/defaults.js';
 import {RpcClient, type RpcCallRecord, type RpcClientOptions} from '../rpc/client.js';
 import {CallbackServers, type CallbackHandler, type CallbackServerSet} from '../rpc/server.js';
-import {localIPv4Addresses, probePort, withTimeout} from '../util/net.js';
+import {localIPv4Addresses, probePortState, withTimeout, type PortProbe} from '../util/net.js';
 
 /** How often the watchdog looks at every interface. 2.x used the same 15 s. */
 export const WATCHDOG_INTERVAL_MS = 15_000;
@@ -112,7 +119,7 @@ export interface InterfaceManagerOptions {
     /** Injected by the tests. */
     readonly createClient?: (options: RpcClientOptions) => RpcClient;
     readonly createCallbackServers?: (handler: CallbackHandler) => CallbackServerSet;
-    readonly probe?: (host: string, port: number) => Promise<boolean>;
+    readonly probe?: (host: string, port: number) => Promise<PortProbe>;
     /** Injected for the callback address; defaults to this machine's IPv4 addresses. */
     readonly localAddresses?: () => string[];
     /**
@@ -333,7 +340,13 @@ export class InterfaceManager {
             entry.lastEvent = 0;
             entry.failures = 0;
             entry.retryAt = 0;
-            this.#update(entry, {connected: false, error: undefined, idle: true, subscribing: false});
+            this.#update(entry, {
+                connected: false,
+                error: undefined,
+                idle: true,
+                subscribing: false,
+                unreachable: false,
+            });
         }
         this.#options.onStateChanged(this.states());
     }
@@ -384,7 +397,7 @@ export class InterfaceManager {
         }
         entry.lastEvent = this.#now();
         if (!entry.state.connected) {
-            this.#update(entry, {connected: true, error: undefined});
+            this.#update(entry, {connected: true, error: undefined, unreachable: false});
             this.#options.onStateChanged(this.states());
         }
     }
@@ -430,40 +443,65 @@ export class InterfaceManager {
     }
 
     /**
-     * Probes the well-known ports of every built-in interface on the configured host, in the
-     * background. Nothing waits for this; the result is a hint for the configuration dialog and a
-     * notice for an interface that is configured but whose port is closed.
+     * Probes the well-known ports of every built-in interface on the configured host, and the port
+     * of every configured user-defined interface where it is configured, in the background. Nothing
+     * waits for this; the result is a hint for the configuration dialog and a mark for an interface
+     * that is configured and not connected.
+     *
+     * B-28: only a *refused* port makes an interface "not present". Until beta.15 a probe that timed
+     * out counted the same, and a user-defined interface - which the built-in probe never looks at -
+     * was marked absent whenever it was not connected at that moment: a slow CCU-Jack or a remote
+     * CUxD on a box that was still booting disappeared from the popup's healthy states until the next
+     * start. A port that does not answer marks the interface as not answering, and it stays what it is.
      */
     async probeInterfaces(): Promise<string[]> {
         const connection = this.#options.connection;
-        const probe = this.#options.probe ?? ((host, port) => probePort(host, port, {timeoutMs: 2000}));
-        const found: string[] = [];
-        await Promise.all(
-            INTERFACE_NAMES.map(async (name) => {
-                const definition = interfaceDefinition(name);
-                if (!definition) {
-                    return;
+        const probe = this.#options.probe ?? ((host, port) => probePortState(host, port, {timeoutMs: 2000}));
+        const results = new Map<string, PortProbe>();
+        const extraProbes = connection.interfaces
+            .filter((name) => !isKnownInterface(name))
+            .map(async (name) => {
+                const entry = this.#interfaces.get(name);
+                if (entry) {
+                    results.set(name, await probe(entry.state.host, entry.state.port));
                 }
-                const port = interfacePort(definition, {tls: connection.tls});
-                if (await probe(connection.host, port)) {
-                    found.push(name);
-                }
-            }),
-        );
-        this.#detected = INTERFACE_NAMES.filter((name) => found.includes(name));
-        for (const name of connection.interfaces) {
-            // an interface whose `init` already refused says the same thing; one notice is enough
-            const known = this.#interfaces.get(name);
-            if (
-                isKnownInterface(name) &&
-                !this.#detected.includes(name) &&
-                !this.isConnected(name) &&
-                known?.state.absent !== true
-            ) {
-                this.#options.onNotice('warn', `${name}: the port is closed on ${connection.host}`, name);
+            });
+        const builtInProbes = INTERFACE_NAMES.map(async (name) => {
+            const definition = interfaceDefinition(name);
+            if (definition) {
+                results.set(name, await probe(connection.host, interfacePort(definition, {tls: connection.tls})));
             }
-            if (known && !this.#detected.includes(name) && !this.isConnected(name)) {
-                this.#update(known, {absent: true});
+        });
+        await Promise.all([...builtInProbes, ...extraProbes]);
+        this.#detected = INTERFACE_NAMES.filter((name) => results.get(name) === 'open');
+
+        for (const name of connection.interfaces) {
+            const result = results.get(name);
+            if (this.isConnected(name) || result === undefined || result === 'open') {
+                continue;
+            }
+            const known = this.#interfaces.get(name);
+            const where = known === undefined ? connection.host : `${known.state.host}:${String(known.state.port)}`;
+            if (result === 'refused') {
+                // an interface whose `init` already refused says the same thing; one notice is enough
+                if (known?.state.absent !== true) {
+                    this.#options.onNotice('warn', `${name}: the port is closed on ${where}`, name);
+                }
+                if (known) {
+                    this.#update(known, {absent: true, unreachable: false});
+                }
+            } else {
+                // and one whose `init` timed out has said this already
+                if (known?.state.unreachable !== true) {
+                    this.#options.onNotice(
+                        'warn',
+                        `${name}: ${where} does not answer - kept as configured and tried again`,
+                        name,
+                    );
+                }
+                if (known) {
+                    this.#update(known, {absent: false, unreachable: true});
+                }
             }
         }
         this.#options.onStateChanged(this.states());
@@ -584,6 +622,7 @@ export class InterfaceManager {
             connected: false,
             error: failure.message,
             absent: false,
+            unreachable: false,
             subscribing: false,
             callbackUrl: undefined,
             callbackFailure: {port: failure.port, inUse: failure.inUse},
@@ -619,7 +658,13 @@ export class InterfaceManager {
             entry.retryAt = 0;
             // hmipserver re-sends every device on `init` (occu#45), so the grids are not complete
             // until the sweep below is through; the UI shows "subscribing" until then
-            this.#update(entry, {connected: true, error: undefined, absent: false, subscribing: true});
+            this.#update(entry, {
+                connected: true,
+                error: undefined,
+                absent: false,
+                unreachable: false,
+                subscribing: true,
+            });
             if (wasFailing) {
                 this.#options.onNotice('info', `${interfaceName}: answering again`, interfaceName);
             }
@@ -641,17 +686,19 @@ export class InterfaceManager {
      *
      * Whether the port refuses the connection decides both the wording and the `absent` flag the
      * indicator reads - "not present" is a different thing from "the CCU is unreachable", and only
-     * the first one is the normal state of BidCos-Wired on a CCU without a wired gateway.
+     * the first one is the normal state of BidCos-Wired on a CCU without a wired gateway. A timeout
+     * or a host without a route is the second one, `unreachable` (B-28).
      */
     #noteInitFailure(entry: ManagedInterface, error: unknown): void {
         const message = errorMessage(error);
         const absent = isConnectionRefused(error);
+        const unreachable = !absent && isNotAnswering(error);
         const first = entry.failures === 0;
         entry.failures += 1;
         const base = this.#options.initBackoffMs ?? WATCHDOG_INTERVAL_MS;
         const wait = Math.min(base * 2 ** (entry.failures - 1), MAX_INIT_BACKOFF_MS);
         entry.retryAt = this.#now() + wait;
-        this.#update(entry, {connected: false, error: message, absent, subscribing: false});
+        this.#update(entry, {connected: false, error: message, absent, unreachable, subscribing: false});
         if (!first) {
             return;
         }
@@ -682,6 +729,7 @@ export class InterfaceManager {
             connected?: boolean;
             error?: string | undefined;
             absent?: boolean;
+            unreachable?: boolean;
             subscribing?: boolean;
             idle?: boolean;
             callbackUrl?: string | undefined;
@@ -694,6 +742,7 @@ export class InterfaceManager {
             ...(entry.lastEvent > 0 ? {lastEvent: entry.lastEvent} : {}),
         };
         setFlag(state, 'absent', changes.absent);
+        setFlag(state, 'unreachable', changes.unreachable);
         setFlag(state, 'subscribing', changes.subscribing);
         setFlag(state, 'idle', changes.idle);
         if ('error' in changes) {
@@ -736,7 +785,11 @@ export class InterfaceManager {
 }
 
 /** A boolean that is present when true and absent otherwise, so a state stays small on the wire. */
-function setFlag(state: InterfaceState, key: 'absent' | 'subscribing' | 'idle', value: boolean | undefined): void {
+function setFlag(
+    state: InterfaceState,
+    key: 'absent' | 'unreachable' | 'subscribing' | 'idle',
+    value: boolean | undefined,
+): void {
     if (value === true) {
         state[key] = true;
     } else if (value === false) {

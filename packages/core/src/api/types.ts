@@ -203,6 +203,13 @@ export interface InterfaceState {
      */
     absent?: boolean;
     /**
+     * B-28: the interface did not answer in time - its `init` or the port probe timed out, or its
+     * host has no route. Not the same as {@link absent}: the process may well be there, only slow or
+     * away for a moment (a CCU-Jack, a remote CUxD). It stays configured and shown, the watchdog tries
+     * it again, and the UI says "not answering" and offers to try at once. Present only when true.
+     */
+    unreachable?: boolean;
+    /**
      * `init` has been sent and the first `listDevices` / service-message sweep after it is still
      * running. The UI shows "subscribing" for as long as this is true: `hmipserver` re-sends every
      * device on `init` (occu#45) and the grids are not complete until that has been taken in.
