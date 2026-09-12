@@ -1,6 +1,9 @@
 <script lang="ts">
     import type {Snippet} from 'svelte';
 
+    import {TOOLTIP_DELAY_MS, type TooltipAnchor} from './tooltip.js';
+    import TooltipBubble from './TooltipBubble.svelte';
+
     /**
      * The tooltip of the toolbar buttons (#145).
      *
@@ -14,8 +17,8 @@
      * So the delay is ours: {@link delayMs} after the pointer arrives, or at once on keyboard
      * focus, and the anchor is a span around the control, which receives the pointer even when the
      * control inside it is disabled (`.hmm-toolbar-button:disabled` has `pointer-events: none`
-     * for that). Positioned `fixed` from the anchor's rectangle so the toolbar's own `overflow`
-     * cannot clip it, and clamped to the viewport.
+     * for that). The bubble, its placement and its delay are shared with the grid's cut-off cells
+     * (task 40, `TooltipBubble`, `tooltip.ts`).
      *
      * The text is also on the anchor as `data-tooltip`, which is what a test that only wants to
      * know *what* a control would say reads - the `title` attribute used to be that seam.
@@ -29,35 +32,22 @@
         testId?: string | undefined;
     }
 
-    let {text, delayMs = 300, children, testId = undefined}: Props = $props();
+    let {text, delayMs = TOOLTIP_DELAY_MS, children, testId = undefined}: Props = $props();
 
-    let open = $state(false);
-    let left = $state(0);
-    let top = $state(0);
+    let rect = $state<TooltipAnchor | undefined>(undefined);
     let anchor = $state<HTMLElement | undefined>(undefined);
     let timer: ReturnType<typeof setTimeout> | undefined;
 
-    /** Below the control, left-aligned with it, kept inside the window. */
-    function place(): void {
-        if (!anchor) {
-            return;
-        }
-        const rect = anchor.getBoundingClientRect();
-        const width = Math.min(280, window.innerWidth - 8);
-        left = Math.max(4, Math.min(rect.left, window.innerWidth - width - 4));
-        top = rect.bottom + 4;
-    }
-
     function show(): void {
-        if (text === '') {
+        if (text === '' || !anchor) {
             return;
         }
-        place();
-        open = true;
+        const {left, top, bottom} = anchor.getBoundingClientRect();
+        rect = {left, top, bottom};
     }
 
     function schedule(): void {
-        if (text === '' || open) {
+        if (text === '' || rect !== undefined) {
             return;
         }
         clear();
@@ -73,7 +63,7 @@
 
     function hide(): void {
         clear();
-        open = false;
+        rect = undefined;
     }
 
     $effect(() => clear);
@@ -103,10 +93,8 @@
     }}
 >
     {@render children()}
-    {#if open}
-        <span class="hmm-tooltip" role="tooltip" style:left={`${String(left)}px`} style:top={`${String(top)}px`}
-            >{text}</span
-        >
+    {#if rect !== undefined && text !== ''}
+        <TooltipBubble {text} anchor={rect} />
     {/if}
 </span>
 
@@ -114,21 +102,5 @@
     .hmm-tooltip-anchor {
         display: inline-flex;
         align-items: center;
-    }
-
-    .hmm-tooltip {
-        position: fixed;
-        z-index: 1000;
-        max-width: 280px;
-        padding: 3px 6px;
-        border: 1px solid var(--hmm-border-strong);
-        border-radius: var(--hmm-radius);
-        background: var(--hmm-bg);
-        color: var(--hmm-fg);
-        font-size: var(--hmm-font-size-small);
-        line-height: 1.35;
-        white-space: normal;
-        pointer-events: none;
-        box-shadow: var(--hmm-shadow-menu);
     }
 </style>
