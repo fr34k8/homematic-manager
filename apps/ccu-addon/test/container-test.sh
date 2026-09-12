@@ -528,7 +528,14 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
     [ "$(dex 'cat /run/lighttpd.pid 2>/dev/null')" != "$LIGHTTPD_PID" ] && dex 'test -f /run/lighttpd.pid' >/dev/null && break
     sleep 1
 done
-absent "which brought a new lighttpd up" "$LIGHTTPD_PID" "$(dex 'cat /run/lighttpd.pid')"
+# compared whole, not as a substring: the first lighttpd is pid 23 in a fresh container, and a new one
+# can well be 2323
+NEW_LIGHTTPD_PID="$(dex 'cat /run/lighttpd.pid')"
+if [ -n "$NEW_LIGHTTPD_PID" ] && [ "$NEW_LIGHTTPD_PID" != "$LIGHTTPD_PID" ]; then
+    pass "which brought a new lighttpd up"
+else
+    fail "which brought a new lighttpd up" "pid $LIGHTTPD_PID before, '$NEW_LIGHTTPD_PID' now"
+fi
 out="$(dex "curl -so /dev/null -w '%{http_code}' http://127.0.0.1/addons/hmm/")"
 check "that no longer proxies /addons/hmm/" "404" "$out"
 dex 'rm -f /tmp/S50lighttpd-no-reload' >/dev/null
