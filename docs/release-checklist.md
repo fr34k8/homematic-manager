@@ -152,6 +152,14 @@ gh run watch <run-id>
       package with `--install` in a fresh LXC, the three Electron apps.
 - [ ] Edit the draft if needed: the generated title and body (hint, changelog section, GitHub's notes -
       step 3) stay; a short "what to test / what is known broken" may be added by hand.
+- [ ] **Credit reporters and requesters by @handle in the release notes** (the maintainer, 2026-09-12,
+      from beta.15 on). Everyone who reported a bug or asked for a feature that this release carries is
+      named with their exact GitHub handle (`gh issue view <n> --json author`; for a report made in a
+      comment, the comment's author): at the end of the item's `CHANGELOG.md` bullet as `(#158, @Baxxy13)`,
+      and optionally in a "Thanks to @…" line at the top of the version's section. The body is generated
+      from that section, and GitHub builds the release's *Contributors* list from the @mentions in the
+      body, so a handle that is only in a commit or an issue does not count. Check the draft's body for
+      them before publishing.
 - [ ] **Publish it as Latest, not as a pre-release and not left as a draft** (the maintainer,
       2026-09-12, for beta.14 and on: "publish as Latest"). There is no stable 3.0 yet, so a beta that is
       only a pre-release is never the one GitHub and the desktop updater show; publish as soon as the
