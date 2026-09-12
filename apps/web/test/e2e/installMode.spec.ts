@@ -109,3 +109,36 @@ test('a device paired while the dialog is open can be named right there (#24)', 
     await page.getByTestId('devices-refresh').click();
     await expect(page.locator(`[data-row-id="${NEW_DEVICE}"]`)).toContainText('New socket');
 });
+
+/**
+ * Task 28: an HmIP device without its SGTIN. The third way needs nothing typed, and on the wire it
+ * is `setInstallMode` with exactly two parameters - hmipserver's third one is a String, and a mode
+ * integer there opens nothing - which is what the RPC log has to show.
+ */
+test('an HmIP interface is armed for any device without an SGTIN (task 28)', async ({page, host, sim}) => {
+    await page.goto(`${host.url}#/HmIP-RF/devices`);
+    await page.getByTestId('devices-add').click();
+    const dialog = page.getByTestId('add-device-dialog');
+    await expect(dialog).toHaveAttribute('open', '');
+
+    await expect(page.getByTestId('add-device-start')).toBeDisabled();
+    await page.getByTestId('add-device-hmip-mode').selectOption('ANY');
+    await expect(page.getByTestId('add-device-sgtin')).toHaveCount(0);
+    await expect(page.getByTestId('add-device-hmip-hint')).toContainText("eQ-3's key server");
+    await page.getByTestId('add-device-start').click();
+
+    await expect(page.getByTestId('add-device-countdown')).toBeVisible();
+    expect(sim.getInstallMode('hmip')).toBeGreaterThan(0);
+
+    await page.getByTestId('add-device-stop').click();
+    await expect(page.getByTestId('add-device-countdown')).toHaveCount(0);
+    expect(sim.getInstallMode('hmip')).toBe(0);
+
+    await dialog.locator('.hmm-dialog-close').click();
+    await page.getByTestId('rpclog-toggle').click();
+    const calls = page
+        .getByTestId('rpclog')
+        .locator('.hmm-rpclog-entry', {hasText: 'HmIP-RF setInstallMode'})
+        .locator('.hmm-rpclog-params');
+    await expect.poll(async () => (await calls.allTextContents()).sort()).toEqual(['false', 'true, 60']);
+});

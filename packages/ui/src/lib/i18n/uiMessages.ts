@@ -441,6 +441,26 @@ export const UI_MESSAGES: MessageCatalogue = {
     },
     'With SGTIN and key': {de: 'Mit SGTIN und Schlüssel', en: 'With SGTIN and key'},
     'With SGTIN only (key server)': {de: 'Nur mit SGTIN (Key Server)', en: 'With SGTIN only (key server)'},
+    // Task 28: pairing an HmIP device without its SGTIN, and what each of the three ways needs.
+    'Any device (no SGTIN)': {de: 'Beliebiges Gerät (ohne SGTIN)', en: 'Any device (no SGTIN)'},
+    'Works offline: the key from the sticker is all the interface needs.': {
+        de: 'Funktioniert offline: Der Schlüssel vom Aufkleber ist alles, was die Schnittstelle braucht.',
+        en: 'Works offline: the key from the sticker is all the interface needs.',
+    },
+    "The key comes from eQ-3's key server: the box needs internet access.": {
+        de: 'Der Schlüssel kommt vom Key Server von eQ-3: Die Zentrale braucht Internetzugang.',
+        en: "The key comes from eQ-3's key server: the box needs internet access.",
+    },
+    "Pairs the next device in factory state that asks to join. Without a key the interface asks eQ-3's key server, so the box needs internet access unless a local key mapping is configured.":
+        {
+            de: 'Lernt das nächste Gerät im Werkszustand an, das sich meldet. Ohne Schlüssel fragt die Schnittstelle den Key Server von eQ-3, die Zentrale braucht also Internetzugang, sofern keine lokale Schlüsselzuordnung eingerichtet ist.',
+            en: "Pairs the next device in factory state that asks to join. Without a key the interface asks eQ-3's key server, so the box needs internet access unless a local key mapping is configured.",
+        },
+    'The install mode has ended and no device has joined. A device that is still paired with another central sends no inclusion request: reset it to factory state and start again.':
+        {
+            de: 'Der Anlernmodus ist abgelaufen, und kein Gerät hat sich angemeldet. Ein Gerät, das noch an einer anderen Zentrale angelernt ist, sendet keine Anlernanfrage: Gerät auf Werkseinstellungen zurücksetzen und erneut starten.',
+            en: 'The install mode has ended and no device has joined. A device that is still paired with another central sends no inclusion request: reset it to factory state and start again.',
+        },
     'QR scanner': {de: 'QR-Scanner', en: 'QR scanner'},
     Scan: {de: 'Scannen', en: 'Scan'},
     Stop: {de: 'Stoppen', en: 'Stop'},

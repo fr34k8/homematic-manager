@@ -186,6 +186,133 @@ describe('the add-device dialog', () => {
         });
     });
 
+    /** Opens the dialog on HmIP-RF once its devices are there. */
+    async function openOnHmip(): Promise<void> {
+        const {stores} = await mountApp({transport, hash: '#/HmIP-RF/devices'});
+        await waitFor(() => {
+            expect(stores.devices.devices('HmIP-RF').length).toBeGreaterThan(0);
+        });
+        await fireEvent.click(screen.getByTestId('devices-add'));
+    }
+
+    async function startAnyDevice(): Promise<void> {
+        await fireEvent.change(screen.getByTestId('add-device-hmip-mode'), {target: {value: 'ANY'}});
+        await waitFor(() => {
+            expect(screen.getByTestId<HTMLButtonElement>('add-device-start').disabled).toBe(false);
+        });
+        await fireEvent.click(screen.getByTestId('add-device-start'));
+    }
+
+    /**
+     * Task 28: a device whose sticker is unreadable, glued to a wall or gone. The third way needs no
+     * field at all - the button is live as soon as it is chosen - and the contract carries `ANY`
+     * without a key, which the backend turns into `setInstallMode` with two arguments.
+     */
+    it('pairs any HmIP device without an SGTIN (task 28)', async () => {
+        await openOnHmip();
+        expect(screen.getByTestId<HTMLButtonElement>('add-device-start').disabled).toBe(true);
+
+        await fireEvent.change(screen.getByTestId('add-device-hmip-mode'), {target: {value: 'ANY'}});
+        await waitFor(() => {
+            expect(screen.queryByTestId('add-device-sgtin')).toBeNull();
+        });
+        expect(screen.queryByTestId('add-device-key')).toBeNull();
+        expect(screen.queryByTestId('add-device-scan')).toBeNull();
+        expect(screen.getByTestId<HTMLButtonElement>('add-device-start').disabled).toBe(false);
+
+        await fireEvent.click(screen.getByTestId('add-device-start'));
+        await waitFor(() => {
+            expect(transport.lastCall('devices.installMode.set')).toEqual([
+                'HmIP-RF',
+                true,
+                {seconds: 60, hmipKeyMode: 'ANY'},
+            ]);
+        });
+        expect(screen.getByTestId('add-device-countdown')).toBeTruthy();
+    });
+
+    it('says which of the three ways works offline and which needs the key server (task 28)', async () => {
+        await openOnHmip();
+        const hint = (): string => screen.getByTestId('add-device-hmip-hint').textContent;
+        expect(hint()).toContain('Funktioniert offline');
+
+        await fireEvent.change(screen.getByTestId('add-device-hmip-mode'), {target: {value: 'SGTIN'}});
+        await waitFor(() => {
+            expect(hint()).toContain('Key Server');
+        });
+        expect(hint()).toContain('Internetzugang');
+
+        await fireEvent.change(screen.getByTestId('add-device-hmip-mode'), {target: {value: 'ANY'}});
+        await waitFor(() => {
+            expect(hint()).toContain('Werkszustand');
+        });
+        expect(hint()).toContain('lokale Schlüsselzuordnung');
+    });
+
+    /**
+     * Task 28's second trap: hmipserver matches the whitelist as an exact string, so a lower-case
+     * SGTIN would silently never match. What reaches the contract is upper case, however it was typed.
+     */
+    it('hands a lower-case SGTIN to the contract in upper case (task 28)', async () => {
+        await openOnHmip();
+        await fireEvent.change(screen.getByTestId('add-device-hmip-mode'), {target: {value: 'SGTIN'}});
+        await fireEvent.input(screen.getByTestId('add-device-sgtin'), {
+            target: {value: '3014f711-a000-0000-0000-0001'},
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId<HTMLButtonElement>('add-device-start').disabled).toBe(false);
+        });
+        await fireEvent.click(screen.getByTestId('add-device-start'));
+
+        await waitFor(() => {
+            expect(transport.lastCall('devices.installMode.set')?.[2]).toEqual({
+                seconds: 60,
+                hmipKeyMode: 'SGTIN',
+                hmipKey: {sgtin: '3014F711A000000000000001', key: ''},
+            });
+        });
+    });
+
+    it('says why nothing joined once the window has closed by itself (task 28)', async () => {
+        // the mock's getInstallMode answers 0, so the first tick of the countdown finds it closed
+        await openOnHmip();
+        await startAnyDevice();
+
+        const notice = await waitFor(() => screen.getByTestId('add-device-nothing-joined'), {timeout: 3000});
+        expect(notice.textContent).toContain('Werkseinstellungen');
+        expect(screen.queryByTestId('add-device-countdown')).toBeNull();
+
+        // a new start takes the notice away again
+        await fireEvent.click(screen.getByTestId('add-device-start'));
+        await waitFor(() => {
+            expect(screen.queryByTestId('add-device-nothing-joined')).toBeNull();
+        });
+    });
+
+    it('does not say nothing joined when the window was stopped by hand, or when a device came', async () => {
+        await openOnHmip();
+        transport.result('devices.installMode.get', 30);
+        await startAnyDevice();
+        await waitFor(() => {
+            expect(screen.getByTestId('add-device-stop')).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByTestId('add-device-stop'));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        expect(screen.queryByTestId('add-device-nothing-joined')).toBeNull();
+
+        // a device paired while the window was open: the window then ends quietly
+        transport.result('devices.installMode.get', 0);
+        await startAnyDevice();
+        transport.emit('devices.changed', {interfaceName: 'HmIP-RF', kind: 'new', addresses: ['0009D3C99ABCDE']});
+        await waitFor(() => {
+            expect(screen.getByTestId('add-device-paired')).toBeTruthy();
+        });
+        await waitFor(() => {
+            expect(screen.queryByTestId('add-device-countdown')).toBeNull();
+        });
+        expect(screen.queryByTestId('add-device-nothing-joined')).toBeNull();
+    });
+
     it('does not open the camera until the scanner is switched on, and reports a failure (#112)', async () => {
         const {stores} = await mountApp({transport, hash: '#/HmIP-RF/devices'});
         await waitFor(() => {

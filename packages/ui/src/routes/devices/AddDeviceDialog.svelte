@@ -26,7 +26,12 @@
     let bidcosMode = $state(1);
     let serial = $state('');
     let tempKey = $state('');
-    let hmipMode = $state<'KEY' | 'SGTIN'>('KEY');
+    /**
+     * The three ways an HmIP device is admitted. Task 28 added `ANY`: no SGTIN at all, for the
+     * device whose sticker is unreadable, glued to a wall or simply gone - what the CCU WebUI has
+     * always offered.
+     */
+    let hmipMode = $state<'KEY' | 'SGTIN' | 'ANY'>('KEY');
     let sgtin = $state('');
     let deviceKey = $state('');
     let scanning = $state(false);
@@ -38,12 +43,38 @@
     let names = $state<Record<string, string>>({});
     /** #54: what the last inbox confirmation did, as one line under the button. */
     let inboxConfirmed = $state('');
+    /**
+     * Task 28: the window ran out and nothing joined. The interface reports nothing about a device
+     * that never asked - and one that is still paired with another central sends no inclusion
+     * request at all - so the dialog says it once the window has closed, instead of just going quiet.
+     */
+    let nothingJoined = $state(false);
+    /**
+     * Bumped by every start and every stop: a countdown answer that arrives after the user pressed
+     * Stop belongs to a window that is already closed and must not report on it.
+     */
+    let installWindow = 0;
 
     const interfaceName = $derived(stores.app.selectedInterface);
     const interfaceType = $derived(stores.interfaces.typeOf(interfaceName));
     const isHmip = $derived(!interfaceType.startsWith('BidCos') && interfaceType !== 'CUxD');
     const isWired = $derived(interfaceType === 'BidCos-Wired');
-    const keyReady = $derived(hmipMode === 'SGTIN' ? isSgtin(sgtin) : isSgtin(sgtin) && isDeviceKey(deviceKey));
+    const keyReady = $derived(
+        hmipMode === 'ANY' ? true : hmipMode === 'SGTIN' ? isSgtin(sgtin) : isSgtin(sgtin) && isDeviceKey(deviceKey),
+    );
+    /**
+     * Task 28: the one practical difference between the three ways is whether the box needs the
+     * internet - only SGTIN and key works offline, the other two take the key from eQ-3's key server.
+     */
+    const hmipHint = $derived(
+        hmipMode === 'KEY'
+            ? t('Works offline: the key from the sticker is all the interface needs.')
+            : hmipMode === 'SGTIN'
+              ? t("The key comes from eQ-3's key server: the box needs internet access.")
+              : t(
+                    "Pairs the next device in factory state that asks to join. Without a key the interface asks eQ-3's key server, so the box needs internet access unless a local key mapping is configured.",
+                ),
+    );
 
     $effect(() => {
         if (open) {
@@ -54,6 +85,14 @@
         paired = [];
         names = {};
         inboxConfirmed = '';
+        nothingJoined = false;
+    });
+
+    /** There is nothing to scan without an SGTIN; a running camera is switched off with the fields. */
+    $effect(() => {
+        if (hmipMode === 'ANY') {
+            scanning = false;
+        }
     });
 
     /** New devices while the dialog is open: #24 asks for them by name before they are forgotten. */
@@ -77,9 +116,17 @@
         if (!open || remaining <= 0) {
             return;
         }
+        const current = installWindow;
         const timer = setInterval(() => {
             void stores.devices.installModeSeconds(interfaceName).then((left) => {
+                if (current !== installWindow) {
+                    return;
+                }
                 remaining = left;
+                // task 28: the window closed by itself and nobody came
+                if (left <= 0 && isHmip && paired.length === 0) {
+                    nothingJoined = true;
+                }
             });
         }, COUNTDOWN_MS);
         return () => {
@@ -98,6 +145,8 @@
      */
     async function start(options: InstallModeOptions): Promise<void> {
         busy = true;
+        nothingJoined = false;
+        installWindow += 1;
         const ok = await stores.devices.setInstallMode(interfaceName, true, {seconds, ...options});
         busy = false;
         // `addDevice` opens no install mode, so nothing counts down (checked against 2.7)
@@ -107,6 +156,7 @@
     }
 
     async function stop(): Promise<void> {
+        installWindow += 1;
         await stores.devices.setInstallMode(interfaceName, false);
         remaining = 0;
     }
@@ -171,63 +221,71 @@
             <select class="hmm-select" bind:value={hmipMode} data-testid="add-device-hmip-mode">
                 <option value="KEY">{t('With SGTIN and key')}</option>
                 <option value="SGTIN">{t('With SGTIN only (key server)')}</option>
+                <option value="ANY">{t('Any device (no SGTIN)')}</option>
             </select>
         </label>
-
-        <label class="hmm-add-row">
-            <span>SGTIN</span>
-            <input
-                class="hmm-input hmm-mono"
-                class:hmm-add-invalid={sgtin !== '' && !isSgtin(sgtin)}
-                value={sgtin}
-                data-testid="add-device-sgtin"
-                oninput={(event) => (sgtin = normaliseKeyText(event.currentTarget.value))}
-            />
-        </label>
-
-        {#if hmipMode === 'KEY'}
-            <label class="hmm-add-row">
-                <span>KEY</span>
-                <input
-                    class="hmm-input hmm-mono"
-                    class:hmm-add-invalid={deviceKey !== '' && !isDeviceKey(deviceKey)}
-                    value={deviceKey}
-                    data-testid="add-device-key"
-                    oninput={(event) => (deviceKey = normaliseKeyText(event.currentTarget.value))}
-                />
-            </label>
-        {/if}
-
         <div class="hmm-add-row">
-            <span>{t('QR scanner')}</span>
-            <div>
-                <button
-                    type="button"
-                    class="hmm-button"
-                    data-testid="add-device-scan"
-                    onclick={() => {
-                        scanError = '';
-                        scanning = !scanning;
-                    }}>{scanning ? t('Stop') : t('Scan')}</button
-                >
-                {#if scanError !== ''}<span class="hmm-add-error" data-testid="add-device-scan-error">{scanError}</span
-                    >{/if}
-            </div>
+            <span></span>
+            <p class="hmm-add-hint" data-testid="add-device-hmip-hint">{hmipHint}</p>
         </div>
 
-        <QrScanner
-            active={scanning}
-            {createReader}
-            insecureContextMessage={t(
-                'The camera is only available over https or on localhost. Open the page with its https address (the CCU serves it on its https port too, with a certificate warning) or type the key in by hand.',
-            )}
-            onscan={applyScan}
-            onerror={(message) => {
-                scanError = message;
-                scanning = false;
-            }}
-            testId="add-device-video"
-        />
+        {#if hmipMode !== 'ANY'}
+            <label class="hmm-add-row">
+                <span>SGTIN</span>
+                <input
+                    class="hmm-input hmm-mono"
+                    class:hmm-add-invalid={sgtin !== '' && !isSgtin(sgtin)}
+                    value={sgtin}
+                    data-testid="add-device-sgtin"
+                    oninput={(event) => (sgtin = normaliseKeyText(event.currentTarget.value))}
+                />
+            </label>
+
+            {#if hmipMode === 'KEY'}
+                <label class="hmm-add-row">
+                    <span>KEY</span>
+                    <input
+                        class="hmm-input hmm-mono"
+                        class:hmm-add-invalid={deviceKey !== '' && !isDeviceKey(deviceKey)}
+                        value={deviceKey}
+                        data-testid="add-device-key"
+                        oninput={(event) => (deviceKey = normaliseKeyText(event.currentTarget.value))}
+                    />
+                </label>
+            {/if}
+
+            <div class="hmm-add-row">
+                <span>{t('QR scanner')}</span>
+                <div>
+                    <button
+                        type="button"
+                        class="hmm-button"
+                        data-testid="add-device-scan"
+                        onclick={() => {
+                            scanError = '';
+                            scanning = !scanning;
+                        }}>{scanning ? t('Stop') : t('Scan')}</button
+                    >
+                    {#if scanError !== ''}<span class="hmm-add-error" data-testid="add-device-scan-error"
+                            >{scanError}</span
+                        >{/if}
+                </div>
+            </div>
+
+            <QrScanner
+                active={scanning}
+                {createReader}
+                insecureContextMessage={t(
+                    'The camera is only available over https or on localhost. Open the page with its https address (the CCU serves it on its https port too, with a certificate warning) or type the key in by hand.',
+                )}
+                onscan={applyScan}
+                onerror={(message) => {
+                    scanError = message;
+                    scanning = false;
+                }}
+                testId="add-device-video"
+            />
+        {/if}
     {:else}
         <label class="hmm-add-row">
             <span>{t('Mode')}</span>
@@ -287,10 +345,13 @@
                 onclick={() =>
                     void start(
                         isHmip
-                            ? {
-                                  hmipKeyMode: hmipMode,
-                                  hmipKey: {sgtin, key: hmipMode === 'SGTIN' ? '' : deviceKey},
-                              }
+                            ? hmipMode === 'ANY'
+                                ? // task 28: no SGTIN, no key - the backend sends two arguments
+                                  {hmipKeyMode: 'ANY'}
+                                : {
+                                      hmipKeyMode: hmipMode,
+                                      hmipKey: {sgtin, key: hmipMode === 'SGTIN' ? '' : deviceKey},
+                                  }
                             : {
                                   mode: bidcosMode,
                                   ...(tempKey.trim() === '' ? {} : {tempKey: tempKey.trim()}),
@@ -304,6 +365,13 @@
                 >
             {/if}
         </div>
+        {#if nothingJoined}
+            <p class="hmm-add-notice" role="status" data-testid="add-device-nothing-joined">
+                {t(
+                    'The install mode has ended and no device has joined. A device that is still paired with another central sends no inclusion request: reset it to factory state and start again.',
+                )}
+            </p>
+        {/if}
     {/if}
 
     <!--
@@ -402,6 +470,20 @@
     .hmm-add-error {
         color: var(--hmm-error);
         margin-left: 8px;
+    }
+
+    /* Task 28: what the chosen way needs, under the mode it belongs to. */
+    .hmm-add-hint {
+        margin: -2px 0 4px;
+        color: var(--hmm-fg-muted);
+        font-size: var(--hmm-font-size-small);
+        line-height: 1.35;
+    }
+
+    /* Task 28: said once the window has run out - a warning, not an error, since nothing broke. */
+    .hmm-add-notice {
+        margin: 8px 0 0;
+        color: var(--hmm-warn);
     }
 
     .hmm-add-paired {
