@@ -296,6 +296,12 @@ export interface TableLayout {
     /** The tracks in order, without the expander. */
     readonly tracks: readonly TableTrack[];
     readonly expander: boolean;
+    /**
+     * The keys of the tracks only the sub-grid has - the channel's DIRECTION, a peer's dBm pair
+     * (task 42). Their widths belong to the sub-grid and are kept apart from the table's own; a
+     * key both depths share is the parent's column, sized from the head.
+     */
+    readonly subKeys: readonly string[];
 }
 
 /**
@@ -386,6 +392,7 @@ export function tableLayout<T>(
     expander: boolean,
 ): TableLayout {
     const tracks: TableTrack[] = columns.filter((column) => column.hidden !== true).map((column) => trackOf(column));
+    const subKeys: string[] = [];
     let next = 0;
     for (const column of subColumns ?? []) {
         if (column.hidden === true) {
@@ -397,6 +404,7 @@ export function tableLayout<T>(
             continue;
         }
         tracks.splice(next, 0, trackOf(column));
+        subKeys.push(column.key);
         next += 1;
     }
     const offset = expander ? 2 : 1;
@@ -404,7 +412,33 @@ export function tableLayout<T>(
     for (const [index, entry] of tracks.entries()) {
         track[entry.key] = index + offset;
     }
-    return {template: sizedTemplate({tracks, expander}).template, track, tracks, expander};
+    return {template: sizedTemplate({tracks, expander}).template, track, tracks, expander, subKeys};
+}
+
+/**
+ * The widths the one template is drawn with (task 42): the table's own for the columns of its
+ * rows, the sub-grid's for the columns only the sub-grid has. Each side is kept under its own table
+ * id, so an entry for a column the other side owns - a stale or hand-edited one - is left out
+ * rather than sizing that column from the wrong place.
+ */
+export function layoutWidths(
+    layout: Pick<TableLayout, 'subKeys'>,
+    parentWidths: Readonly<Record<string, number>>,
+    subWidths: Readonly<Record<string, number>>,
+): Record<string, number> {
+    const subKeys = new Set(layout.subKeys);
+    const widths: Record<string, number> = {};
+    for (const [key, width] of Object.entries(parentWidths)) {
+        if (!subKeys.has(key)) {
+            widths[key] = width;
+        }
+    }
+    for (const [key, width] of Object.entries(subWidths)) {
+        if (subKeys.has(key)) {
+            widths[key] = width;
+        }
+    }
+    return widths;
 }
 
 /**

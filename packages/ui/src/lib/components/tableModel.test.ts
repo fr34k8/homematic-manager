@@ -14,6 +14,7 @@ import {
     rangeIds,
     groupSpans,
     hasActiveFilter,
+    layoutWidths,
     sizedTemplate,
     tableLayout,
     visibleWindow,
@@ -249,6 +250,49 @@ describe('tableLayout', () => {
 
     it('is the plain column template when there is no sub-grid', () => {
         expect(tableLayout(parent, undefined, false).template).toBe(gridTemplate(parent, false));
+    });
+
+    it('names the tracks only the sub-grid has, and no shared or hidden one (task 42)', () => {
+        expect(tableLayout(parent, child, true).subKeys).toEqual(['direction']);
+        expect(
+            tableLayout(parent, [...child, {key: 'aes', label: 'AES', width: 10, hidden: true}], false).subKeys,
+        ).toEqual(['direction']);
+        expect(tableLayout(parent, undefined, false).subKeys).toEqual([]);
+    });
+});
+
+/**
+ * Task 42: the sub-grid's own columns are sized in the sub-grid and kept under its own table id;
+ * the one template draws both sets. A width stored for the wrong side is ignored, so a hand-edited
+ * or stale entry cannot size a device column from the sub-grid or the other way round.
+ */
+describe('layoutWidths', () => {
+    const parent: DataTableColumn<Row>[] = [
+        {key: 'name', label: 'Name', width: 200},
+        {key: 'type', label: 'TYPE', width: 150},
+    ];
+    const child: DataTableColumn<Row>[] = [
+        {key: 'name', label: 'Name'},
+        {key: 'direction', label: 'DIRECTION', width: 100},
+        {key: 'type', label: 'TYPE'},
+    ];
+    const layout = tableLayout(parent, child, false);
+
+    it('takes the sub-grid widths for its own tracks and the table widths for the rest', () => {
+        expect(layoutWidths(layout, {name: 260, type: 90}, {direction: 140})).toEqual({
+            name: 260,
+            type: 90,
+            direction: 140,
+        });
+    });
+
+    it('ignores a sub-grid width for a shared column and a table width for a sub-grid column', () => {
+        expect(layoutWidths(layout, {direction: 300}, {name: 50, type: 60})).toEqual({});
+    });
+
+    it('draws both on the one template', () => {
+        const widths = layoutWidths(layout, {type: 90}, {direction: 140});
+        expect(sizedTemplate(layout, widths).template).toBe('minmax(56px, 200fr) 140px 90px');
     });
 });
 
