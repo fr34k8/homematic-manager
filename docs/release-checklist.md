@@ -150,14 +150,16 @@ gh run watch <run-id>
 - [ ] Install each of the D-25 install types **from the published artefacts, not from the
       checkout**: the three addon packages on the lab boxes, `docker run` on the image, the npm
       package with `--install` in a fresh LXC, the three Electron apps.
-- [ ] Edit the draft: the generated title and body (hint, changelog section, GitHub's notes - step 3)
-      stay; add a short "what to test / what is known broken" by hand, and **tick "Set as a
-      pre-release"**.
-- [ ] Publish the draft.
+- [ ] Edit the draft if needed: the generated title and body (hint, changelog section, GitHub's notes -
+      step 3) stay; a short "what to test / what is known broken" may be added by hand.
+- [ ] **Publish it as Latest, not as a pre-release and not left as a draft** (the maintainer,
+      2026-09-12, for beta.14 and on: "publish as Latest"). There is no stable 3.0 yet, so a beta that is
+      only a pre-release is never the one GitHub and the desktop updater show; publish as soon as the
+      assets are attached and check out. beta.10 to beta.13 already went out that way.
 
 ```sh
 gh release view v3.0.0-beta.0 --json assets --jq '.assets[].name'
-gh release edit v3.0.0-beta.0 --prerelease --draft=false
+gh release edit v3.0.0-beta.0 --draft=false --prerelease=false --latest
 ```
 
 ### 5. Announce
@@ -309,7 +311,8 @@ gh issue close 98 --reason completed
   `npm deprecate` and release the next patch. The GitHub draft can simply be discarded.
 - **The draft carries an asset from a run you rejected.** `gh release delete-asset <tag> <name>`
   before publishing.
-- **The updater offered a beta to stable users.** The release was published without "pre-release"
-  ticked; tick it and the updater stops offering it.
+- **The updater offers a beta to 2.x users.** That is intended while there is no stable 3.0: betas are
+  published as Latest (step 4, the maintainer, 2026-09-12). If a beta must not be offered, tick
+  "pre-release" on that one release; `electron-updater` then skips it.
 - **A lab box does not come back after an addon update.** Stop, do not retry destructively; the
   rules and what was measured are in [hardware-checklist.md](hardware-checklist.md).
