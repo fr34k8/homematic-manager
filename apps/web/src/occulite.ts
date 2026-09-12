@@ -46,6 +46,24 @@ export interface OcculiteAuthOptions {
 
 export const OCCULITE_TIMEOUT_MS = 5000;
 
+/**
+ * B-94, D-65: the header openccu-lite's lighttpd gate sets on every request it lets through under
+ * `/addons/`, to the bare id of the session it found (from either session cookie or `?sid=`). The
+ * gate removes a copy the client sent first. A CCU has no gate and passes a client's header through,
+ * an older openccu-lite image does the same, and the backend's port is open to every process on the
+ * box - so the header is only a claim, and the box is asked about it like about any other session.
+ */
+export const OCCULITE_SESSION_HEADER = 'x-occulite-session';
+
+export interface OcculiteCheckOptions {
+    /**
+     * The addon contract's validation (openccu-lite `docs/PORTING-PROMPT.md`): the session only
+     * counts when `GET /api/auth/v1/state` confirms it. The `?sid=` hand-over keeps the D-40 check,
+     * where that second answer only supplies the name.
+     */
+    readonly requireState?: boolean;
+}
+
 /** A session id as the shell hands it over, `@…@` and all, or `undefined` when it is not one. */
 export function parseSid(value: string | null | undefined): string | undefined {
     const bare = (value ?? '').replace(/^@|@$/g, '').trim();
@@ -71,7 +89,10 @@ export class OcculiteAuthenticator {
      * that cannot be asked alike. A caller cannot tell them apart, and therefore cannot use this to
      * find out whether a session exists.
      */
-    async check(rawSid: string | null | undefined): Promise<OcculiteSession | undefined> {
+    async check(
+        rawSid: string | null | undefined,
+        options: OcculiteCheckOptions = {},
+    ): Promise<OcculiteSession | undefined> {
         const sid = parseSid(rawSid);
         if (sid === undefined) {
             return undefined;
@@ -93,6 +114,10 @@ export class OcculiteAuthenticator {
             return undefined;
         }
         const who = await this.#who(sid);
+        if (who === undefined && options.requireState === true) {
+            this.#options.onNotice?.('warn', 'the box did not confirm the session of the X-Occulite-Session header');
+            return undefined;
+        }
         return {sid, name: who?.name ?? 'openccu-lite', level: who?.level ?? 2};
     }
 

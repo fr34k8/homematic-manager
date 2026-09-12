@@ -884,21 +884,37 @@ describe('shutdown', () => {
 });
 
 describe('the openccu-lite hand-over (D-40)', () => {
-    /** A box that knows one session. The real one asks the box's metadata API. */
+    /**
+     * A box that knows two sessions, `abcdefghij` (admin) and `benbenbenb` (user), and a third,
+     * `nostate000`, that its metadata API takes and its `/api/auth/v1/state` does not confirm. The
+     * real one is `OcculiteAuthenticator`, see `occulite.test.ts` and the test against an HTTP box below.
+     */
     const fakeBox = {
         offered: [] as (string | null | undefined)[],
-        check(sid: string | null | undefined): Promise<{name: string; level: number; sid: string} | undefined> {
+        requireState: [] as (boolean | undefined)[],
+        check(
+            sid: string | null | undefined,
+            options?: {requireState?: boolean},
+        ): Promise<{name: string; level: number; sid: string} | undefined> {
             fakeBox.offered.push(sid);
-            return Promise.resolve(
-                sid === '@abcdefghij@' || sid === 'abcdefghij'
-                    ? {name: 'admin', level: 8, sid: 'abcdefghij'}
-                    : undefined,
-            );
+            fakeBox.requireState.push(options?.requireState);
+            const bare = (sid ?? '').replace(/^@|@$/g, '');
+            if (bare === 'abcdefghij') {
+                return Promise.resolve({name: 'admin', level: 8, sid: bare});
+            }
+            if (bare === 'benbenbenb') {
+                return Promise.resolve({name: 'ben', level: 2, sid: bare});
+            }
+            if (bare === 'nostate000' && options?.requireState !== true) {
+                return Promise.resolve({name: 'openccu-lite', level: 2, sid: bare});
+            }
+            return Promise.resolve(undefined);
         },
     };
 
     beforeEach(() => {
         fakeBox.offered.length = 0;
+        fakeBox.requireState.length = 0;
     });
 
     function box(options: WebHostOptions = {}): Promise<WebHost> {
@@ -973,6 +989,127 @@ describe('the openccu-lite hand-over (D-40)', () => {
         expect(out.status).toBe(302);
         expect(out.headers.get('location')).toBe('/');
         expect(out.headers.get('set-cookie')).toContain('Max-Age=0');
+    });
+
+    describe('the gate header X-Occulite-Session (B-94, D-65)', () => {
+        const HEADER = 'X-Occulite-Session';
+
+        it('lets a request in with the header alone once the box confirmed it, and hands it a cookie', async () => {
+            const host = await box();
+            const ui = await fetch(host.url, {redirect: 'manual', headers: {[HEADER]: 'abcdefghij'}});
+            expect(ui.status).toBe(200);
+            expect(await ui.text()).toContain('<div id="app">');
+            expect(sessionCookieOf(ui)).toMatch(/^hmm_session=/);
+            expect(fakeBox.offered).toEqual(['abcdefghij']);
+            expect(fakeBox.requireState).toEqual([true]);
+
+            // an asset of the same page load, still without the cookie: the first answer is believed
+            const asset = await fetch(`${host.url}data/manifest.json`, {headers: {[HEADER]: 'abcdefghij'}});
+            expect(asset.status).toBe(200);
+            expect(fakeBox.offered).toHaveLength(1);
+        });
+
+        it('ignores a header whose state check fails: to the box, a 401, no cookie', async () => {
+            const host = await box();
+            // `nostate000` passes the metadata check; only /api/auth/v1/state refuses it
+            const page = await fetch(host.url, {redirect: 'manual', headers: {[HEADER]: 'nostate000'}});
+            expect(page.status).toBe(302);
+            expect(page.headers.get('location')).toBe('/');
+            expect(page.headers.get('set-cookie')).toBeNull();
+            const asset = await fetch(`${host.url}data/manifest.json`, {headers: {[HEADER]: 'nostate000'}});
+            expect(asset.status).toBe(401);
+            // a refusal is not cached: each request asked, and each asked for the state check
+            expect(fakeBox.requireState).toEqual([true, true]);
+            // and a forged or unknown one the same
+            expect((await fetch(host.url, {redirect: 'manual', headers: {[HEADER]: 'zzzzzzzzzz'}})).status).toBe(302);
+        });
+
+        it('keeps the ?sid= hand-over as it was, without the state check', async () => {
+            const host = await box();
+            const answer = await fetch(`${host.url}?sid=%40nostate000%40`, {redirect: 'manual'});
+            expect(answer.status).toBe(302);
+            expect(answer.headers.get('location')).toBe(host.base);
+            expect(fakeBox.requireState).toEqual([undefined]);
+            const ui = await fetch(host.url, {headers: {Cookie: sessionCookieOf(answer)}});
+            expect(ui.status).toBe(200);
+        });
+
+        it('keeps the cookie as it was: without a header nothing is asked, with the same session neither', async () => {
+            const host = await box();
+            const cookie = sessionCookieOf(await fetch(`${host.url}?sid=abcdefghij`, {redirect: 'manual'}));
+            fakeBox.offered.length = 0;
+            expect((await fetch(host.url, {headers: {Cookie: cookie}})).status).toBe(200);
+            expect((await fetch(host.url, {headers: {Cookie: cookie, [HEADER]: 'abcdefghij'}})).status).toBe(200);
+            expect(fakeBox.offered).toEqual([]);
+            // and a header the box does not confirm leaves a valid cookie alone
+            expect((await fetch(host.url, {headers: {Cookie: cookie, [HEADER]: 'nostate000'}})).status).toBe(200);
+        });
+
+        it('follows the gate when it names another box session than the cookie holds', async () => {
+            const host = await box();
+            const cookie = sessionCookieOf(await fetch(`${host.url}?sid=abcdefghij`, {redirect: 'manual'}));
+            const ui = await fetch(host.url, {headers: {Cookie: cookie, [HEADER]: 'benbenbenb'}});
+            expect(ui.status).toBe(200);
+            expect(sessionCookieOf(ui)).not.toBe(cookie);
+            expect(fakeBox.offered).toEqual(['abcdefghij', 'benbenbenb']);
+        });
+
+        it('opens the api socket for a page that came in with the header alone, and no unconfirmed one', async () => {
+            const host = await box();
+            await fetch(host.url, {headers: {[HEADER]: 'abcdefghij'}});
+            expect(await rawHandshake(host.port, `${host.base}api`, {[HEADER]: 'abcdefghij'})).toBe(101);
+            // the socket never asks the box itself: a session nobody confirmed yet stays outside
+            expect(await rawHandshake(host.port, `${host.base}api`, {[HEADER]: 'benbenbenb'})).toBe(401);
+            expect(fakeBox.offered).toEqual(['abcdefghij']);
+        });
+
+        it('is not read in the other modes, where nothing removes a copy a client sent', async () => {
+            const checker = {check: vi.fn(fakeBox.check)};
+            const host = await start({sessionChecker: checker});
+            expect(await rawHandshake(host.port, `${host.base}api`, {[HEADER]: 'abcdefghij'})).toBe(401);
+            await fetch(host.url, {headers: {[HEADER]: 'abcdefghij'}});
+            expect(checker.check).not.toHaveBeenCalled();
+        });
+
+        it('asks a real HTTP box with the id as a bearer token, and /api/auth/v1/state decides', async () => {
+            const asked: string[] = [];
+            let confirmed = false;
+            const boxServer = http.createServer((request, response) => {
+                asked.push(`${request.url ?? ''} ${request.headers.authorization ?? ''}`);
+                const known = request.headers.authorization === 'Bearer abcdefghij';
+                const body =
+                    request.url === '/api/meta/v1/enums'
+                        ? {}
+                        : known && confirmed
+                          ? {authenticated: true, user: 'anna', role: 'admin'}
+                          : {authenticated: false};
+                response.writeHead(request.url === '/api/meta/v1/enums' && !known ? 401 : 200, {
+                    'Content-Type': 'application/json',
+                });
+                response.end(JSON.stringify(body));
+            });
+            await new Promise<void>((resolve) => boxServer.listen(0, '127.0.0.1', resolve));
+            try {
+                const {port} = boxServer.address() as {port: number};
+                const host = await start({authMode: 'occulite', occuliteUrl: `http://127.0.0.1:${String(port)}`});
+
+                const refused = await fetch(host.url, {redirect: 'manual', headers: {[HEADER]: 'abcdefghij'}});
+                expect(refused.status).toBe(302);
+                expect(asked).toEqual(['/api/meta/v1/enums Bearer abcdefghij', '/api/auth/v1/state Bearer abcdefghij']);
+
+                confirmed = true;
+                const ui = await fetch(host.url, {redirect: 'manual', headers: {[HEADER]: 'abcdefghij'}});
+                expect(ui.status).toBe(200);
+                expect(sessionCookieOf(ui)).toMatch(/^hmm_session=/);
+
+                // an id the box does not know is refused by the metadata check already
+                const unknown = await fetch(host.url, {redirect: 'manual', headers: {[HEADER]: 'zzzzzzzzzz'}});
+                expect(unknown.status).toBe(302);
+            } finally {
+                boxServer.closeAllConnections();
+                await new Promise<void>((resolve) => boxServer.close(() => resolve()));
+            }
+        });
     });
 
     it('refuses --no-auth, which would leave the api open whatever the session says', async () => {

@@ -42,12 +42,14 @@ import {
     applySessionToken,
     clearedSessionCookie,
     createToken,
+    hasTokenQuery,
     isLoopbackHost,
     readCookie,
     SESSION_COOKIE,
     sessionCookie,
     TOKEN_COOKIE,
     tokenCookie,
+    withTokenQuery,
 } from './auth.js';
 import {DeviceImageService, readIconMapFile, type ImageUpstream} from './images.js';
 import {
@@ -60,7 +62,7 @@ import {
     type LoginLanguage,
 } from './login.js';
 import {createLogger, silentLogger, type Logger, type LogLevel} from './log.js';
-import {OcculiteAuthenticator, parseSid} from './occulite.js';
+import {OCCULITE_SESSION_HEADER, OcculiteAuthenticator, parseSid, type OcculiteCheckOptions} from './occulite.js';
 import {defaultDataDir, defaultMetadataDir, defaultUiDir, packageVersion} from './paths.js';
 import {proxyRequest, proxyUpgrade} from './proxy.js';
 import {RateLimiter, SessionStore, type Session} from './sessions.js';
@@ -74,6 +76,13 @@ export const DEFAULT_HOST = '127.0.0.1';
 
 /** How long `close()` waits for `backend.stop()` before it gives up and exits anyway. */
 export const SHUTDOWN_TIMEOUT_MS = 5000;
+
+/**
+ * B-94, D-65: how long the box's answer about an `X-Occulite-Session` is believed without asking
+ * again. The addon contract says to cache it briefly, if at all; a minute covers the burst of
+ * assets and the socket of one page load.
+ */
+export const GATE_RECHECK_MS = 60_000;
 
 /**
  * How often an idle API socket is pinged. Below lighttpd's `server.max-read-idle` /
@@ -105,7 +114,10 @@ export interface CredentialChecker {
 
 /** D-40: what the `occulite` hand-over asks. `OcculiteAuthenticator` is the real one. */
 export interface SessionChecker {
-    check(sid: string | null | undefined): Promise<{name: string; level: number; sid: string} | undefined>;
+    check(
+        sid: string | null | undefined,
+        options?: OcculiteCheckOptions,
+    ): Promise<{name: string; level: number; sid: string} | undefined>;
 }
 
 export interface WebHostOptions {
@@ -393,6 +405,9 @@ export async function createWebHost(options: WebHostOptions = {}): Promise<WebHo
                 return;
             }
             session = sessions.get(readCookie(request.headers.cookie, SESSION_COOKIE));
+            // B-94, D-65: on openccu-lite the gate names the session it let through. It is checked
+            // with the box like the `?sid=` hand-over, and ignored when the box does not confirm it.
+            session = await sessionFromGate(request, session);
             if (session?.credential !== undefined) {
                 // D-40: writes to the box go out as the session of whoever is looking at the page
                 backend?.noteMetaSession(session.credential);
@@ -566,6 +581,81 @@ export async function createWebHost(options: WebHostOptions = {}): Promise<WebHo
         response.end();
     }
 
+    /**
+     * B-94, D-65: the sessions made from the gate's `X-Occulite-Session`, by the box's session id,
+     * with the time the box confirmed it. A request of the same page load that has no cookie of ours
+     * yet - an asset, the socket - finds its session here instead of asking the box again.
+     */
+    const gateSessions = new Map<string, {id: string; checkedAt: number}>();
+    let lastGateWarning = 0;
+
+    /** The session id the gate put on a request; `undefined` outside `occulite` mode and for a malformed one. */
+    function gateSid(request: {headers: Record<string, string | string[] | undefined>}): string | undefined {
+        if (!boxSessions) {
+            return undefined;
+        }
+        const value = request.headers[OCCULITE_SESSION_HEADER];
+        // two copies are joined with a comma by Node, which no session id contains: refused
+        return parseSid(Array.isArray(value) ? value.join(', ') : value);
+    }
+
+    /** A session made from this box session and confirmed less than `GATE_RECHECK_MS` ago. */
+    function cachedGateSession(sid: string): Session | undefined {
+        const entry = gateSessions.get(sid);
+        if (!entry) {
+            return undefined;
+        }
+        const session = sessions?.get(entry.id);
+        if (!session || Date.now() - entry.checkedAt > GATE_RECHECK_MS) {
+            gateSessions.delete(sid);
+            return undefined;
+        }
+        return session;
+    }
+
+    /**
+     * B-94, D-65: the session of a request that came through openccu-lite's gate.
+     *
+     * The `?sid=` hand-over and the cookie stay as they are; this only adds a third way in, for a
+     * request that has neither - a bookmark, a reload after our session expired - or whose cookie
+     * belongs to another box session than the one the gate found. The header is a claim until the box
+     * confirms it (`GET /api/auth/v1/state`): a CCU and an older openccu-lite image pass a client's
+     * header through, and the backend's port is open to every process on the box.
+     */
+    async function sessionFromGate(
+        request: IncomingMessage,
+        current: Session | undefined,
+    ): Promise<Session | undefined> {
+        const offered = gateSid(request);
+        if (!boxSessions || !sessions || offered === undefined || current?.credential === offered) {
+            return current;
+        }
+        const cached = cachedGateSession(offered);
+        if (cached) {
+            return cached;
+        }
+        const checked = await boxSessions.check(offered, {requireState: true});
+        if (!checked) {
+            // a header the box does not confirm counts as no header: the cookie, the token and the
+            // redirect to the box decide, as they did before there was a header
+            if (Date.now() - lastGateWarning > GATE_RECHECK_MS) {
+                lastGateWarning = Date.now();
+                log.warn(`login: openccu-lite did not confirm the X-Occulite-Session from ${clientAddress(request)}`);
+            }
+            return current;
+        }
+        const now = Date.now();
+        for (const [sid, entry] of gateSessions) {
+            if (now - entry.checkedAt > GATE_RECHECK_MS) {
+                gateSessions.delete(sid);
+            }
+        }
+        const session = sessions.create(checked.name, checked.level, checked.sid);
+        gateSessions.set(checked.sid, {id: session.id, checkedAt: now});
+        log.info(`login: ${checked.name} (level ${String(checked.level)}) through the openccu-lite gate`);
+        return session;
+    }
+
     /** The token cookie of task 13 - `settings.cgi`'s hand-over still opens every door. */
     function hasValidToken(request: IncomingMessage): boolean {
         return token !== undefined && readCookie(request.headers.cookie, TOKEN_COOKIE) === token;
@@ -649,6 +739,16 @@ export async function createWebHost(options: WebHostOptions = {}): Promise<WebHo
             // D-32: and a login session opens the same socket, in the same way
             if (sessions) {
                 applySessionToken(request, token, (id) => sessions.get(id) !== undefined);
+                // B-94: the socket of a page that came in through the gate, before our cookie is there
+                const gate = gateSid(request);
+                if (
+                    token !== undefined &&
+                    gate !== undefined &&
+                    !hasTokenQuery(request.url) &&
+                    cachedGateSession(gate)
+                ) {
+                    request.url = withTokenQuery(request.url, token);
+                }
             }
             api.handleUpgrade(request, socket, head);
             return;

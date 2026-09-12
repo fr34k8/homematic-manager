@@ -68,7 +68,13 @@ from the firmware's own `/VERSION`, which carries an extra `VARIANT=lite` line:
   session on the URL (`?sid=@xxxxxxxxxx@`, the CCU convention), the addon checks that session
   against the box's metadata API and turns it into a session of its own. There is no login form of
   its own — the users are the box's — so a browser that arrives without a session is sent to the
-  box's login. The token hand-over of `settings.cgi` keeps working unchanged next to it.
+  box's login. The token hand-over of `settings.cgi` keeps working unchanged next to it. Since
+  3.0.0-beta.16 the addon also accepts the session openccu-lite's lighttpd gate passes as the
+  `X-Occulite-Session` header on every request it lets through (openccu-lite B-94, D-65; the gate
+  removes a copy a browser sent). The header is only a claim until `GET /api/auth/v1/state`
+  confirms it, and the confirmation is kept for a minute; so a bookmark without `?sid=` opens the UI
+  on an image that sets the header, and nothing changes on one that does not. The other two auth
+  modes never read it, because a CCU's lighttpd passes a client's header through.
 - **the credentials for the store**: reads use the box's local token
   (`/usr/local/etc/occulite/local-token`, role `user`, read-only by design); writes use the session
   of the person looking at the page. A rename is therefore attributed to a user, and nothing
