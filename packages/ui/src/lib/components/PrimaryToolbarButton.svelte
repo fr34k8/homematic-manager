@@ -110,12 +110,15 @@
 </span>
 
 <style>
+    /* 28 px tall where the toolbar icons are 26, and still the band's 33 px of task 20: the slot
+       reaches one pixel into the band's padding above and below instead of pushing the band open. */
     .hmm-primary-slot {
         position: relative;
         display: flex;
         align-items: center;
         flex: 0 1 auto;
         min-width: 30px;
+        margin-block: -1px;
         margin-right: 6px;
         contain: inline-size;
     }
