@@ -265,6 +265,7 @@ HMM_AUTH_MODE=token  # token (default) or rega - see "The optional login (D-32)"
 HMM_SESSION_TTL=24h  # with rega: how long a login lasts without being used
 HMM_CALLBACK_XMLRPC_DEFAULT_PORT=2031  # the callback ports while the settings say 0, see "Callback ports"
 HMM_CALLBACK_BINRPC_DEFAULT_PORT=2032  # (set by the rc.d script; 0 here: a free port at every start)
+HMM_NODE_FLAGS=--lite-mode             # flags for node, read by the rc.d script only - see "Memory"
 ```
 
 Every option of the host has an `HMM_*` environment mirror
@@ -277,8 +278,8 @@ but the definition of "we are the addon".
 
 The interface processes call the backend back on two ports, one for XML-RPC (`hmipserver`, the group
 process behind `VirtualDevices`) and one for BIN-RPC (`rfd`, `hs485d`). In the addon they are **fixed by
-default: 2031 for XML-RPC, 2032 for BIN-RPC** (D-43, #144). The desktop app, npm and Docker keep the
-free port the kernel picks.
+default: 2031 for XML-RPC, 2032 for BIN-RPC** (D-43, #144). The Docker image fixes the same pair since
+3.0.0-beta.16 (task 38; 2126/2127 before); the desktop app and npm keep the free port the kernel picks.
 
 Why fixed: the group process behind `VirtualDevices` keeps its handlers by URL and does not drop the
 entry of a backend that ended without `init(url, '')` — a `kill -9` after the 15 s of `rc.d/hmm stop`,
@@ -335,6 +336,32 @@ again and the header shows "subscribing" until the first device sweep is through
 host's default (D-31) and the addon does not override it - `HMM_IDLE_UNSUBSCRIBE` in
 `etc/hmm.env` changes the grace period, `0` disables it. Caches, names and `config.json` are not
 touched by it.
+
+## Memory
+
+Since 3.0.0-beta.16 `rc.d/hmm` starts node with `--lite-mode` (task 44): V8 without its optimising
+compilers and with smaller feedback vectors. The backend's hot paths are few - the XML of a large
+`listDevices` or `getParamsetDescription` answer now and then - so what it costs in speed is small,
+and what it saves is memory in every phase. `HMM_NODE_FLAGS=` in `etc/hmm.env` starts node without it.
+
+Measured on 2026-09-12 with the x86_64 package of beta.15 (Node v24.21.0) on a development machine,
+not on a CCU: the addon's own `bin/node` and app against hm-simulator on the CCU's loopback ports with
+the device list of a lab box (5 devices), in four phases - 45 s after the port listens, a page open
+for 75 s with the tabs visited, the page closed, and after the idle unsubscribe (grace 60 s for the
+run). Two runs each; MiB of PSS, anonymous memory in brackets:
+
+| | started | page open (40 s) | page closed | after the unsubscribe | peak RSS |
+| --- | --- | --- | --- | --- | --- |
+| without a flag, run 1 | 105.9 (56.5) | 114.4 (65.0) | 114.5 (65.0) | 81.4 (31.8) | 120.9 |
+| without a flag, run 2 | 94.3 (45.3) | 88.3 (39.1) | 88.4 (39.1) | 81.2 (31.7) | 96.7 |
+| `--lite-mode`, run 1 | 62.6 (21.2) | 65.8 (24.0) | 65.8 (24.0) | 66.1 (24.0) | 79.5 |
+| `--lite-mode`, run 2 | 62.4 (21.2) | 63.0 (22.0) | 63.1 (22.0) | 63.2 (22.0) | 79.0 |
+
+So about **30–50 MiB less PSS while the backend is subscribed or a page is open, 15–18 MiB less after
+the idle unsubscribe**, and a steadier figure: without the flag the same run lands 10–25 MiB apart
+depending on when V8 collects. Part of the PSS here is the code of `bin/node`, which sat on a tmpfs
+and counts as shared memory (47 MiB without the flag, 40 MiB with it); on a CCU it is file-backed and
+reclaimable. Not measured yet on a CCU, and not for the time a page takes to load there.
 
 ## Troubleshooting
 

@@ -8,6 +8,19 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking for the Docker image: its callback ports are now 2031/2032 instead of 2126/2127.** That is the pair the
+  CCU addon uses, so every install type that fixes its callback ports uses the same one, and it no longer collides
+  with hm2mqtt.js, whose default is 2126/2127. **If you publish `-p 2126:2126 -p 2127:2127`**, change the mapping to
+  `-p 2031:2031 -p 2032:2032`, or keep the old ports with `HMM_CALLBACK_XMLRPC_PORT=2126` and
+  `HMM_CALLBACK_BINRPC_PORT=2127`; otherwise the CCU calls back on a port that is not published and no events
+  arrive. With `--network host` nothing has to change. `compose.yml` and `docs/install-docker.md` are updated.
+- **The CCU addon's backend uses less memory.** Node runs with `--lite-mode`, V8 without its optimising compilers.
+  Measured with the addon's own runtime against a simulated CCU, that is about 30–50 MiB less while it is
+  subscribed or a page is open and 15–18 MiB less after the idle unsubscribe, and the figure no longer jumps with
+  garbage collection (the addon's README, "Memory"). `HMM_NODE_FLAGS=` in `etc/hmm.env` switches it off.
+
 ### Fixed
 
 - **An interface that does not answer in time is no longer shown as "not present".** A user-defined interface
