@@ -17,6 +17,10 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
   was silently overwritten again at the next start. `config.json` keeps the value you saved.
 - **The interface popup shows the callback URL each interface was given**, and in the Docker image
   adds "Publish this port unchanged" beside it. The image's ports are unchanged (2126/2127).
+- **The automatic acknowledgement's one-time question is easier to read** (#147). It says what is
+  already there and what happens from now on — "1 STICKY_UNREACH message is already listed. New ones
+  are acknowledged automatically from now on." — and its buttons say which messages they mean:
+  "Acknowledge existing" and "Only new ones" ("Vorhandene bestätigen" / "Nur neue").
 
 ### Fixed
 
