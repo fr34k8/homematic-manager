@@ -158,6 +158,11 @@ Start() {
     HMM_CALLBACK_BINRPC_DEFAULT_PORT=2032
     # task 43: unset means /var/log/hmm.log
     HMM_ADDON_LOG=varlog
+    # Task 44 (D-46): flags for node itself, read here and never by the host. `--lite-mode` switches
+    # off V8's optimising compilers and keeps smaller feedback: less anonymous memory in every phase
+    # of the backend (README, "Memory"), for slower hot code, which here is the XML of a large answer
+    # now and then. hmm.env may set other flags, or `HMM_NODE_FLAGS=` for none.
+    HMM_NODE_FLAGS=--lite-mode
     if [ -f $ENV_FILE ]; then
         set -a
         # shellcheck source=/dev/null
@@ -246,7 +251,7 @@ Start() {
     # returns, and a process whose cwd is gone cannot spawn children.
     # sh -c "exec ..." so the recorded pid is node's own, not a wrapper's (systemd-cat execs too).
     cd / || return 1
-    if ! start-stop-daemon -S -b -m -p $PIDFILE -x /bin/sh -- -c "$RUN $APP \
+    if ! start-stop-daemon -S -b -m -p $PIDFILE -x /bin/sh -- -c "$RUN $HMM_NODE_FLAGS $APP \
 --local --ccu 127.0.0.1 --base /addons/$ADDON --host 127.0.0.1 --no-issue-cookie \
 --data-dir $STATE_DIR $OUTPUT"; then
         echo "FAILED (start-stop-daemon could not start $NODE)"

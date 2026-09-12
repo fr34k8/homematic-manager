@@ -101,8 +101,37 @@ describe('rc.d/hmm logs to the journal on openccu-lite (task 41)', () => {
         const other = start.slice(elseAt, start.indexOf('\n    fi\n', fileAt));
         expect(other).toContain('mv $LOG $LOG.1');
         expect(other).toContain('OUTPUT=">>$LOG 2>&1"');
-        expect(start).toMatch(/start-stop-daemon -S -b -m -p \$PIDFILE -x \/bin\/sh -- -c "\$RUN \$APP/);
+        expect(start).toMatch(
+            /start-stop-daemon -S -b -m -p \$PIDFILE -x \/bin\/sh -- -c "\$RUN \$HMM_NODE_FLAGS \$APP/,
+        );
         expect(start).toContain('--data-dir $STATE_DIR $OUTPUT"');
+    });
+});
+
+/**
+ * Task 44 (D-46): node runs in V8's lite mode by default, and `etc/hmm.env` can change the flags. The
+ * default is set before hmm.env is sourced, so an empty `HMM_NODE_FLAGS=` there starts node without it.
+ * The container test checks the running process's command line both ways.
+ */
+describe('rc.d/hmm starts node with --lite-mode (task 44)', () => {
+    const rc = file('../files/hmm/rc.d/hmm');
+    const start = /\nStart\(\) \{\n([\s\S]*?)\n\}\n/.exec(rc)?.[1] ?? '';
+
+    it('sets the flag as a default that etc/hmm.env can override', () => {
+        const defaultAt = start.indexOf('\n    HMM_NODE_FLAGS=--lite-mode\n');
+        const envAt = start.indexOf('. $ENV_FILE');
+        expect(defaultAt).toBeGreaterThan(0);
+        expect(envAt).toBeGreaterThan(defaultAt);
+    });
+
+    it('passes the flags to node before the app, for the journal and the file alike', () => {
+        const runAt = start.indexOf('"$RUN $HMM_NODE_FLAGS $APP');
+        expect(runAt).toBeGreaterThan(start.indexOf('RUN="exec $NODE"'));
+        expect(runAt).toBeGreaterThan(start.indexOf('RUN="exec systemd-cat -t $JOURNAL_TAG $NODE"'));
+    });
+
+    it('documents the switch in default.env', () => {
+        expect(file('../files/hmm/etc/default.env')).toContain('#HMM_NODE_FLAGS=');
     });
 });
 

@@ -155,6 +155,16 @@ check "and there is no var/hmm.log in the addon directory" "gone" \
 # task 35: the fixed callback ports travel from rc.d's environment into the host
 check "the host takes the addon's fixed callback ports while config.json says 0 (task 35)" \
     "default ports xmlrpc=2031 binrpc=2032" "$(dex 'cat /var/log/hmm.log')"
+# task 44: node runs in V8's lite mode, which the rc.d script passes before the app
+cmdline_of_backend() { dex "tr '\\0' ' ' < /proc/\$(cat /usr/local/addons/hmm/var/hmm.pid)/cmdline"; }
+check "the backend runs with node's --lite-mode (task 44)" "/usr/local/addons/hmm/bin/node --lite-mode /usr/local/addons/hmm/app/dist/cli.js" \
+    "$(cmdline_of_backend)"
+out="$(dex "cp /usr/local/addons/hmm/etc/hmm.env /tmp/hmm.env.t44 && echo 'HMM_NODE_FLAGS=' >> /usr/local/addons/hmm/etc/hmm.env && /usr/local/etc/config/rc.d/hmm restart; echo \"exit \$?\"")"
+check "HMM_NODE_FLAGS= in etc/hmm.env: the restart says OK" "Starting hmm: OK" "$out"
+absent "and node runs without --lite-mode" "--lite-mode" "$(cmdline_of_backend)"
+out="$(dex 'cp /tmp/hmm.env.t44 /usr/local/addons/hmm/etc/hmm.env && /usr/local/etc/config/rc.d/hmm restart; echo "exit $?"')"
+check "and without the line it is back after a restart" "--lite-mode" "$(cmdline_of_backend)"
+check "which says OK" "Starting hmm: OK" "$out"
 
 echo
 echo "a start that starts nothing says so (B-25)"
