@@ -13,11 +13,12 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 - **The columns only a sub-grid has can be resized too.** These are DIRECTION (and AES_ACTIVE on BidCos-RF) in the
   channel rows of the devices table, and ← dBm / → dBm in the peer rows of the Funk tab. The handle works as in the
   header: drag, double click to fit, arrow keys and Enter, and the right-click menu. One width applies to every
-  expanded sub-grid, so the rows stay aligned, and "Reset column widths" there resets only the sub-grid's columns.
+  expanded sub-grid, so the rows stay aligned, and "Reset column widths" there resets only the sub-grid's columns
+  (#157, @Herbert-Testmann).
 - **A cut-off column label, or a button in a cut-off cell, shows its full text on keyboard focus too**, not only
-  on hover (#157). Escape hides it.
+  on hover. Escape hides it (#157, @Herbert-Testmann).
 - **The column resize handle is easier to hit on a touch screen**: a finger-sized area around the thin line, which
-  stays as it is for a mouse.
+  stays as it is for a mouse (#157, @Herbert-Testmann).
 
 ### Changed
 
@@ -26,31 +27,30 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
   with that unit chosen, and `journalctl -t addon-hmm` on the box. The old `var/hmm.log` on the SD card is removed
   at the first start. There, `service.cgi?…&cmd=log` and the addon's settings page lead to the Log page. On a CCU
   and OpenCCU the log stays a file, see the next entry.
-- **On a CCU and OpenCCU the addon's log is now `/var/log/hmm.log`** (#159). That is where a CCU keeps its logs,
+- **On a CCU and OpenCCU the addon's log is now `/var/log/hmm.log`.** That is where a CCU keeps its logs,
   in memory, so the addon no longer writes its log to the SD card; the log is empty after a reboot. To keep it
   across reboots, the new _Log_ section on the addon's settings page moves it back to the addon directory
   (`/usr/local/addons/hmm/var/hmm.log`, or `HMM_ADDON_LOG=addon` in `etc/hmm.env`). Both are rotated at 1 MB. The
   file at the other location is removed at the next start. The settings page shows the last lines of the log, and
   `service.cgi?…&cmd=log` follows the setting. When `/var/log` cannot be written, the log goes to the addon
-  directory. On openccu-lite the log stays in the journal, and the settings page only says so.
+  directory. On openccu-lite the log stays in the journal, and the settings page only says so (#159, @Baxxy13).
 
 ### Fixed
 
-- **CUxD no longer writes a warning into the CCU's log every five minutes** (#158). The app asked every
+- **CUxD no longer writes a warning into the CCU's log every five minutes.** The app asked every
   interface for its service messages every five minutes, including CUxD, which has no such method. CUxD
   logged `called unknown request method 'getServiceMessages'` each time, and the app logged the refusal
   just as often, because it did not recognise CUxD's wording of it. CUxD is no longer asked. An interface
   you configured yourself is asked only if its own list of methods names `getServiceMessages`; if it has
   no such list, it is asked once, as before. A service-message read that keeps failing for another reason
-  is logged once, not every five minutes, and once more when it works again. Baxxy13 found it on OpenCCU
-  with CUxD installed.
-- **An extra interface such as CCU-Jack can be switched on** (#135). Baxxy13 added his CCU-Jack under "Extra
-  interfaces" on beta.13 and it never connected. Only the interfaces ticked under "Configured interfaces" are
+  is logged once, not every five minutes, and once more when it works again (#158, @Baxxy13).
+- **An extra interface such as CCU-Jack can be switched on.** A CCU-Jack added under "Extra interfaces" never
+  connected. Only the interfaces ticked under "Configured interfaces" are
   connected, and that list offered the built-in interfaces and whatever was ticked already, never an extra
   interface. It now lists every extra interface that has a name, after the built-in ones. One added in the dialog is
   ticked by itself as soon as it has a name, a rename keeps the tick, and removing it removes the tick. An extra
   interface that is already saved without a tick stays as it is: tick it once under "Configured interfaces"
-  ("Konfigurierte Schnittstellen") and save.
+  ("Konfigurierte Schnittstellen") and save (#135, @FraatTailscale, @Baxxy13).
 
 ## [3.0.0-beta.14] — 2026-09-12
 
