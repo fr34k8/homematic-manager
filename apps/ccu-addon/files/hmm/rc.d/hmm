@@ -96,7 +96,15 @@ Start() {
     fi
     # a pidfile that outlived its process (a power cut, a kill -9): it would only confuse
     # start-stop-daemon and monit
-    rm -f $PIDFILE
+    rm -f $PIDFILE 2>/dev/null
+    # B-25: and one that cannot be removed stops start-stop-daemon from recording the new pid, so
+    # nothing starts while everything below would still say OK. Seen on openccu-lite: a live install
+    # as root left var/ and the pidfile root's, and the unit runs as addon-hmm.
+    if [ -e $PIDFILE ]; then
+        echo "Starting $ADDON: FAILED ($PIDFILE is left over and cannot be removed by $(id -un); is $ADDON_DIR/var owned by $(id -un)?)" >&2
+        logger -t $ADDON -p daemon.err "cannot remove the stale $PIDFILE as $(id -un): not starting"
+        return 1
+    fi
 
     # The addon writes into $STATE_DIR and its own var/ and nowhere else. Enforced here rather than
     # left to the configuration: HOME on a CCU is /root on a read-only rootfs, and the host's
@@ -147,7 +155,14 @@ Start() {
     fi
     export HMM_TOKEN
 
-    mkdir -p $ADDON_DIR/var $ADDON_DIR/var/cache $STATE_DIR
+    mkdir -p $ADDON_DIR/var $ADDON_DIR/var/cache $STATE_DIR 2>/dev/null
+    # B-25: the backend's output goes to $LOG and start-stop-daemon writes $PIDFILE; when var/ is
+    # not this user's, both fail inside the background start where nobody sees it
+    if [ ! -w $ADDON_DIR/var ] || { [ -e $LOG ] && [ ! -w $LOG ]; }; then
+        echo "Starting $ADDON: FAILED ($ADDON_DIR/var cannot be written by $(id -un); is it owned by $(id -un)?)" >&2
+        logger -t $ADDON -p daemon.err "cannot write $ADDON_DIR/var as $(id -un): not starting"
+        return 1
+    fi
     if [ -f $LOG ] && [ "$(wc -c < $LOG)" -gt $LOG_MAX ]; then
         mv $LOG $LOG.1
     fi
@@ -158,14 +173,33 @@ Start() {
     # returns, and a process whose cwd is gone cannot spawn children.
     # sh -c "exec ..." so the recorded pid is node's own, not a wrapper's.
     cd / || return 1
-    start-stop-daemon -S -b -m -p $PIDFILE -x /bin/sh -- -c "exec $NODE $APP \
+    if ! start-stop-daemon -S -b -m -p $PIDFILE -x /bin/sh -- -c "exec $NODE $APP \
 --local --ccu 127.0.0.1 --base /addons/$ADDON --host 127.0.0.1 --no-issue-cookie \
---data-dir $STATE_DIR >>$LOG 2>&1"
+--data-dir $STATE_DIR >>$LOG 2>&1"; then
+        echo "FAILED (start-stop-daemon could not start $NODE)"
+        logger -t $ADDON -p daemon.err "start-stop-daemon could not start $NODE"
+        return 1
+    fi
+
+    # B-25: with -b, start-stop-daemon returns as soon as it has forked, whatever node does next.
+    # A backend that cannot run (no runtime, a log it cannot write, an exception at start) is gone
+    # within a moment, so three seconds of watching turn that into FAILED instead of OK - and the
+    # exit code the unit and the WebUI's service page go by.
+    i=0
+    while [ $i -lt 3 ] && Running; do
+        sleep 1
+        i=$((i + 1))
+    done
+    if ! Running; then
+        echo "FAILED (the backend exited right after the start; see $LOG)"
+        tail -n 5 $LOG 2>/dev/null
+        logger -t $ADDON -p daemon.err "homematic-manager exited right after the start; see $LOG"
+        rm -f $PIDFILE 2>/dev/null
+        return 1
+    fi
 
     # under memory pressure the kernel should take this before it takes rfd or ReGaHSS
-    if Running; then
-        echo 800 > /proc/"$(cat $PIDFILE)"/oom_score_adj 2>/dev/null
-    fi
+    echo 800 > /proc/"$(cat $PIDFILE)"/oom_score_adj 2>/dev/null
 
     # `ONREBOOT NOSTART` in monit.cfg leaves the check **unmonitored** every time monit starts or
     # reloads - measured on both OpenCCU lab boxes 2026-09-05, where `monit status hmm` said "Not

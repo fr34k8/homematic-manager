@@ -33,6 +33,39 @@ describe('@homematic-manager/ccu-addon', () => {
     });
 });
 
+/**
+ * B-25: on openccu-lite a root-owned pidfile left by a live install kept the confined unit from
+ * starting the backend, and `rc.d/hmm start` still said "OK". The container test runs the failures
+ * themselves; these hold the shape of `Start()` so a later edit cannot quietly drop the checks.
+ */
+describe('rc.d/hmm reports a start that started nothing (B-25)', () => {
+    const start = /\nStart\(\) \{\n([\s\S]*?)\n\}\n/.exec(file('../files/hmm/rc.d/hmm'))?.[1] ?? '';
+
+    it('refuses a stale pidfile it cannot remove, before anything is started', () => {
+        const removed = start.indexOf('rm -f $PIDFILE');
+        const refused = start.indexOf('if [ -e $PIDFILE ]; then', removed);
+        const daemon = start.indexOf('start-stop-daemon -S');
+        expect(removed).toBeGreaterThan(0);
+        expect(refused).toBeGreaterThan(removed);
+        expect(daemon).toBeGreaterThan(refused);
+        expect(start.slice(refused, daemon)).toContain('FAILED');
+    });
+
+    it('refuses a var/ it cannot write', () => {
+        expect(start).toMatch(/if \[ ! -w \$ADDON_DIR\/var \][^\n]*\n[^\n]*FAILED/);
+    });
+
+    it('checks that the backend still runs after start-stop-daemon returned, before it says OK', () => {
+        const daemon = start.indexOf('if ! start-stop-daemon -S');
+        const check = start.indexOf('if ! Running; then', daemon);
+        const ok = start.lastIndexOf('echo "OK"');
+        expect(daemon).toBeGreaterThan(0);
+        expect(check).toBeGreaterThan(daemon);
+        expect(ok).toBeGreaterThan(check);
+        expect(start.slice(check, ok)).toContain('return 1');
+    });
+});
+
 describe('the callback ports of the addon (task 35)', () => {
     const rc = file('../files/hmm/rc.d/hmm');
     const {xmlrpc, binrpc} = CALLBACK_DEFAULT_PORTS;

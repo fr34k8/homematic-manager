@@ -152,6 +152,26 @@ check "the host takes the addon's fixed callback ports while config.json says 0 
     "default ports xmlrpc=2031 binrpc=2032" "$(dex 'cat /usr/local/addons/hmm/var/hmm.log')"
 
 echo
+echo "a start that starts nothing says so (B-25)"
+# On openccu-lite the unit runs as addon-hmm and met a root-owned pidfile it could not remove: every
+# start said "OK" and nothing ran. As root in this container a directory stands in for such a file -
+# `rm -f` cannot remove it either.
+dex '/usr/local/etc/config/rc.d/hmm stop' >/dev/null
+out="$(dex 'mkdir /usr/local/addons/hmm/var/hmm.pid && /usr/local/etc/config/rc.d/hmm start; echo "exit $?"')"
+check "a pidfile that cannot be removed: FAILED, naming it" "FAILED (/usr/local/addons/hmm/var/hmm.pid is left over" "$out"
+check "and the start exits 1" "exit 1" "$out"
+check "and nothing runs" "hmm stopped" "$(dex '/usr/local/etc/config/rc.d/hmm status; rmdir /usr/local/addons/hmm/var/hmm.pid')"
+# a backend that exits at once: hmm.env is sourced by Start, so it can point NODE at /bin/false
+out="$(dex "cp /usr/local/addons/hmm/etc/hmm.env /tmp/hmm.env.b25 && echo 'NODE=/bin/false' >> /usr/local/addons/hmm/etc/hmm.env && /usr/local/etc/config/rc.d/hmm start; echo \"exit \$?\"")"
+check "a backend that exits right after the start: FAILED" "FAILED (the backend exited right after the start" "$out"
+check "and the start exits 1" "exit 1" "$out"
+check "and nothing runs" "hmm stopped" "$(dex '/usr/local/etc/config/rc.d/hmm status; cp /tmp/hmm.env.b25 /usr/local/addons/hmm/etc/hmm.env')"
+out="$(dex '/usr/local/etc/config/rc.d/hmm start; echo "exit $?"')"
+check "and with both undone a start works again" "Starting hmm: OK" "$out"
+check "with exit 0" "exit 0" "$out"
+check "and the service runs" "running" "$(dex '/usr/local/etc/config/rc.d/hmm status')"
+
+echo
 echo "the Zusatzsoftware page (rc.d/hmm info)"
 # cp_software.cgi reads these lines through a Tcl pipe in iso8859-1 and writes them into its
 # Latin-1 page as they are; an umlaut in UTF-8 came out as "GerÃ¤te" (#140)
