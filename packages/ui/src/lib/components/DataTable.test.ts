@@ -942,6 +942,10 @@ describe('the columns only a sub-grid has (task 42)', () => {
             const headCell = document.querySelector<HTMLElement>('.hmm-table-head [data-column-key="direction"]')!;
             const designed = pixelWidth(subLabels('direction')[0]!);
             expect(Math.abs(pixelWidth(headCell) - designed)).toBeLessThanOrEqual(1);
+            // in the head's one row, not in a second one under it
+            const label = columnHeader('Name').getBoundingClientRect();
+            expect(Math.round(headCell.getBoundingClientRect().top)).toBe(Math.round(label.top));
+            expect(Math.round(headCell.getBoundingClientRect().height)).toBe(Math.round(label.height));
 
             await dragBy(screen.getByTestId('grid-resize-direction'), 60);
             for (const cell of [headCell, ...subLabels('direction'), ...channelCells('direction')]) {

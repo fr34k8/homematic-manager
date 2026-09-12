@@ -1009,13 +1009,16 @@
             {/each}
             <!--
                 #157: the gap a sub-grid-only column leaves in the head, with that column's handle. No
-                label and no column header role: no row of the table has a cell there.
+                label and no column header role: no row of the table has a cell there. `grid-row: 1`,
+                because these come after the labels in the DOM and auto-placement would otherwise put
+                a column that lies before the last label into a second head row.
             -->
             {#each subOnlyColumns as column (column.key)}
                 <div
                     class="hmm-th hmm-th-sub-only"
                     data-column-key={column.key}
                     style:grid-column={layout.track[column.key]}
+                    style:grid-row="1"
                 >
                     {@render resizeHandle(column, testId === undefined ? undefined : `${testId}-resize-${column.key}`)}
                 </div>
