@@ -6,7 +6,25 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
-## [Unreleased]
+## [3.0.0-beta.16] — 2026-09-12
+
+Thanks to @Herbert-Testmann for reports and ideas.
+
+**Docker: the image's callback ports move to 2031/2032.** If you publish `-p 2126:2126 -p 2127:2127`, change the
+mapping to `-p 2031:2031 -p 2032:2032`, or no events arrive after the update (see _Changed_). The CCU addon's backend
+runs with `--lite-mode` and uses less memory, "Check for Updates..." in the desktop app answers every outcome (#160),
+the Funk tab's dBm columns can be resized from the header row (#157), an interface that does not answer in time is no
+longer shown as "not present", and on openccu-lite the addon also takes the session from the box's gate.
+
+### New
+
+- **On openccu-lite the addon also takes the session from the box's gate.** openccu-lite's web server passes the
+  session it let through to the addon as the `X-Occulite-Session` header and removes any copy a browser sent. The
+  addon asks the box to confirm that session (`/api/auth/v1/state`) and then lets the request in, so a bookmark, or
+  a reload after the addon's own login expired, opens the UI instead of going back to the box's start page. The
+  `?sid=` hand-over from the box's menu and the addon's cookie work as before, so openccu-lite images without the
+  header keep working; on a CCU and OpenCCU the header is not read at all. It needs an openccu-lite image that sets
+  the header.
 
 ### Changed
 
@@ -43,16 +61,6 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
   row between ADDRESS and TYPE had none. That gap now has the handle too, whether a device is expanded or not, and a
   right click there offers "Fit column to content" and "Reset column widths" for those columns. The same holds for
   the columns only the channel rows of the devices table have, such as DIRECTION (#157, @Herbert-Testmann).
-
-### New
-
-- **On openccu-lite the addon also takes the session from the box's gate.** openccu-lite's web server passes the
-  session it let through to the addon as the `X-Occulite-Session` header and removes any copy a browser sent. The
-  addon asks the box to confirm that session (`/api/auth/v1/state`) and then lets the request in, so a bookmark, or
-  a reload after the addon's own login expired, opens the UI instead of going back to the box's start page. The
-  `?sid=` hand-over from the box's menu and the addon's cookie work as before, so openccu-lite images without the
-  header keep working; on a CCU and OpenCCU the header is not read at all. It needs an openccu-lite image that sets
-  the header.
 
 ## [3.0.0-beta.15] — 2026-09-12
 
@@ -952,6 +960,7 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
+[3.0.0-beta.16]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.16
 [3.0.0-beta.15]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.15
 [3.0.0-beta.14]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.14
 [3.0.0-beta.13]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.13
