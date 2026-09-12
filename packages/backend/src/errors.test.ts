@@ -200,11 +200,37 @@ describe('isMethodUnsupported', () => {
         expect(isMethodUnsupported(rpcFaultError('x', {faultCode: -32601, faultString: 'whatever'}))).toBe(true);
     });
 
+    // B-26 (#158): CUxD's wording, as the log of the report showed it - a dot where rfd has a space
+    it('recognises CUxD, which says unknown.method name', () => {
+        const fault = rpcFaultError('CUxD (127.0.0.1:8701, binrpc): getServiceMessages', {
+            faultCode: -1,
+            faultString: 'getServiceMessages: unknown.method name',
+        });
+        expect(fault.message).toBe(
+            'CUxD (127.0.0.1:8701, binrpc): getServiceMessages: getServiceMessages: unknown.method name (-1)',
+        );
+        expect(isMethodUnsupported(fault)).toBe(true);
+        // the fault struct as binrpc hands it over, before the client wraps it
+        expect(isMethodUnsupported({faultCode: -1, faultString: 'getServiceMessages: unknown.method name'})).toBe(true);
+        // rfd's wording, measured for hm-simulator's fault table
+        expect(isMethodUnsupported(rpcFaultError('x', {faultCode: -1, faultString: 'unknown method name'}))).toBe(true);
+        expect(isMethodUnsupported(rpcFaultError('x', {faultCode: -1, faultString: 'Unknown_Method'}))).toBe(true);
+    });
+
     it('is false for everything an interface can still be asked again about', () => {
         expect(isMethodUnsupported(connectionError('BidCos-RF: getServiceMessages timed out after 5000 ms'))).toBe(
             false,
         );
         expect(isMethodUnsupported(rpcFaultError('x', {faultCode: -2, faultString: 'Invalid device'}))).toBe(false);
+        // -1 is eq-3's generic error too; only the wording tells a missing method apart
+        expect(isMethodUnsupported(rpcFaultError('x', {faultCode: -1, faultString: 'Generic error'}))).toBe(false);
+        expect(isMethodUnsupported(rpcFaultError('x', {faultCode: -1, faultString: 'Generic error (UNREACH)'}))).toBe(
+            false,
+        );
+        expect(isMethodUnsupported(rpcFaultError('x', {faultCode: -1, faultString: 'Failure'}))).toBe(false);
+        expect(isMethodUnsupported(rpcFaultError('x', {faultCode: -2, faultString: 'Unknown instance'}))).toBe(false);
+        expect(isMethodUnsupported(rpcFaultError('x', {faultCode: -5, faultString: 'Unknown parameter'}))).toBe(false);
+        expect(isMethodUnsupported({faultCode: -1, faultString: 'unknown device'})).toBe(false);
         expect(isMethodUnsupported(undefined)).toBe(false);
     });
 });

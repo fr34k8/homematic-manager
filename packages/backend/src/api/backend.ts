@@ -21,6 +21,7 @@ import {
     RSSI_UNKNOWN,
     countsAsServiceMessage,
     isAcknowledgeable,
+    isKnownInterface,
     maintenanceAddress,
     mergeMethodHelp,
     methodsFor,
@@ -203,6 +204,20 @@ export class Backend {
      * table - and it is emptied whenever the connection is rebuilt.
      */
     readonly #noServiceMessages = new Set<string>();
+    /**
+     * B-26 (#158): interfaces whose last `getServiceMessages` failed for a reason that may pass - a
+     * timeout, a process that is restarting. The failure is logged when the interface lands in
+     * here and not again until a call succeeds; before, the five-minute poll logged it every round.
+     */
+    readonly #serviceMessageFailures = new Set<string>();
+    /**
+     * B-26 (#158): the `system.listMethods` answer of a user-defined interface, asked once and
+     * dropped when the interface subscribes again - a re-`init` may be a restarted, updated process.
+     * `undefined` inside means "no usable list", and the method is then tried once, as before.
+     */
+    readonly #listedMethods = new Map<string, Promise<ReadonlySet<string> | undefined>>();
+    /** B-26: interfaces that do not have `system.listMethods` itself; kept for the connection. */
+    readonly #noListMethods = new Set<string>();
     #idleTimer: ReturnType<typeof setTimeout> | undefined;
     /** Task 38: the saved callback values a pinned one replaces are logged by the first `start()` only. */
     #pinsReported = false;
@@ -628,6 +643,9 @@ export class Backend {
     async #connect(): Promise<void> {
         const connection = this.#config.connection;
         this.#noServiceMessages.clear();
+        this.#serviceMessageFailures.clear();
+        this.#listedMethods.clear();
+        this.#noListMethods.clear();
         const manager = (this.#options.createInterfaceManager ?? ((options) => new InterfaceManager(options)))({
             connection,
             handler: this.#callbackHandler(),
@@ -820,6 +838,8 @@ export class Backend {
 
     /** Fills the caches of an interface that has just subscribed. */
     async #onInterfaceConnected(interfaceName: string): Promise<void> {
+        // B-26: a (re-)`init` may be a restarted process, so its method list is asked again
+        this.#listedMethods.delete(interfaceName);
         try {
             await this.#refreshDevices(interfaceName);
         } catch (error) {
@@ -1385,24 +1405,78 @@ export class Backend {
      * Does it make sense to ask this interface for its service messages?
      *
      * The built-in answer comes from the core's table: hmipserver has no `getServiceMessages` (the
-     * HmIP sweep below reads the `:0` channels instead) and the group process behind
-     * `VirtualDevices` answers it with invalid XML-RPC. A user-defined interface is asked once and
-     * then remembered for this session - see {@link isMethodUnsupported}.
+     * HmIP sweep below reads the `:0` channels instead), the group process behind `VirtualDevices`
+     * answers it with invalid XML-RPC, and CUxD with a fault and a warning in the CCU's syslog
+     * (B-26, #158). A user-defined interface is judged by its own `system.listMethods` where that
+     * gives a list, and is otherwise asked once and then remembered for this session - see
+     * {@link isMethodUnsupported}.
      */
-    #hasServiceMessages(interfaceName: string): boolean {
+    async #hasServiceMessages(interfaceName: string): Promise<boolean> {
         if (this.#noServiceMessages.has(interfaceName)) {
             return false;
         }
-        return this.#manager?.resolved(interfaceName)?.serviceMessages !== false;
+        if (this.#manager?.resolved(interfaceName)?.serviceMessages === false) {
+            return false;
+        }
+        // the table is measured for the built-in processes; asking rfd for its method list after
+        // every `init` would buy nothing
+        if (isKnownInterface(interfaceName)) {
+            return true;
+        }
+        const listed = await this.#methodList(interfaceName);
+        return listed === undefined || listed.has('getServiceMessages');
+    }
+
+    /**
+     * B-26 (#158): the methods a user-defined interface lists in `system.listMethods`, or
+     * `undefined` when it gave no usable list.
+     *
+     * Asked once and shared by concurrent callers; the answer is dropped when the interface
+     * subscribes again. A process that does not have `system.listMethods` either is remembered for
+     * the connection, so it is not asked after every re-`init`; any other failure is forgotten, and
+     * the next caller asks again.
+     */
+    #methodList(interfaceName: string): Promise<ReadonlySet<string> | undefined> {
+        if (this.#noListMethods.has(interfaceName)) {
+            return Promise.resolve(undefined);
+        }
+        const cached = this.#listedMethods.get(interfaceName);
+        if (cached) {
+            return cached;
+        }
+        const pending: Promise<ReadonlySet<string> | undefined> = this.#read(
+            interfaceName,
+            'system.listMethods',
+            [],
+        ).then(
+            (answer) => {
+                const names = asStrings(answer);
+                return names.length === 0 ? undefined : new Set(names);
+            },
+            (error: unknown) => {
+                if (isMethodUnsupported(error)) {
+                    this.#noListMethods.add(interfaceName);
+                }
+                if (this.#listedMethods.get(interfaceName) === pending) {
+                    this.#listedMethods.delete(interfaceName);
+                }
+                return undefined;
+            },
+        );
+        this.#listedMethods.set(interfaceName, pending);
+        return pending;
     }
 
     /** Reads the BidCos service messages of one interface into the store. */
     async #refreshServiceMessages(interfaceName: string): Promise<void> {
-        if (!this.#hasServiceMessages(interfaceName)) {
+        if (!(await this.#hasServiceMessages(interfaceName))) {
             return;
         }
         try {
             const answer = await this.#read(interfaceName, 'getServiceMessages', []);
+            if (this.#serviceMessageFailures.delete(interfaceName)) {
+                this.#notice('info', `${interfaceName}: getServiceMessages answers again`, interfaceName);
+            }
             if (!Array.isArray(answer)) {
                 return;
             }
@@ -1430,8 +1504,14 @@ export class Backend {
             // of it on hardware (task 17). Remembered, and never asked again this session.
             if (isMethodUnsupported(error)) {
                 this.#noServiceMessages.add(interfaceName);
+                this.#serviceMessageFailures.delete(interfaceName);
                 return;
             }
+            // B-26 (#158): once per interface until a call succeeds again, not once per poll
+            if (this.#serviceMessageFailures.has(interfaceName)) {
+                return;
+            }
+            this.#serviceMessageFailures.add(interfaceName);
             this.#notice('info', `${interfaceName}: getServiceMessages failed: ${errorMessage(error)}`, interfaceName);
         }
     }

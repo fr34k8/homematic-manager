@@ -5,13 +5,14 @@
  * Task 17's hardware pass found the sweep asking `VirtualDevices` once a minute on all three lab
  * boxes and logging `getServiceMessages failed: Invalid XML-RPC message` every time - on an idle
  * CCU addon the only line in the log. The CCU's group process has no such method; hmipserver has
- * none either. The core's table says so now (`serviceMessages: false`), and an interface the table
- * does not know is asked exactly once.
+ * none either, and B-26 (#158) found the same for CUxD, which warns in the CCU's syslog for every
+ * call. The core's table says so now (`serviceMessages: false`). An interface the table does not know
+ * is judged by its `system.listMethods`, and without a usable list it is asked exactly once.
  *
- * hm-simulator serves `VirtualDevices` from the same dispatcher as every other interface, so it
- * answers `getServiceMessages` perfectly well - which is what makes it the right witness here: the
- * sweep must skip it because the *table* says to, not because the answer was bad. The bad answer is
- * a stub of its own below, in the place a user-defined interface (D-13) sits.
+ * hm-simulator serves `VirtualDevices` and CUxD from the same dispatcher as every other interface, so
+ * they answer `getServiceMessages` perfectly well - which is what makes them the right witnesses
+ * here: the sweep must skip them because the *table* says to, not because the answer was bad. The
+ * bad answer is a stub of its own below, in the place a user-defined interface (D-13) sits.
  */
 
 import http from 'node:http';
@@ -52,12 +53,18 @@ const RESPONSE_EMPTY_STRING =
 const RESPONSE_EMPTY_ARRAY =
     '<?xml version="1.0"?><methodResponse><params><param><value><array><data></data></array></value></param></params></methodResponse>';
 
+/** An XML-RPC answer carrying a list of strings. */
+function stringArrayResponse(values: readonly string[]): string {
+    const items = values.map((value) => `<value><string>${value}</string></value>`).join('');
+    return `<?xml version="1.0"?><methodResponse><params><param><value><array><data>${items}</data></array></value></param></params></methodResponse>`;
+}
+
 /**
  * A stub interface process that answers `getServiceMessages` with something that is not XML-RPC -
  * what the CCU's group process does, in the one place the built-in table cannot help: an interface
- * the user configured by hand.
+ * the user configured by hand. Its `system.listMethods` gives no list unless `listMethods` is set.
  */
-async function brokenServiceMessageInterface(): Promise<{
+async function brokenServiceMessageInterface(options: {listMethods?: readonly string[]} = {}): Promise<{
     port: number;
     calls: string[];
     close: () => Promise<void>;
@@ -78,6 +85,11 @@ async function brokenServiceMessageInterface(): Promise<{
                 response.end('no service messages here');
                 return;
             }
+            if (method === 'system.listMethods' && options.listMethods !== undefined) {
+                response.writeHead(200, {'Content-Type': 'text/xml'});
+                response.end(stringArrayResponse(options.listMethods));
+                return;
+            }
             response.writeHead(200, {'Content-Type': 'text/xml'});
             response.end(method === 'listDevices' ? RESPONSE_EMPTY_ARRAY : RESPONSE_EMPTY_STRING);
         });
@@ -91,11 +103,11 @@ async function brokenServiceMessageInterface(): Promise<{
 }
 
 describe.skipIf(!simulatorAvailable)('the service-message sweep', () => {
-    it('never asks VirtualDevices, and keeps asking the interface that does answer', async () => {
-        const sim = await startSimulator({virtual: true});
+    it('never asks VirtualDevices or CUxD, and keeps asking the interface that does answer', async () => {
+        const sim = await startSimulator({virtual: true, cuxd: true});
         running.push({close: () => sim.close()});
         const harness = await startBackend(sim, {
-            connection: {interfaces: ['BidCos-RF', 'VirtualDevices']},
+            connection: {interfaces: ['BidCos-RF', 'VirtualDevices', 'CUxD']},
         });
         running.unshift({close: () => harness.close()});
 
@@ -104,6 +116,7 @@ describe.skipIf(!simulatorAvailable)('the service-message sweep', () => {
         ).toEqual([
             ['BidCos-RF', true],
             ['VirtualDevices', true],
+            ['CUxD', true],
         ]);
 
         const calls = recordCalls(sim);
@@ -111,6 +124,7 @@ describe.skipIf(!simulatorAvailable)('the service-message sweep', () => {
         await harness.backend.pollServiceMessages();
 
         expect(calls).not.toContain('virtual:getServiceMessages');
+        expect(calls).not.toContain('cuxd:getServiceMessages');
         expect(calls.filter((call) => call === 'rfd:getServiceMessages')).toHaveLength(2);
         expect(harness.notices.filter((notice) => notice.message.includes('getServiceMessages'))).toEqual([]);
     });
@@ -137,6 +151,30 @@ describe.skipIf(!simulatorAvailable)('the service-message sweep', () => {
 
         expect(stub.calls.filter((method) => method === 'getServiceMessages')).toHaveLength(1);
         // and the one failure it did see was never worth a line
+        expect(harness.notices.filter((notice) => notice.message.includes('getServiceMessages'))).toEqual([]);
+    });
+
+    it('never asks a user-defined interface whose system.listMethods does not list the method (B-26)', async () => {
+        const stub = await brokenServiceMessageInterface({
+            listMethods: ['init', 'ping', 'listDevices', 'system.listMethods'],
+        });
+        running.push({close: () => stub.close()});
+        const sim = await startSimulator();
+        running.push({close: () => sim.close()});
+        const harness = await startBackend(sim, {
+            connection: {
+                interfaces: ['BidCos-RF', 'Groups'],
+                extraInterfaces: [{name: 'Groups', host: '127.0.0.1', port: stub.port, protocol: 'xmlrpc'}],
+            },
+        });
+        running.unshift({close: () => harness.close()});
+
+        expect(stub.calls).toContain('init');
+        await harness.backend.pollServiceMessages();
+        await harness.backend.pollServiceMessages();
+
+        expect(stub.calls.filter((method) => method === 'getServiceMessages')).toEqual([]);
+        expect(stub.calls.filter((method) => method === 'system.listMethods')).toHaveLength(1);
         expect(harness.notices.filter((notice) => notice.message.includes('getServiceMessages'))).toEqual([]);
     });
 });

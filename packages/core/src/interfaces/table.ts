@@ -56,9 +56,12 @@ export interface InterfaceDefinition {
      * re-`init`, which on an idle CCU addon was the only thing in the log. **HmIP-RF** does not
      * have the method either - hmipserver reports neither `rssiInfo` nor `getServiceMessages`, so
      * its service messages are read out of the `VALUES` paramset of every `:0` channel instead.
+     * **CUxD** has no such method either (B-26, #158): it answers `unknown.method name` and writes a
+     * warning into the CCU's syslog for every call.
      *
-     * Omitted means yes. A user-defined interface is unknown territory and is therefore tried
-     * once; the backend remembers a method-not-found or an unparseable answer for that session.
+     * Omitted means yes. A user-defined interface is unknown territory: the backend looks the
+     * method up in its `system.listMethods` where it has one, and otherwise tries it once and
+     * remembers a method-not-found or an unparseable answer for that session.
      */
     readonly serviceMessages?: boolean;
     /**
@@ -136,6 +139,10 @@ export const INTERFACES = {
         ping: true,
         // CUxD matches the init identity against the literal string, `hmm_CUxD` is ignored
         ident: 'CUxD',
+        // no getServiceMessages: CUxD answers `getServiceMessages: unknown.method name` (-1) and logs
+        // `called unknown request method 'getServiceMessages'` as daemon.warn for every call - with
+        // the five-minute poll, a warning in the CCU's syslog every five minutes (B-26, #158)
+        serviceMessages: false,
         // its devices are created in its own configuration, not paired (task 28)
         installMode: false,
     },
@@ -317,7 +324,8 @@ export function resolveUserDefinedInterface(definition: UserDefinedInterface): R
         ping: true,
         pingTimeoutSeconds: DEFAULT_PING_TIMEOUT_SECONDS,
         dutyCycle: false,
-        // tried once: what a hand-configured process implements is not knowable from here
+        // what a hand-configured process implements is not knowable from here; the backend asks its
+        // `system.listMethods`, or tries the method once
         serviceMessages: true,
     };
 }

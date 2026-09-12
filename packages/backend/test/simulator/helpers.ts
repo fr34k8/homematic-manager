@@ -340,6 +340,11 @@ export interface SimulatorOptions {
     readonly virtual?: boolean;
     /** What that server lists; empty unless given. Implies `virtual`. */
     readonly virtualDevices?: {devices: unknown[]};
+    /**
+     * Starts a CUxD server (BIN-RPC), port from the OS. hm-simulator answers every method there,
+     * `getServiceMessages` included - unlike the real CUxD (B-26, #158).
+     */
+    readonly cuxd?: boolean;
 }
 
 /** Starts a simulator with the fixtures above. */
@@ -357,6 +362,7 @@ export async function startSimulator(options: SimulatorOptions = {}): Promise<an
             binrpcListenPort: 0,
             xmlrpcListenPort: 0,
             ...(virtual ? {virtualListenPort: 0} : {}),
+            ...(options.cuxd === true ? {cuxdListenPort: 0} : {}),
         },
         behaviorPath: path.join(os.tmpdir(), 'hmm-no-behaviors'),
         ...(options.tls === true ? {tls: true} : {}),
@@ -398,6 +404,8 @@ export async function startBackend(
         // undefined unless the simulator was started with `virtual: true`; `portOverride` then
         // returns undefined and the table's own port is used, which is what every other test wants
         VirtualDevices: sim.ports.virtual as number,
+        // the same for `cuxd: true`
+        CUxD: sim.ports.cuxd as number,
     };
     const backend = await Backend.open({
         dataDir,

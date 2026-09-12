@@ -165,13 +165,15 @@ describe('resolveInterface', () => {
 
     // task 17, all three lab boxes: the group process answers getServiceMessages with something
     // that is not XML-RPC, and hmipserver has no such method at all. Neither may be asked.
-    it('leaves VirtualDevices and HmIP-RF out of the service-message sweep', () => {
+    // B-26 (#158): CUxD has none either, and warns in the CCU's syslog for every call
+    it('leaves VirtualDevices, HmIP-RF and CUxD out of the service-message sweep', () => {
         expect(resolveInterface('VirtualDevices').serviceMessages).toBe(false);
         expect(resolveInterface('HmIP-RF').serviceMessages).toBe(false);
+        expect(resolveInterface('CUxD').serviceMessages).toBe(false);
     });
 
     it('lets every other built-in interface answer service messages', () => {
-        for (const name of ['BidCos-RF', 'BidCos-Wired', 'CUxD'] as const) {
+        for (const name of ['BidCos-RF', 'BidCos-Wired'] as const) {
             expect(resolveInterface(name).serviceMessages).toBe(true);
         }
     });

@@ -6,7 +6,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import type {ApiEventName, AppConfig, DeviceDescription, RpcValue} from '@homematic-manager/core';
 
-import {BackendError} from '../errors.js';
+import {BackendError, connectionError, rpcFaultError} from '../errors.js';
 import {InterfaceManager, type InterfaceManagerOptions} from '../interfaces/manager.js';
 import {META_READ_SCRIPT} from '../rega/scripts.js';
 import type {RpcClient, RpcClientOptions, RpcOutValue} from '../rpc/client.js';
@@ -1579,6 +1579,183 @@ describe('radio and service messages', () => {
         await expect(h.backend.request('serviceMessages.ack', 'HmIP-RF', 'ABC1:0', 'LOWBAT')).rejects.toThrow(
             'cannot be acknowledged',
         );
+        await h.backend.stop();
+    });
+});
+
+/**
+ * B-26 (#158): CUxD wrote `called unknown request method 'getServiceMessages'` into the CCU's syslog
+ * every five minutes, and the backend logged the fault just as often. The poll asked CUxD, and its
+ * fault `unknown.method name` was not recognised as "no such method", so nothing was remembered.
+ */
+describe('the service-message poll and methods an interface does not have (B-26, #158)', () => {
+    /** A missing method, worded the way CUxD words it and wrapped the way the BIN-RPC client does. */
+    const unknownMethod = (interfaceName: string, method: string): BackendError =>
+        rpcFaultError(`${interfaceName} (127.0.0.1:8701, binrpc): ${method}`, {
+            faultCode: -1,
+            faultString: `${method}: unknown.method name`,
+        });
+
+    const CUSTOM = {name: 'Custom', host: 'ccu.lan', port: 2121, protocol: 'xmlrpc', path: '/RPC3'};
+
+    function callsOf(h: Harness, interfaceName: string, method: string): number {
+        return h.calls.filter((call) => call.interfaceName === interfaceName && call.method === method).length;
+    }
+
+    function noticesAbout(h: Harness, text: string): string[] {
+        return h.events
+            .filter((event) => event.name === 'notice')
+            .map((event) => (event.payload as {message: string}).message)
+            .filter((message) => message.includes(text));
+    }
+
+    it('never asks CUxD', async () => {
+        const h = await harness({
+            connection: {interfaces: ['BidCos-RF', 'CUxD']},
+            answers: {
+                CUxD: (method) =>
+                    method === 'getServiceMessages' || method === 'system.listMethods'
+                        ? unknownMethod('CUxD', method)
+                        : '',
+            },
+        });
+        expect((await h.backend.request('interfaces.list')).map((state) => [state.name, state.connected])).toEqual([
+            ['BidCos-RF', true],
+            ['CUxD', true],
+        ]);
+
+        await h.backend.pollServiceMessages();
+        await h.backend.pollServiceMessages();
+        await h.backend.request('serviceMessages.refresh');
+
+        expect(callsOf(h, 'CUxD', 'getServiceMessages')).toBe(0);
+        // the table decides for a built-in interface; its method list is not needed for that
+        expect(callsOf(h, 'CUxD', 'system.listMethods')).toBe(0);
+        // the sweep after the connect, two polls and the refresh
+        expect(callsOf(h, 'BidCos-RF', 'getServiceMessages')).toBe(4);
+        expect(noticesAbout(h, 'getServiceMessages')).toEqual([]);
+        await h.backend.stop();
+    });
+
+    it('does not ask a user-defined interface whose system.listMethods lacks the method', async () => {
+        let methods = ['init', 'ping', 'listDevices', 'system.listMethods'];
+        const h = await harness({
+            connection: {interfaces: ['BidCos-RF', 'Custom'], extraInterfaces: [CUSTOM]},
+            answers: {
+                Custom: (method) => {
+                    switch (method) {
+                        case 'system.listMethods':
+                            return methods;
+                        case 'getServiceMessages':
+                            return [];
+                        default:
+                            return '';
+                    }
+                },
+            },
+        });
+        await h.backend.pollServiceMessages();
+        await h.backend.pollServiceMessages();
+
+        expect(callsOf(h, 'Custom', 'getServiceMessages')).toBe(0);
+        // once for the subscription, not once per round
+        expect(callsOf(h, 'Custom', 'system.listMethods')).toBe(1);
+
+        // a re-`init` may be a restarted, updated process: its list is asked again
+        methods = [...methods, 'getServiceMessages'];
+        await h.backend.request('interfaces.reconnect', 'Custom');
+        expect(callsOf(h, 'Custom', 'system.listMethods')).toBe(2);
+        expect(callsOf(h, 'Custom', 'getServiceMessages')).toBe(1);
+        await h.backend.pollServiceMessages();
+        expect(callsOf(h, 'Custom', 'system.listMethods')).toBe(2);
+        expect(callsOf(h, 'Custom', 'getServiceMessages')).toBe(2);
+        await h.backend.stop();
+    });
+
+    it('asks a user-defined interface without system.listMethods once, and remembers both answers', async () => {
+        const h = await harness({
+            connection: {interfaces: ['BidCos-RF', 'Custom'], extraInterfaces: [CUSTOM]},
+            answers: {
+                Custom: (method) =>
+                    method === 'getServiceMessages' || method === 'system.listMethods'
+                        ? unknownMethod('Custom', method)
+                        : '',
+            },
+        });
+        expect(callsOf(h, 'Custom', 'system.listMethods')).toBe(1);
+        expect(callsOf(h, 'Custom', 'getServiceMessages')).toBe(1);
+
+        await h.backend.pollServiceMessages();
+        await h.backend.request('interfaces.reconnect', 'Custom');
+        await h.backend.pollServiceMessages();
+
+        expect(callsOf(h, 'Custom', 'system.listMethods')).toBe(1);
+        expect(callsOf(h, 'Custom', 'getServiceMessages')).toBe(1);
+        expect(noticesAbout(h, 'getServiceMessages')).toEqual([]);
+        expect(noticesAbout(h, 'listMethods')).toEqual([]);
+        await h.backend.stop();
+    });
+
+    it('asks for the method list again after a failure that may pass', async () => {
+        let listMethods: RpcValue | Error = connectionError('Custom: system.listMethods timed out after 5000 ms');
+        const h = await harness({
+            connection: {interfaces: ['BidCos-RF', 'Custom'], extraInterfaces: [CUSTOM]},
+            answers: {
+                Custom: (method) => {
+                    switch (method) {
+                        case 'system.listMethods':
+                            return listMethods;
+                        case 'getServiceMessages':
+                            return [];
+                        default:
+                            return '';
+                    }
+                },
+            },
+        });
+        // no list: tried, as before
+        expect(callsOf(h, 'Custom', 'system.listMethods')).toBe(1);
+        expect(callsOf(h, 'Custom', 'getServiceMessages')).toBe(1);
+
+        listMethods = ['init', 'system.listMethods'];
+        await h.backend.pollServiceMessages();
+        await h.backend.pollServiceMessages();
+        expect(callsOf(h, 'Custom', 'system.listMethods')).toBe(2);
+        expect(callsOf(h, 'Custom', 'getServiceMessages')).toBe(1);
+        await h.backend.stop();
+    });
+
+    it('logs a failing getServiceMessages once, and again only after it answered in between', async () => {
+        let failing = true;
+        const h = await harness({
+            answers: {
+                'BidCos-RF': (method, params) =>
+                    method === 'getServiceMessages' && failing
+                        ? connectionError(
+                              'BidCos-RF (ccu.lan:2001, xmlrpc): getServiceMessages timed out after 5000 ms',
+                          )
+                        : (defaultAnswers['BidCos-RF'] as Answer)(method, params),
+            },
+        });
+        // the sweep after the connect failed and said so
+        expect(noticesAbout(h, 'getServiceMessages failed')).toHaveLength(1);
+        await h.backend.pollServiceMessages();
+        await h.backend.pollServiceMessages();
+        expect(noticesAbout(h, 'getServiceMessages failed')).toHaveLength(1);
+        // a timeout is not "no such method": every round still asks
+        expect(callsOf(h, 'BidCos-RF', 'getServiceMessages')).toBe(3);
+
+        failing = false;
+        await h.backend.pollServiceMessages();
+        await h.backend.pollServiceMessages();
+        expect(noticesAbout(h, 'getServiceMessages answers again')).toHaveLength(1);
+        expect(await h.backend.request('serviceMessages.list', 'BidCos-RF')).toHaveLength(1);
+
+        failing = true;
+        await h.backend.pollServiceMessages();
+        await h.backend.pollServiceMessages();
+        expect(noticesAbout(h, 'getServiceMessages failed')).toHaveLength(2);
+        expect(noticesAbout(h, 'getServiceMessages answers again')).toHaveLength(1);
         await h.backend.stop();
     });
 });

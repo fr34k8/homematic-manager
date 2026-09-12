@@ -154,8 +154,10 @@ const UNSUPPORTED_METHOD_PATTERNS: readonly RegExp[] = [
     /unknown xml-rpc tag/i,
     // binrpc's own parser
     /malformed response/i,
-    // an interface that answers XML-RPC properly but has no handler for the method
-    /unknown method/i,
+    // an interface that answers XML-RPC properly but has no handler for the method. rfd words it
+    // `unknown method name`, CUxD `unknown.method name` - both with faultCode -1, which is also
+    // eq-3's "generic error", so the code alone says nothing (B-26, #158)
+    /unknown[ ._]method/i,
     /method not found/i,
 ];
 
