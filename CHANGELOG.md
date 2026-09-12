@@ -33,6 +33,26 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
   finger-sized area in beta.15, a tap on the right part of a label landed on the handle and did nothing. Under a
   finger or a pen only a drag resizes a column now; a tap sorts, as it does on the rest of the label, and the
   double tap does not fit the column. A mouse works as before.
+- **"Check for Updates..." in the desktop app always answers.** A check that found no newer version, or that failed,
+  showed nothing at all: the bar at the top of the window only appears when there is something to download or
+  install. The menu entry now answers in a message box: the app is up to date, a newer version is available (the bar
+  offers the download), or the check failed and why. A version you dismissed earlier is offered again when you check
+  from the menu (#160, @Herbert-Testmann).
+- **The Funk tab's ← dBm / → dBm columns can be resized from the header row.** They only have values in an expanded
+  device, and their resize handle was only in the expanded device's own label row; the gap they leave in the header
+  row between ADDRESS and TYPE had none. That gap now has the handle too, whether a device is expanded or not, and a
+  right click there offers "Fit column to content" and "Reset column widths" for those columns. The same holds for
+  the columns only the channel rows of the devices table have, such as DIRECTION (#157, @Herbert-Testmann).
+
+### New
+
+- **On openccu-lite the addon also takes the session from the box's gate.** openccu-lite's web server passes the
+  session it let through to the addon as the `X-Occulite-Session` header and removes any copy a browser sent. The
+  addon asks the box to confirm that session (`/api/auth/v1/state`) and then lets the request in, so a bookmark, or
+  a reload after the addon's own login expired, opens the UI instead of going back to the box's start page. The
+  `?sid=` hand-over from the box's menu and the addon's cookie work as before, so openccu-lite images without the
+  header keep working; on a CCU and OpenCCU the header is not read at all. It needs an openccu-lite image that sets
+  the header.
 
 ## [3.0.0-beta.15] — 2026-09-12
 
