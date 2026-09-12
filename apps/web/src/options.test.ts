@@ -73,6 +73,12 @@ describe('parseOptions', () => {
         expect(none.callbackXmlrpcPort).toBeUndefined();
     });
 
+    it('knows it runs in a container only when the image says so (task 38)', () => {
+        expect(parseOptions([], noEnv).inContainer).toBe(false);
+        expect(parseOptions([], {...noEnv, HMM_IN_CONTAINER: 'true'}).inContainer).toBe(true);
+        expect(parseOptions(['--in-container'], noEnv).inContainer).toBe(true);
+    });
+
     it('reads the default callback ports the CCU addon hands over (task 35)', () => {
         const values = parseOptions([], {
             ...noEnv,

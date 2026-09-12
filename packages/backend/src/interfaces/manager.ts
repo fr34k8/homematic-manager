@@ -20,10 +20,22 @@
  * the root of the "endless loading" issues #121, #126, #128 and #134.
  */
 
-import type {ConnectionConfig, InterfaceState, ResolvedInterface, RpcProtocol} from '@homematic-manager/core';
-import {INTERFACE_NAMES, interfaceDefinition, interfacePort, isKnownInterface} from '@homematic-manager/core';
+import type {
+    CallbackPins,
+    ConnectionConfig,
+    InterfaceState,
+    ResolvedInterface,
+    RpcProtocol,
+} from '@homematic-manager/core';
+import {
+    INTERFACE_NAMES,
+    callbackPinOption,
+    interfaceDefinition,
+    interfacePort,
+    isKnownInterface,
+} from '@homematic-manager/core';
 
-import {configError, connectionError, errorMessage, isConnectionRefused} from '../errors.js';
+import {configError, connectionError, errorMessage, isAddressInUse, isConnectionRefused} from '../errors.js';
 import {interfaceTargets, type InterfaceTarget} from '../config/defaults.js';
 import {RpcClient, type RpcCallRecord, type RpcClientOptions} from '../rpc/client.js';
 import {CallbackServers, type CallbackHandler, type CallbackServerSet} from '../rpc/server.js';
@@ -92,6 +104,11 @@ export interface InterfaceManagerOptions {
      * fixed pair; the desktop app, npm and Docker leave this out and keep the kernel's free port.
      */
     readonly defaultCallbackPorts?: {readonly xmlrpc: number; readonly binrpc: number};
+    /**
+     * Task 38: the callback fields the host set at start. Only used to name the option in the log
+     * line of a fixed port that cannot be opened.
+     */
+    readonly callbackPins?: CallbackPins;
     /** Injected by the tests. */
     readonly createClient?: (options: RpcClientOptions) => RpcClient;
     readonly createCallbackServers?: (handler: CallbackHandler) => CallbackServerSet;
@@ -145,6 +162,13 @@ export class InterfaceManager {
     readonly #now: () => number;
     readonly #interfaces = new Map<string, ManagedInterface>();
     readonly #servers: CallbackServerSet;
+    /**
+     * Task 38: protocols whose fixed callback port could not be opened. Their interfaces are not
+     * subscribed - an `init` with a URL nobody listens on would only look like a working one - and
+     * a later `init` attempt tries the port again.
+     */
+    readonly #callbackFailures = new Map<RpcProtocol, {port: number; inUse: boolean; message: string}>();
+    readonly #reopening = new Map<RpcProtocol, Promise<boolean>>();
 
     #watchdog: ReturnType<typeof setInterval> | undefined;
     #detected: string[] = [];
@@ -261,7 +285,16 @@ export class InterfaceManager {
         }
 
         for (const protocol of new Set(targets.map((target) => target.resolved.protocol))) {
-            await this.#servers.ensure(protocol);
+            try {
+                await this.#servers.ensure(protocol);
+            } catch (error) {
+                // a free port (0, or task 35's fallback failing too) that cannot be had is what it was
+                const port = this.#fixedCallbackPort(protocol);
+                if (port === 0) {
+                    throw error;
+                }
+                this.#noteCallbackFailure(protocol, port, error);
+            }
         }
 
         for (const target of targets) {
@@ -439,7 +472,7 @@ export class InterfaceManager {
 
     /** `init(url, '')` with a hard timeout; a CCU that is gone must not hold anything up. */
     async #deregister(entry: ManagedInterface): Promise<void> {
-        if (!entry.target.resolved.init) {
+        if (!entry.target.resolved.init || this.#callbackFailures.has(entry.target.resolved.protocol)) {
             return;
         }
         const url = this.#callbackUrl(entry.target.resolved.protocol);
@@ -491,6 +524,73 @@ export class InterfaceManager {
         return this.#servers.callbackUrl(protocol, this.callbackIp);
     }
 
+    /** The port the connection fixes for a protocol; `0` when it leaves the choice to the host. */
+    #fixedCallbackPort(protocol: RpcProtocol): number {
+        const {callback} = this.#options.connection;
+        return protocol === 'binrpc' ? callback.binrpcPort : callback.xmlrpcPort;
+    }
+
+    /**
+     * Task 38: a fixed callback port that cannot be opened is loud, once, and never replaced by a
+     * free port. In a container a free port is exactly the one nobody published, and behind a
+     * firewall the one nobody opened: the interfaces would be subscribed and silent.
+     */
+    #noteCallbackFailure(protocol: RpcProtocol, port: number, error: unknown): void {
+        const inUse = isAddressInUse(error);
+        const field = protocol === 'binrpc' ? 'binrpcPort' : 'xmlrpcPort';
+        const source =
+            this.#options.callbackPins?.[field] === true
+                ? callbackPinOption(field)
+                : `connection.callback.${field} in the settings`;
+        const what = inUse ? 'is in use' : 'cannot be opened';
+        this.#callbackFailures.set(protocol, {port, inUse, message: `callback port ${String(port)} ${what}`});
+        this.#options.onNotice(
+            'error',
+            `callback server: the ${protocol} port ${String(port)} set by ${source} ${what} - the ${protocol} ` +
+                `interfaces are not subscribed and get no events, and no free port is taken instead ` +
+                `(${errorMessage(error)})`,
+        );
+    }
+
+    /** Task 38: one more try at a failed fixed port, shared by every interface of the protocol. */
+    #reopenCallbackServer(protocol: RpcProtocol): Promise<boolean> {
+        const pending = this.#reopening.get(protocol);
+        if (pending) {
+            return pending;
+        }
+        const attempt = this.#servers
+            .ensure(protocol)
+            .then(
+                (port) => {
+                    this.#callbackFailures.delete(protocol);
+                    this.#options.onNotice('info', `callback server: the ${protocol} port ${String(port)} is open now`);
+                    return true;
+                },
+                () => false,
+            )
+            .finally(() => {
+                this.#reopening.delete(protocol);
+            });
+        this.#reopening.set(protocol, attempt);
+        return attempt;
+    }
+
+    /** Task 38: an interface whose callback server is not there; backs off like a failed `init`, silently. */
+    #noteNoCallbackServer(entry: ManagedInterface, failure: {port: number; inUse: boolean; message: string}): void {
+        entry.failures += 1;
+        const base = this.#options.initBackoffMs ?? WATCHDOG_INTERVAL_MS;
+        entry.retryAt = this.#now() + Math.min(base * 2 ** (entry.failures - 1), MAX_INIT_BACKOFF_MS);
+        this.#update(entry, {
+            connected: false,
+            error: failure.message,
+            absent: false,
+            subscribing: false,
+            callbackUrl: undefined,
+            callbackFailure: {port: failure.port, inUse: failure.inUse},
+        });
+        this.#options.onStateChanged(this.states());
+    }
+
     async #init(interfaceName: string): Promise<void> {
         const entry = this.#interfaces.get(interfaceName);
         if (!entry || this.#stopping) {
@@ -503,7 +603,14 @@ export class InterfaceManager {
             entry.lastEvent = this.#now();
             return;
         }
+        const failure = this.#callbackFailures.get(resolved.protocol);
+        // the first attempt comes straight after the failed bind in `start()`; only a retry binds again
+        if (failure !== undefined && (entry.failures === 0 || !(await this.#reopenCallbackServer(resolved.protocol)))) {
+            this.#noteNoCallbackServer(entry, this.#callbackFailures.get(resolved.protocol) ?? failure);
+            return;
+        }
         const url = this.#callbackUrl(resolved.protocol);
+        this.#update(entry, {callbackUrl: url, callbackFailure: undefined});
         try {
             await entry.client.call('init', [url, resolved.ident]);
             entry.lastEvent = this.#now();
@@ -577,6 +684,8 @@ export class InterfaceManager {
             absent?: boolean;
             subscribing?: boolean;
             idle?: boolean;
+            callbackUrl?: string | undefined;
+            callbackFailure?: {port: number; inUse: boolean} | undefined;
         },
     ): void {
         const state: InterfaceState = {
@@ -592,6 +701,20 @@ export class InterfaceManager {
                 delete (state as {error?: string}).error;
             } else {
                 state.error = changes.error;
+            }
+        }
+        if ('callbackUrl' in changes) {
+            if (changes.callbackUrl === undefined) {
+                delete (state as {callbackUrl?: string}).callbackUrl;
+            } else {
+                state.callbackUrl = changes.callbackUrl;
+            }
+        }
+        if ('callbackFailure' in changes) {
+            if (changes.callbackFailure === undefined) {
+                delete (state as {callbackFailure?: unknown}).callbackFailure;
+            } else {
+                state.callbackFailure = changes.callbackFailure;
             }
         }
         entry.state = state;

@@ -20,7 +20,7 @@
 
 import path from 'node:path';
 
-import type {AppConfig, ConnectionConfig, DiscoveredCcu} from '@homematic-manager/core';
+import type {AppConfig, CallbackPins, ConnectionConfig, DiscoveredCcu} from '@homematic-manager/core';
 
 import {localIPv4Addresses} from '../util/net.js';
 import {readJsonFile, writeJsonFile} from '../util/jsonFile.js';
@@ -36,6 +36,32 @@ export function hostKey(host: string): string {
     return key === '' ? 'unconfigured' : key;
 }
 
+/**
+ * Task 38: the callback fields the host was started with (`HMM_CALLBACK_*`, `--callback-*`). An
+ * empty address and a port of `0` are "nothing set" in the connection model, so they pin nothing.
+ */
+export interface PinnedCallback {
+    readonly ip?: string | undefined;
+    readonly xmlrpcPort?: number | undefined;
+    readonly binrpcPort?: number | undefined;
+}
+
+type CallbackField = keyof CallbackPins;
+
+const CALLBACK_FIELDS: readonly CallbackField[] = ['ip', 'xmlrpcPort', 'binrpcPort'];
+
+/** A saved callback value the host's own one replaced on this start. */
+export interface IgnoredCallbackValue {
+    readonly field: CallbackField;
+    readonly saved: string | number;
+    readonly pinned: string | number;
+}
+
+function pinnedValue(pinned: PinnedCallback, field: CallbackField): string | number | undefined {
+    const value = pinned[field];
+    return value === undefined || value === '' || value === 0 ? undefined : value;
+}
+
 export interface ConfigStoreOptions {
     /** The profile directory; created on the first write. */
     readonly dataDir: string;
@@ -47,6 +73,12 @@ export interface ConfigStoreOptions {
     readonly importLegacy?: boolean;
     /** Where the 2.x configuration is looked for; injected by the tests. */
     readonly legacyEnvironment?: LegacyEnvironment;
+    /**
+     * Task 38: callback fields set at start. They win over `config.json` in everything the store
+     * hands out, a `setConnection` cannot change them, and they are never written to the file - the
+     * file keeps what the user saved, so a start without the option goes back to that.
+     */
+    readonly pinnedCallback?: PinnedCallback;
 }
 
 /** The persisted `AppConfig` plus the derived fields the UI wants with it. */
@@ -56,8 +88,13 @@ export class ConfigStore {
 
     readonly #version: string;
     readonly #localAddresses: () => string[];
+    readonly #pinned: PinnedCallback;
+    readonly #ignored: IgnoredCallbackValue[] = [];
 
+    /** The effective connection: the saved one with the pinned callback fields over it. */
     #connection: ConnectionConfig;
+    /** Task 38: the callback as the user saved it, which is what `config.json` keeps. */
+    #savedCallback: ConnectionConfig['callback'];
     #discovered: DiscoveredCcu[] = [];
     /** True when the connection came from the 2.x configuration on this start (D-17). */
     #importedFromLegacy = false;
@@ -67,8 +104,45 @@ export class ConfigStore {
         this.file = path.join(options.dataDir, 'config.json');
         this.#version = options.version;
         this.#localAddresses = options.localAddresses ?? (() => localIPv4Addresses());
-        this.#connection = connection;
+        this.#pinned = options.pinnedCallback ?? {};
+        this.#savedCallback = connection.callback;
+        this.#connection = this.#withPins(connection);
         this.#importedFromLegacy = imported;
+        for (const field of CALLBACK_FIELDS) {
+            const pinned = pinnedValue(this.#pinned, field);
+            const saved = connection.callback[field];
+            // an empty address or a 0 saved nothing, so nothing is being ignored
+            if (pinned !== undefined && saved !== '' && saved !== 0 && saved !== pinned) {
+                this.#ignored.push({field, saved, pinned});
+            }
+        }
+    }
+
+    #withPins(connection: ConnectionConfig): ConnectionConfig {
+        const callback = {...connection.callback};
+        for (const field of CALLBACK_FIELDS) {
+            const pinned = pinnedValue(this.#pinned, field);
+            if (pinned !== undefined) {
+                (callback as Record<CallbackField, string | number>)[field] = pinned;
+            }
+        }
+        return {...connection, callback};
+    }
+
+    /** Task 38: which callback fields the host pinned; `undefined` when it pinned none. */
+    get callbackPins(): CallbackPins | undefined {
+        const pins: CallbackPins = {};
+        for (const field of CALLBACK_FIELDS) {
+            if (pinnedValue(this.#pinned, field) !== undefined) {
+                pins[field] = true;
+            }
+        }
+        return Object.keys(pins).length === 0 ? undefined : pins;
+    }
+
+    /** Task 38: the saved callback values a pinned one replaced when the store was opened. */
+    get ignoredCallback(): readonly IgnoredCallbackValue[] {
+        return this.#ignored;
     }
 
     /** Loads the configuration, importing the 2.x one when this is the first start (D-17). */
@@ -108,7 +182,16 @@ export class ConfigStore {
 
     /** Replaces the connection and persists it. */
     async setConnection(connection: unknown): Promise<AppConfig> {
-        this.#connection = normaliseConnection(connection);
+        const normalised = normaliseConnection(connection);
+        // Task 38: a pinned field keeps what the file had; whatever came in for it is not saved
+        const savedCallback = {...normalised.callback};
+        for (const field of CALLBACK_FIELDS) {
+            if (pinnedValue(this.#pinned, field) !== undefined) {
+                (savedCallback as Record<CallbackField, string | number>)[field] = this.#savedCallback[field];
+            }
+        }
+        this.#savedCallback = savedCallback;
+        this.#connection = this.#withPins(normalised);
         this.#importedFromLegacy = false;
         await this.save();
         return this.config;
@@ -130,6 +213,9 @@ export class ConfigStore {
     }
 
     async save(): Promise<void> {
-        await writeJsonFile(this.file, {version: this.#version, connection: this.#connection});
+        await writeJsonFile(this.file, {
+            version: this.#version,
+            connection: {...this.#connection, callback: this.#savedCallback},
+        });
     }
 }

@@ -401,6 +401,136 @@ describe('the default callback ports', () => {
         expect(s.urls()).toEqual([`http://127.0.0.1:${String(xmlrpc)}`, `xmlrpc_bin://127.0.0.1:${String(binrpc)}`]);
         await s.manager.stop();
     });
+
+    /**
+     * Task 38: a *fixed* port that is taken - hm2mqtt.js on the same pair, a second container on the
+     * host network. Before, the whole connection failed with a bare EADDRINUSE notice and no
+     * interface state at all; now the other protocol still works, the log names the port and the
+     * option, the state carries the reason, and nothing falls back to a free port.
+     */
+    it('fails loudly on a taken fixed port: no free port, the option in the log, the reason in the state', async () => {
+        const blocker = await listening();
+        const taken = portOf(blocker);
+        const [binrpc] = await freePorts();
+        const clients = fakeClients();
+        const notices: {level: string; message: string}[] = [];
+        let states: InterfaceState[] = [];
+        const manager = new InterfaceManager({
+            connection: normaliseConnection({
+                host: '127.0.0.1',
+                local: true,
+                interfaces: ['BidCos-RF', 'HmIP-RF'],
+                callback: {ip: '', xmlrpcPort: taken, binrpcPort: binrpc},
+            }),
+            handler: {} as CallbackHandler,
+            onStateChanged: (next) => {
+                states = next;
+            },
+            onNotice: (level, message) => notices.push({level, message}),
+            watchdogIntervalMs: 0,
+            initBackoffMs: 0,
+            createClient: clients.create,
+            probe: () => Promise.resolve(true),
+            callbackHost: '127.0.0.1',
+            // a default pair is there and must not be used: the configured port is fixed
+            defaultCallbackPorts: {xmlrpc: 2031, binrpc: 2032},
+            callbackPins: {xmlrpcPort: true},
+        });
+        await manager.start();
+
+        const errors = notices.filter((notice) => notice.level === 'error');
+        expect(errors).toHaveLength(1);
+        expect(errors[0]?.message).toContain(`xmlrpc port ${String(taken)}`);
+        expect(errors[0]?.message).toContain('HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port');
+        expect(errors[0]?.message).toContain('is in use');
+        expect(notices.filter((notice) => notice.level === 'warn')).toEqual([]);
+
+        const xmlrpcState = states.find((state) => state.protocol === 'xmlrpc');
+        const binrpcState = states.find((state) => state.protocol === 'binrpc');
+        expect(xmlrpcState).toMatchObject({
+            connected: false,
+            error: `callback port ${String(taken)} is in use`,
+            callbackFailure: {port: taken, inUse: true},
+        });
+        expect(xmlrpcState).not.toHaveProperty('callbackUrl');
+        // not subscribed with a URL nobody listens on, and not with a free port either
+        const inits = (name: string | undefined): unknown[] =>
+            clients.calls
+                .filter((call) => call.name === name && call.method === 'init' && call.params[1] !== '')
+                .map((call) => call.params[0]);
+        expect(inits(xmlrpcState?.name)).toEqual([]);
+        // the other protocol is untouched, and its state names the URL it was given
+        expect(binrpcState).toMatchObject({connected: true, callbackUrl: `xmlrpc_bin://127.0.0.1:${String(binrpc)}`});
+        expect(binrpcState).not.toHaveProperty('callbackFailure');
+
+        // a retry after the port is free again binds it and subscribes
+        await closed(blocker);
+        await manager.reconnect();
+        expect(inits(xmlrpcState?.name)).toEqual([`http://127.0.0.1:${String(taken)}`]);
+        const recovered = manager.states().find((state) => state.protocol === 'xmlrpc');
+        expect(recovered).toMatchObject({connected: true, callbackUrl: `http://127.0.0.1:${String(taken)}`});
+        expect(recovered).not.toHaveProperty('callbackFailure');
+        expect(notices.some((notice) => notice.level === 'info' && notice.message.includes('is open now'))).toBe(true);
+        await manager.stop();
+    });
+
+    it('names the settings as the source of an unpinned fixed port, and a bind error that is not "in use"', async () => {
+        const clients = fakeClients();
+        const notices: {level: string; message: string}[] = [];
+        const servers: CallbackServerSet = {
+            ensure: (protocol) =>
+                protocol === 'xmlrpc'
+                    ? Promise.reject(Object.assign(new Error('listen EACCES: permission denied'), {code: 'EACCES'}))
+                    : Promise.resolve(2043),
+            port: (protocol) => (protocol === 'xmlrpc' ? 0 : 2043),
+            callbackUrl: (protocol, ip) => `${protocol === 'binrpc' ? 'xmlrpc_bin://' : 'http://'}${ip}:2043`,
+            stop: () => Promise.resolve(),
+        };
+        const manager = new InterfaceManager({
+            connection: normaliseConnection({
+                host: '127.0.0.1',
+                local: true,
+                interfaces: ['BidCos-RF', 'HmIP-RF'],
+                callback: {ip: '', xmlrpcPort: 80, binrpcPort: 0},
+            }),
+            handler: {} as CallbackHandler,
+            onStateChanged: () => undefined,
+            onNotice: (level, message) => notices.push({level, message}),
+            watchdogIntervalMs: 0,
+            createClient: clients.create,
+            createCallbackServers: () => servers,
+            probe: () => Promise.resolve(true),
+        });
+        await manager.start();
+        const [error] = notices.filter((notice) => notice.level === 'error');
+        expect(error?.message).toContain('xmlrpc port 80 set by connection.callback.xmlrpcPort in the settings');
+        expect(error?.message).toContain('cannot be opened');
+        expect(manager.states().find((state) => state.protocol === 'xmlrpc')).toMatchObject({
+            error: 'callback port 80 cannot be opened',
+            callbackFailure: {port: 80, inUse: false},
+        });
+        await manager.stop();
+    });
+
+    it('still throws when a free port cannot be had, as before', async () => {
+        const servers: CallbackServerSet = {
+            ensure: () => Promise.reject(new Error('listen EADDRNOTAVAIL')),
+            port: () => 0,
+            callbackUrl: () => '',
+            stop: () => Promise.resolve(),
+        };
+        const manager = new InterfaceManager({
+            connection: normaliseConnection({host: '127.0.0.1', local: true, interfaces: ['HmIP-RF']}),
+            handler: {} as CallbackHandler,
+            onStateChanged: () => undefined,
+            onNotice: () => undefined,
+            watchdogIntervalMs: 0,
+            createClient: fakeClients().create,
+            createCallbackServers: () => servers,
+            probe: () => Promise.resolve(true),
+        });
+        await expect(manager.start()).rejects.toThrow('EADDRNOTAVAIL');
+    });
 });
 
 /**

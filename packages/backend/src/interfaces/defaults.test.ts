@@ -92,6 +92,11 @@ describe('InterfaceManager without injected parts', () => {
         expect(manager.callbackIp).toBe('127.0.0.1');
     });
 
+    /**
+     * Task 38: until beta.13 a taken fixed port made `start()` throw, and the backend turned that
+     * into one bare notice with no interface state at all. Now the interfaces are there, marked,
+     * and the notice names the port - and there is still no free port instead.
+     */
     it('reports a callback server that cannot bind instead of throwing', async () => {
         const blocker = net.createServer();
         await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve));
@@ -111,7 +116,11 @@ describe('InterfaceManager without injected parts', () => {
             onNotice: (_level, message) => notices.push(message),
         });
         managers.push(manager);
-        await expect(manager.start()).rejects.toThrow(/callback server/);
+        await manager.start();
+        expect(notices.some((message) => /callback server: the xmlrpc port \d+ .* is in use/.test(message))).toBe(true);
+        expect(manager.states()).toEqual([
+            expect.objectContaining({name: 'HmIP-RF', connected: false, callbackFailure: {port, inUse: true}}),
+        ]);
         await new Promise((resolve) => blocker.close(resolve));
     });
 });

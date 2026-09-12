@@ -1291,6 +1291,88 @@ describe('paramsets, values and links', () => {
         await h.backend.stop();
     });
 
+    /**
+     * Task 38: `HMM_CALLBACK_XMLRPC_PORT` wins over the port saved in the settings dialog. Before, the
+     * web host wrote it into `config.json` at start and a later save in the dialog moved the
+     * listener away from the published port until the next restart.
+     */
+    it('pins the callback fields the host was started with, reports them read-only and logs a replaced saved port once (task 38)', async () => {
+        await fs.writeFile(
+            path.join(dir, 'config.json'),
+            JSON.stringify({
+                version: '3.0.0-beta.13',
+                connection: {
+                    host: 'ccu.lan',
+                    interfaces: ['HmIP-RF'],
+                    autoDetect: false,
+                    callback: {ip: '192.168.1.5', xmlrpcPort: 3000, binrpcPort: 0},
+                },
+            }),
+        );
+        let managerOptions: InterfaceManagerOptions | undefined;
+        const h = await harness({
+            backend: {
+                pinnedCallback: {xmlrpcPort: 2126},
+                createInterfaceManager: (options) => {
+                    managerOptions = options;
+                    return new InterfaceManager(options);
+                },
+            },
+        });
+        expect(managerOptions?.callbackPins).toEqual({xmlrpcPort: true});
+        expect(managerOptions?.connection.callback.xmlrpcPort).toBe(2126);
+        const config = await h.backend.request('config.get');
+        expect(config.connection.callback).toEqual({ip: '192.168.1.5', xmlrpcPort: 2126, binrpcPort: 0});
+        expect(config.callbackPinned).toEqual({xmlrpcPort: true});
+        expect(config).not.toHaveProperty('publishCallbackPorts');
+
+        // a save cannot move it, and the profile keeps what the user saved
+        const saved = await h.backend.request('config.set', {
+            ...config.connection,
+            callback: {ip: '192.168.1.5', xmlrpcPort: 4000, binrpcPort: 0},
+        });
+        expect(saved.connection.callback.xmlrpcPort).toBe(2126);
+        expect(saved.callbackPinned).toEqual({xmlrpcPort: true});
+        const written = JSON.parse(await fs.readFile(path.join(dir, 'config.json'), 'utf8')) as {
+            connection: {callback: {xmlrpcPort: number}};
+        };
+        expect(written.connection.callback.xmlrpcPort).toBe(3000);
+        expect(await fs.readFile(path.join(dir, 'config.json'), 'utf8')).not.toContain('callbackPinned');
+
+        const ignored = (): string[] =>
+            h.events
+                .filter((event) => event.name === 'notice')
+                .map((event) => (event.payload as {message: string}).message)
+                .filter((message) => message.includes('is ignored'));
+        await h.backend.start();
+        await h.backend.stop();
+        await h.backend.start();
+        expect(ignored()).toEqual([
+            'callback: the saved XML-RPC callback port 3000 is ignored, HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port sets 2126',
+        ]);
+        await h.backend.stop();
+    });
+
+    it('asks for the callback ports to be published only in a container that listens beyond the loopback (task 38)', async () => {
+        const h = await harness({backend: {inContainer: true}});
+        const config = await h.backend.request('config.get');
+        expect(config.publishCallbackPorts).toBe(true);
+        expect(config).not.toHaveProperty('callbackPinned');
+        // on the loopback nothing reaches the servers from outside, so there is nothing to publish
+        const loopback = await h.backend.request('config.set', {
+            ...config.connection,
+            callback: {ip: '127.0.0.1', xmlrpcPort: 0, binrpcPort: 0},
+        });
+        expect(loopback).not.toHaveProperty('publishCallbackPorts');
+        await h.backend.stop();
+    });
+
+    it('says nothing about publishing outside a container (task 38)', async () => {
+        const h = await harness();
+        expect(await h.backend.request('config.get')).not.toHaveProperty('publishCallbackPorts');
+        await h.backend.stop();
+    });
+
     it('passes the link calls through and shapes their answers', async () => {
         const h = await harness({
             answers: {

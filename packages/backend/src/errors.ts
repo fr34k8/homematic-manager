@@ -206,3 +206,20 @@ export function isConnectionRefused(value: unknown): boolean {
     }
     return /\bECONNREFUSED\b/.test(errorMessage(value));
 }
+
+/**
+ * Task 38: a callback server's bind failed because another process holds the port - hm2mqtt.js on
+ * the same pair, or a second container on the host network. Looked for along the `cause` chain and
+ * in the text, for the same reason as {@link isConnectionRefused}.
+ */
+export function isAddressInUse(value: unknown): boolean {
+    let current: unknown = value;
+    for (let depth = 0; current !== undefined && current !== null && depth < 10; depth += 1) {
+        const candidate = current as {code?: unknown; cause?: unknown};
+        if (candidate.code === 'EADDRINUSE') {
+            return true;
+        }
+        current = candidate.cause;
+    }
+    return /\bEADDRINUSE\b/.test(errorMessage(value));
+}

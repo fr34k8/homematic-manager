@@ -519,16 +519,35 @@ describe('the connection options', () => {
         expect(config.connection.local).toBe(true);
     });
 
-    it('writes the callback address and ports a container behind NAT needs', async () => {
+    /**
+     * Task 38: pinned, not written. Until beta.13 these were written into `config.json` at every
+     * start, and a port saved in the settings dialog afterwards moved the listener away from the
+     * published port until the next restart.
+     */
+    it('pins the callback address and ports a container behind NAT needs, without writing them', async () => {
         // a bridge-networked container sees 172.17.0.2 and would announce that in `init`
         const host = await start({
             callbackIp: '192.168.1.10',
             callbackXmlrpcPort: 2126,
             callbackBinrpcPort: 2127,
+            inContainer: true,
             backendOptions: {rpcTimeoutMs: 500},
         });
         const config = await backendOf(host).request('config.get');
         expect(config.connection.callback).toEqual({ip: '192.168.1.10', xmlrpcPort: 2126, binrpcPort: 2127});
+        expect(config.callbackPinned).toEqual({ip: true, xmlrpcPort: true, binrpcPort: true});
+        expect(config.publishCallbackPorts).toBe(true);
+        const written = JSON.parse(await fs.readFile(path.join(dataDir, 'config.json'), 'utf8')) as {
+            connection: {callback: unknown};
+        };
+        expect(written.connection.callback).toEqual({ip: '', xmlrpcPort: 0, binrpcPort: 0});
+    });
+
+    it('pins nothing with an empty address or a 0 port, and asks for no publishing outside a container', async () => {
+        const host = await start({callbackIp: '', callbackXmlrpcPort: 0});
+        const config = await backendOf(host).request('config.get');
+        expect(config).not.toHaveProperty('callbackPinned');
+        expect(config).not.toHaveProperty('publishCallbackPorts');
     });
 
     it('leaves the configuration alone when neither is given', async () => {

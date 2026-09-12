@@ -111,3 +111,66 @@ describe('the stored configuration', () => {
         expect(Array.isArray(store.config.localAddresses)).toBe(true);
     });
 });
+
+/**
+ * Task 38: `HMM_CALLBACK_*` / `--callback-*` win over the profile. Before, the web host wrote them
+ * into `config.json` at every start, and a port saved in the settings dialog moved the listener
+ * away from the published port until the next restart.
+ */
+describe('callback fields pinned at start (task 38)', () => {
+    const pinned = {ip: '192.168.1.10', xmlrpcPort: 2126, binrpcPort: 2127};
+
+    it('lays them over the saved ones, never saves them, and names the saved values they replace', async () => {
+        const first = await ConfigStore.open(options());
+        await first.setConnection({host: 'ccu.lan', callback: {ip: '10.0.0.7', xmlrpcPort: 3000, binrpcPort: 0}});
+
+        const store = await ConfigStore.open({...options(), pinnedCallback: pinned});
+        expect(store.connection.callback).toEqual(pinned);
+        expect(store.config.connection.callback).toEqual(pinned);
+        expect(store.callbackPins).toEqual({ip: true, xmlrpcPort: true, binrpcPort: true});
+        // a saved 0 configured nothing, so nothing of it is being ignored
+        expect(store.ignoredCallback).toEqual([
+            {field: 'ip', saved: '10.0.0.7', pinned: '192.168.1.10'},
+            {field: 'xmlrpcPort', saved: 3000, pinned: 2126},
+        ]);
+
+        // what the dialog sends for a pinned field is not taken, and the file keeps the user's value
+        const config = await store.setConnection({
+            ...store.connection,
+            writePaceMs: 100,
+            callback: {ip: '10.9.9.9', xmlrpcPort: 4000, binrpcPort: 4001},
+        });
+        expect(config.connection.callback).toEqual(pinned);
+        expect(config.connection.writePaceMs).toBe(100);
+        const written = await readJsonFile<{connection: {callback: unknown; writePaceMs: number}}>(
+            path.join(dir, 'config.json'),
+        );
+        expect(written?.connection.callback).toEqual({ip: '10.0.0.7', xmlrpcPort: 3000, binrpcPort: 0});
+        expect(written?.connection.writePaceMs).toBe(100);
+
+        // a start without the options is back at what the user saved
+        const unpinned = await ConfigStore.open(options());
+        expect(unpinned.connection.callback).toEqual({ip: '10.0.0.7', xmlrpcPort: 3000, binrpcPort: 0});
+        expect(unpinned.callbackPins).toBeUndefined();
+        expect(unpinned.ignoredCallback).toEqual([]);
+    });
+
+    it('pins only the fields that are given, and an empty address or a 0 pins nothing', async () => {
+        const store = await ConfigStore.open({...options(), pinnedCallback: {ip: '', xmlrpcPort: 0, binrpcPort: 2127}});
+        expect(store.callbackPins).toEqual({binrpcPort: true});
+        const config = await store.setConnection({
+            host: 'ccu.lan',
+            callback: {ip: '10.0.0.7', xmlrpcPort: 3000, binrpcPort: 5000},
+        });
+        expect(config.connection.callback).toEqual({ip: '10.0.0.7', xmlrpcPort: 3000, binrpcPort: 2127});
+        const written = await readJsonFile<{connection: {callback: unknown}}>(path.join(dir, 'config.json'));
+        expect(written?.connection.callback).toEqual({ip: '10.0.0.7', xmlrpcPort: 3000, binrpcPort: 0});
+    });
+
+    it('writes a fresh profile without them', async () => {
+        const store = await ConfigStore.open({...options(), pinnedCallback: pinned});
+        expect(store.connection.callback).toEqual(pinned);
+        const written = await readJsonFile<{connection: {callback: unknown}}>(path.join(dir, 'config.json'));
+        expect(written?.connection.callback).toEqual({ip: '', xmlrpcPort: 0, binrpcPort: 0});
+    });
+});

@@ -29,7 +29,13 @@ import type {Socket} from 'node:net';
 import path from 'node:path';
 
 import type {AppConfig, SessionInfo} from '@homematic-manager/core';
-import {ApiWebSocketServer, Backend, RegaAuthenticator, type BackendOptions} from '@homematic-manager/backend';
+import {
+    ApiWebSocketServer,
+    Backend,
+    RegaAuthenticator,
+    type BackendOptions,
+    type PinnedCallback,
+} from '@homematic-manager/backend';
 
 import {
     applyCookieToken,
@@ -143,14 +149,23 @@ export interface WebHostOptions {
     /** Written to `ConnectionConfig.local` - the addon's "we run on the CCU" mode. */
     readonly local?: boolean | undefined;
     /**
-     * Written to `ConnectionConfig.callback`. A host that cannot see the address the CCU reaches it
+     * Laid over `ConnectionConfig.callback`. A host that cannot see the address the CCU reaches it
      * on has to be told: a container on a bridge network sees `172.17.0.x`, and an `init` that
      * announces that address gets no events at all. With `--network host` none of this is needed.
+     *
+     * Task 38: these three are pinned, not written. They win over `config.json` for as long as the
+     * host runs with them, the settings dialog shows them read-only, and the file keeps what the
+     * user saved. An empty address and a port of `0` pin nothing.
      */
     readonly callbackIp?: string | undefined;
-    /** Fixed callback ports, so a container can publish them. `0` picks a free one. */
+    /** Fixed callback ports, so a container can publish them. `0` pins nothing. */
     readonly callbackXmlrpcPort?: number | undefined;
     readonly callbackBinrpcPort?: number | undefined;
+    /**
+     * Task 38: the host runs in a container (`HMM_IN_CONTAINER`, set by the image). The interface
+     * popup then says beside each callback URL that its port must be published unchanged.
+     */
+    readonly inContainer?: boolean | undefined;
     /**
      * Task 35 (D-43): the callback ports taken while the configuration says `0` - the CCU addon's
      * fixed pair. Handed to the backend and never written to `config.json`, so a port the user set
@@ -258,6 +273,16 @@ export async function createWebHost(options: WebHostOptions = {}): Promise<WebHo
                 `callback: default ports xmlrpc=${String(defaultCallbackPorts.xmlrpc)} binrpc=${String(defaultCallbackPorts.binrpc)} while the configuration says 0`,
             );
         }
+        const pinnedCallback = callbackPins(options);
+        if (pinnedCallback !== undefined) {
+            const {ip, xmlrpcPort, binrpcPort} = pinnedCallback;
+            const parts = [
+                ...(ip === undefined ? [] : [`ip=${ip}`]),
+                ...(xmlrpcPort === undefined ? [] : [`xmlrpc=${String(xmlrpcPort)}`]),
+                ...(binrpcPort === undefined ? [] : [`binrpc=${String(binrpcPort)}`]),
+            ];
+            log.info(`callback: ${parts.join(' ')} set at start, read-only in the settings dialog`);
+        }
         backend = await Backend.open({
             dataDir,
             version: options.version ?? packageVersion(),
@@ -267,6 +292,8 @@ export async function createWebHost(options: WebHostOptions = {}): Promise<WebHo
             // window can never be idled out however the backend is configured.
             ...(options.idleUnsubscribeMs === undefined ? {} : {idleUnsubscribeMs: options.idleUnsubscribeMs}),
             ...(defaultCallbackPorts === undefined ? {} : {defaultCallbackPorts}),
+            ...(pinnedCallback === undefined ? {} : {pinnedCallback}),
+            ...(options.inContainer === true ? {inContainer: true} : {}),
             ...options.backendOptions,
         });
         backend.on('notice', (notice) => {
@@ -782,17 +809,31 @@ function callbackDefaults(options: WebHostOptions): {xmlrpc: number; binrpc: num
     return xmlrpc === 0 && binrpc === 0 ? undefined : {xmlrpc, binrpc};
 }
 
-/** `--ccu`, `--local` and the callback options win over what `config.json` holds. */
+/**
+ * Task 38: the callback fields given at start, or nothing. An empty address and a port of `0` are
+ * "not configured" in the connection model and pin nothing.
+ */
+function callbackPins(options: WebHostOptions): PinnedCallback | undefined {
+    const pins: PinnedCallback = {
+        ...(options.callbackIp === undefined || options.callbackIp === '' ? {} : {ip: options.callbackIp}),
+        ...(options.callbackXmlrpcPort === undefined || options.callbackXmlrpcPort === 0
+            ? {}
+            : {xmlrpcPort: options.callbackXmlrpcPort}),
+        ...(options.callbackBinrpcPort === undefined || options.callbackBinrpcPort === 0
+            ? {}
+            : {binrpcPort: options.callbackBinrpcPort}),
+    };
+    return Object.keys(pins).length === 0 ? undefined : pins;
+}
+
+/**
+ * `--ccu` and `--local` win over what `config.json` holds, and are written to it. The callback
+ * options are not: since task 38 the backend lays them over the profile (`pinnedCallback`).
+ */
 async function applyConnectionOptions(backend: Backend, options: WebHostOptions, log: Logger): Promise<void> {
     const wantsHost = options.ccu !== undefined && options.ccu !== '';
     const wantsLocal = options.local !== undefined;
-    const callback = {
-        ...(options.callbackIp === undefined ? {} : {ip: options.callbackIp}),
-        ...(options.callbackXmlrpcPort === undefined ? {} : {xmlrpcPort: options.callbackXmlrpcPort}),
-        ...(options.callbackBinrpcPort === undefined ? {} : {binrpcPort: options.callbackBinrpcPort}),
-    };
-    const wantsCallback = Object.keys(callback).length > 0;
-    if (!wantsHost && !wantsLocal && !wantsCallback) {
+    if (!wantsHost && !wantsLocal) {
         return;
     }
     const config: AppConfig = await backend.request('config.get');
@@ -800,24 +841,11 @@ async function applyConnectionOptions(backend: Backend, options: WebHostOptions,
         ...config.connection,
         ...(wantsHost ? {host: options.ccu as string} : {}),
         ...(wantsLocal ? {local: options.local as boolean} : {}),
-        callback: {...config.connection.callback, ...callback},
     };
-    if (
-        connection.host === config.connection.host &&
-        connection.local === config.connection.local &&
-        connection.callback.ip === config.connection.callback.ip &&
-        connection.callback.xmlrpcPort === config.connection.callback.xmlrpcPort &&
-        connection.callback.binrpcPort === config.connection.callback.binrpcPort
-    ) {
+    if (connection.host === config.connection.host && connection.local === config.connection.local) {
         return;
     }
-    if (wantsHost || wantsLocal) {
-        log.info(`connection: host=${connection.host}${connection.local === true ? ' (local)' : ''}`);
-    }
-    if (wantsCallback) {
-        const {ip, xmlrpcPort, binrpcPort} = connection.callback;
-        log.info(`callback: ${ip === '' ? 'auto' : ip} xmlrpc=${String(xmlrpcPort)} binrpc=${String(binrpcPort)}`);
-    }
+    log.info(`connection: host=${connection.host}${connection.local === true ? ' (local)' : ''}`);
     await backend.request('config.set', connection);
 }
 

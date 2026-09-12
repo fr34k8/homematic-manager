@@ -210,6 +210,7 @@ function startHost(values: WebOptions, log: Logger, version: string): Promise<We
         ...(values.callbackIp === undefined ? {} : {callbackIp: values.callbackIp}),
         ...(values.callbackXmlrpcPort === undefined ? {} : {callbackXmlrpcPort: values.callbackXmlrpcPort}),
         ...(values.callbackBinrpcPort === undefined ? {} : {callbackBinrpcPort: values.callbackBinrpcPort}),
+        ...(values.inContainer ? {inContainer: true} : {}),
         ...(values.callbackXmlrpcDefaultPort === undefined
             ? {}
             : {callbackXmlrpcDefaultPort: values.callbackXmlrpcDefaultPort}),

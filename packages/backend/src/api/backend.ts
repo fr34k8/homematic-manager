@@ -24,8 +24,10 @@ import {
     maintenanceAddress,
     mergeMethodHelp,
     methodsFor,
+    callbackPinOption,
     type AppConfig,
     type ApiEventName,
+    type CallbackPins,
     type ApiEvents,
     type ApiMethodName,
     type ApiMethods,
@@ -74,7 +76,13 @@ import {
     isMethodUnsupported,
     validationError,
 } from '../errors.js';
-import {InterfaceManager, firstBidcosInterfaceAddress, type InterfaceManagerOptions} from '../interfaces/manager.js';
+import {
+    InterfaceManager,
+    LOOPBACK_IP,
+    callbackBindHost,
+    firstBidcosInterfaceAddress,
+    type InterfaceManagerOptions,
+} from '../interfaces/manager.js';
 import {MetaService, type MetaServiceOptions} from '../meta/service.js';
 import {RegaService, type RegaServiceOptions} from '../rega/client.js';
 import type {RpcCallRecord, RpcOutValue} from '../rpc/client.js';
@@ -100,6 +108,13 @@ function isHmipInterface(name: string, type: string): boolean {
     return /hmip/i.test(name) || /hmip/i.test(type);
 }
 
+/** Task 38: how a log line names a callback field. */
+const CALLBACK_FIELD_WORDS: Readonly<Record<keyof CallbackPins, string>> = {
+    ip: 'callback address',
+    xmlrpcPort: 'XML-RPC callback port',
+    binrpcPort: 'BIN-RPC callback port',
+};
+
 export interface BackendOptions extends Omit<ConfigStoreOptions, 'version'> {
     /** `AppConfig.version`; the host passes its package version. */
     readonly version?: string;
@@ -112,6 +127,12 @@ export interface BackendOptions extends Omit<ConfigStoreOptions, 'version'> {
      * `AppConfig.callbackDefaultPorts` reports it so the settings dialog can say what `0` means.
      */
     readonly defaultCallbackPorts?: {readonly xmlrpc: number; readonly binrpc: number};
+    /**
+     * Task 38: the host runs in a container (the image sets `HMM_IN_CONTAINER`). Where its callback
+     * servers listen beyond the loopback, `AppConfig.publishCallbackPorts` tells the interface
+     * popup to say that the callback ports must be published unchanged.
+     */
+    readonly inContainer?: boolean;
     readonly rpcTimeoutMs?: number;
     readonly watchdogIntervalMs?: number;
     readonly serviceMessagePollMs?: number;
@@ -183,6 +204,8 @@ export class Backend {
      */
     readonly #noServiceMessages = new Set<string>();
     #idleTimer: ReturnType<typeof setTimeout> | undefined;
+    /** Task 38: the saved callback values a pinned one replaces are logged by the first `start()` only. */
+    #pinsReported = false;
 
     private constructor(options: BackendOptions, config: ConfigStore, caches: CacheStore) {
         this.#options = options;
@@ -257,6 +280,17 @@ export class Backend {
         this.#stopped = false;
         if (this.#config.importedFromLegacy) {
             this.#notice('info', 'the configuration of Homematic Manager 2.x was imported');
+        }
+        if (!this.#pinsReported) {
+            // Task 38: once per process - the value in config.json stays, it only has no effect
+            this.#pinsReported = true;
+            for (const {field, saved, pinned} of this.#config.ignoredCallback) {
+                this.#notice(
+                    'info',
+                    `callback: the saved ${CALLBACK_FIELD_WORDS[field]} ${String(saved)} is ignored, ` +
+                        `${callbackPinOption(field)} sets ${String(pinned)}`,
+                );
+            }
         }
         const problems = validateConnection(this.#config.connection);
         if (problems.length > 0) {
@@ -611,6 +645,7 @@ export class Backend {
             ...(this.#options.defaultCallbackPorts === undefined
                 ? {}
                 : {defaultCallbackPorts: this.#options.defaultCallbackPorts}),
+            ...(this.#config.callbackPins === undefined ? {} : {callbackPins: this.#config.callbackPins}),
             ...(this.#options.rpcTimeoutMs === undefined ? {} : {rpcTimeoutMs: this.#options.rpcTimeoutMs}),
             ...(this.#options.watchdogIntervalMs === undefined
                 ? {}
@@ -989,9 +1024,16 @@ export class Backend {
      */
     #withHostFacts(config: AppConfig): AppConfig {
         const ports = this.#options.defaultCallbackPorts;
-        return ports === undefined
-            ? config
-            : {...config, callbackDefaultPorts: {xmlrpc: ports.xmlrpc, binrpc: ports.binrpc}};
+        const pins = this.#config.callbackPins;
+        // Task 38: a container whose callback servers listen on the loopback only has nothing to publish
+        const bindHost = this.#options.callbackHost ?? callbackBindHost(config.connection);
+        const publish = this.#options.inContainer === true && bindHost !== LOOPBACK_IP;
+        return {
+            ...config,
+            ...(ports === undefined ? {} : {callbackDefaultPorts: {xmlrpc: ports.xmlrpc, binrpc: ports.binrpc}}),
+            ...(pins === undefined ? {} : {callbackPinned: {...pins}}),
+            ...(publish ? {publishCallbackPorts: true} : {}),
+        };
     }
 
     async #setConfig(connection: unknown, options?: ConfigSetOptions): Promise<AppConfig> {

@@ -127,6 +127,43 @@ export interface AppConfig {
      * to the profile, so the settings dialog can say what `0` means without changing what it saves.
      */
     callbackDefaultPorts?: {xmlrpc: number; binrpc: number};
+    /**
+     * Task 38: the callback fields the host was started with (`HMM_CALLBACK_*` or `--callback-*`).
+     * Such a value wins over the profile's, the backend never saves another one over it, and the
+     * settings dialog shows it read-only with the option that set it ({@link CALLBACK_PIN_OPTIONS}).
+     * Absent where the host pins nothing.
+     */
+    callbackPinned?: CallbackPins;
+    /**
+     * Task 38: the host runs in a container and its callback servers listen beyond the loopback,
+     * so the ports the interfaces are told only work when they are published unchanged. The
+     * interface popup says so beside each callback URL. Absent everywhere else.
+     */
+    publishCallbackPorts?: boolean;
+}
+
+/** Task 38: which of `connection.callback`'s fields the host set at start. */
+export interface CallbackPins {
+    ip?: boolean;
+    xmlrpcPort?: boolean;
+    binrpcPort?: boolean;
+}
+
+/**
+ * Task 38: the environment variable and command-line option behind each callback field, for the
+ * settings dialog's read-only hint and the backend's log lines - one table, so the two cannot name
+ * different options.
+ */
+export const CALLBACK_PIN_OPTIONS: Readonly<Record<keyof CallbackPins, {env: string; cli: string}>> = Object.freeze({
+    ip: {env: 'HMM_CALLBACK_IP', cli: '--callback-ip'},
+    xmlrpcPort: {env: 'HMM_CALLBACK_XMLRPC_PORT', cli: '--callback-xmlrpc-port'},
+    binrpcPort: {env: 'HMM_CALLBACK_BINRPC_PORT', cli: '--callback-binrpc-port'},
+});
+
+/** Task 38: `HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port`, as the hint and the log write it. */
+export function callbackPinOption(field: keyof CallbackPins): string {
+    const {env, cli} = CALLBACK_PIN_OPTIONS[field];
+    return `${env} / ${cli}`;
 }
 
 export interface DiscoveredCcu {
@@ -177,6 +214,18 @@ export interface InterfaceState {
      * next session that connects subscribes again. Never set in Electron.
      */
     idle?: boolean;
+    /**
+     * Task 38: the URL this interface was told to call back on in its last `init` -
+     * `http://<callback ip>:<port>` for XML-RPC, `xmlrpc_bin://…` for BIN-RPC. Absent for an
+     * interface that takes no `init`, and while its callback server could not be opened.
+     */
+    callbackUrl?: string;
+    /**
+     * Task 38: the fixed callback port of this interface's protocol could not be opened, so it is
+     * not subscribed. `inUse` is the common case - another process holds the port - and there is no
+     * free port instead: a fixed port is the one that was published or opened in a firewall.
+     */
+    callbackFailure?: {port: number; inUse: boolean};
 }
 
 /**

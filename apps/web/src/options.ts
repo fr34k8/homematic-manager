@@ -179,6 +179,12 @@ export const OPTIONS = {
             'binrpc callback port while the configured one is 0; a free port when it is taken (the CCU addon sets 2032)',
         defaultDescription: 'none, a free port',
     },
+    'in-container': {
+        type: 'boolean',
+        describe:
+            'we run in a container (the image sets it): the interface popup says to publish the callback ports unchanged',
+        default: false,
+    },
     'idle-unsubscribe': {
         type: 'string',
         describe: 'drop the event subscriptions after this long with no page open (5m, 300s, 0 to disable)',
@@ -248,6 +254,8 @@ export interface WebOptions {
     /** Task 35 (D-43): the CCU addon's fixed callback ports, taken while the configured ones are `0`. */
     readonly callbackXmlrpcDefaultPort: number | undefined;
     readonly callbackBinrpcDefaultPort: number | undefined;
+    /** Task 38: set by the image's `HMM_IN_CONTAINER`. */
+    readonly inContainer: boolean;
     readonly demo: boolean;
     /** D-31, in milliseconds; `0` disables the idle unsubscribe. */
     readonly idleUnsubscribeMs: number;
@@ -413,6 +421,7 @@ export function parseOptions(argv: readonly string[], env: NodeJS.ProcessEnv = p
         callbackBinrpcPort: number('callback-binrpc-port'),
         callbackXmlrpcDefaultPort,
         callbackBinrpcDefaultPort,
+        inContainer: boolean('in-container') ?? false,
         demo: boolean('demo') as boolean,
         idleUnsubscribeMs: parseDuration(string('idle-unsubscribe') as string, '--idle-unsubscribe'),
         logLevel: isLogLevel(logLevel) ? logLevel : 'info',
