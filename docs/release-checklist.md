@@ -57,11 +57,24 @@ npm run lint
 npm run typecheck
 npm test
 npm run build && npm run test:e2e
+apps/ccu-addon/build.sh x86_64                     # the container test installs the newest package in out/
 apps/ccu-addon/test/container-test.sh --idle      # needs docker
+npm run lint:sh                                    # with shellcheck present, see below
 ```
 
 - [ ] All green. `npm test` needs hm-simulator, which is a devDependency since 1.0.0 — a skipped
       e2e suite is not a pass.
+- [ ] **Build the x86_64 package before the container test.** The test takes the newest
+      `hmm-ccu-x86_64-*.tar.gz` in `apps/ccu-addon/out/`, and a stale one from an earlier build tests
+      yesterday's addon (beta.13's gate first ran against a beta.9 package and failed only the new
+      check).
+- [ ] **shellcheck has to run.** Without it `lint:sh` only checks the syntax and says so in one line
+      (beta.8's CI failed on an `echo -n` the local lint never saw). Where it is not installed, run it
+      through docker over the files `scripts/lint-sh.sh` selects — its shebang rule, not a hand-made
+      list (`bin/update_addon` is tclsh and makes shellcheck exit 123):
+      `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -x -S warning <files>`.
+- [ ] **A red e2e spec is rerun alone and in the full run** before it is called a regression: beta.8
+      (a fixture leak between tests) and beta.9 (a seeded count) were both spec races, not defects.
 - [ ] `docs/hardware-checklist.md` has a run against the **current** build on the three lab boxes.
 - [ ] `CHANGELOG.md` "Known issues" matches what is actually broken today, and the version heading
       says what is being released.
