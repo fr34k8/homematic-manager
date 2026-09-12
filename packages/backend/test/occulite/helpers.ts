@@ -81,45 +81,65 @@ export async function startOcculite(): Promise<OcculiteBox> {
         'VERSION=3.89.8.20260719\nPRODUCT=ova\nPLATFORM=ova\nVARIANT=lite\n',
     );
 
-    const port = await freePort();
-    const baseUrl = `http://127.0.0.1:${String(port)}`;
-    const child: ChildProcess = spawn(
-        OCCULITED,
-        [
-            '--root',
-            root,
-            '--state-dir',
-            state,
-            '--session-dir',
-            sessions,
-            '--listen',
-            `127.0.0.1:${String(port)}`,
-            '--log',
-            'stderr',
-        ],
-        {stdio: ['ignore', 'pipe', 'pipe']},
-    );
     const log: string[] = [];
-    child.stdout?.on('data', (chunk: Buffer) => log.push(chunk.toString()));
-    child.stderr?.on('data', (chunk: Buffer) => log.push(chunk.toString()));
+    let baseUrl = '';
+    // the process of the current attempt; `exited` is set from its exit event
+    const current: {child?: ChildProcess; exited: boolean} = {exited: false};
+    const launch = async (): Promise<void> => {
+        const port = await freePort();
+        baseUrl = `http://127.0.0.1:${String(port)}`;
+        const child: ChildProcess = spawn(
+            OCCULITED,
+            [
+                '--root',
+                root,
+                '--state-dir',
+                state,
+                '--session-dir',
+                sessions,
+                '--listen',
+                `127.0.0.1:${String(port)}`,
+                '--log',
+                'stderr',
+            ],
+            {stdio: ['ignore', 'pipe', 'pipe']},
+        );
+        current.child = child;
+        current.exited = false;
+        child.stdout?.on('data', (chunk: Buffer) => log.push(chunk.toString()));
+        child.stderr?.on('data', (chunk: Buffer) => log.push(chunk.toString()));
+        child.on('exit', () => {
+            if (current.child === child) {
+                current.exited = true;
+            }
+        });
+    };
 
     const stop = async (): Promise<void> => {
-        child.kill('SIGTERM');
-        await new Promise<void>((resolve) => {
-            const timer = setTimeout(() => {
-                child.kill('SIGKILL');
-                resolve();
-            }, 3000);
-            child.on('exit', () => {
-                clearTimeout(timer);
-                resolve();
+        const child = current.child;
+        if (child !== undefined && !current.exited) {
+            child.kill('SIGTERM');
+            await new Promise<void>((resolve) => {
+                const timer = setTimeout(() => {
+                    child.kill('SIGKILL');
+                    resolve();
+                }, 3000);
+                child.on('exit', () => {
+                    clearTimeout(timer);
+                    resolve();
+                });
             });
-        });
+        }
         await fs.rm(dir, {recursive: true, force: true});
     };
 
-    // wait for the version endpoint, which is the one call that needs no credential
-    const deadline = Date.now() + 15_000;
+    // Wait for the version endpoint, which is the one call that needs no credential. `--listen` takes
+    // a number, and the one that was free a moment ago may be handed to a test file running in
+    // parallel before occulited binds it: occulited then exits at once, and is started again on
+    // another port, at most five times.
+    await launch();
+    let attempt = 1;
+    let deadline = Date.now() + 15_000;
     for (;;) {
         try {
             const response = await fetch(`${baseUrl}/api/meta/v1/version`, {signal: AbortSignal.timeout(1000)});
@@ -129,7 +149,14 @@ export async function startOcculite(): Promise<OcculiteBox> {
         } catch {
             // not up yet
         }
-        if (Date.now() > deadline) {
+        if (current.exited && attempt < 5 && log.join('').includes('address already in use')) {
+            attempt += 1;
+            log.length = 0;
+            await launch();
+            deadline = Date.now() + 15_000;
+            continue;
+        }
+        if (current.exited || Date.now() > deadline) {
             await stop();
             throw new Error(`occulited did not come up on ${baseUrl}:\n${log.join('')}`);
         }

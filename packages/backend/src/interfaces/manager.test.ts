@@ -337,6 +337,26 @@ describe('the default callback ports', () => {
         return ports;
     }
 
+    /**
+     * Runs `body` with two ports that were free a moment ago. Between the probe's close and the bind
+     * in `body`, a test file running in parallel may be handed one of those numbers (as in `69708aa`).
+     * A lost race is not what these tests are about, so `body` runs again with new ports, at most five
+     * times; a real failure fails all five. `body` stops what it started, pass or fail.
+     */
+    async function withFreePorts(body: (ports: [number, number]) => Promise<void>): Promise<void> {
+        for (let attempt = 1; ; attempt += 1) {
+            const ports = await freePorts();
+            try {
+                await body(ports);
+                return;
+            } catch (error) {
+                if (attempt >= 5) {
+                    throw error;
+                }
+            }
+        }
+    }
+
     function subscriber(
         callback: {xmlrpcPort: number; binrpcPort: number},
         defaultCallbackPorts: {xmlrpc: number; binrpc: number},
@@ -368,38 +388,56 @@ describe('the default callback ports', () => {
     }
 
     it('registers the default pair while the configured ports are 0', async () => {
-        const [xmlrpc, binrpc] = await freePorts();
-        const s = subscriber({xmlrpcPort: 0, binrpcPort: 0}, {xmlrpc, binrpc});
-        await s.manager.start();
-        expect(s.urls()).toEqual([`http://127.0.0.1:${String(xmlrpc)}`, `xmlrpc_bin://127.0.0.1:${String(binrpc)}`]);
-        expect(s.notices.filter((notice) => notice.level !== 'info')).toEqual([]);
-        await s.manager.stop();
+        await withFreePorts(async ([xmlrpc, binrpc]) => {
+            const s = subscriber({xmlrpcPort: 0, binrpcPort: 0}, {xmlrpc, binrpc});
+            try {
+                await s.manager.start();
+                expect(s.urls()).toEqual([
+                    `http://127.0.0.1:${String(xmlrpc)}`,
+                    `xmlrpc_bin://127.0.0.1:${String(binrpc)}`,
+                ]);
+                expect(s.notices.filter((notice) => notice.level !== 'info')).toEqual([]);
+            } finally {
+                await s.manager.stop();
+            }
+        });
     });
 
     it('falls back to a free port with one warning when a default port is taken', async () => {
-        const blocker = await listening();
-        const taken = portOf(blocker);
-        const [binrpc] = await freePorts();
-        const s = subscriber({xmlrpcPort: 0, binrpcPort: 0}, {xmlrpc: taken, binrpc});
-        await s.manager.start();
-        const [http, bin] = s.urls();
-        expect(http).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
-        expect(http).not.toBe(`http://127.0.0.1:${String(taken)}`);
-        expect(bin).toBe(`xmlrpc_bin://127.0.0.1:${String(binrpc)}`);
-        const warnings = s.notices.filter((notice) => notice.level === 'warn');
-        expect(warnings).toHaveLength(1);
-        expect(warnings[0]?.message).toContain(`the default xmlrpc port ${String(taken)} is taken`);
-        expect(s.notices.filter((notice) => notice.level === 'error')).toEqual([]);
-        await s.manager.stop();
-        await closed(blocker);
+        await withFreePorts(async ([binrpc]) => {
+            const blocker = await listening();
+            const taken = portOf(blocker);
+            const s = subscriber({xmlrpcPort: 0, binrpcPort: 0}, {xmlrpc: taken, binrpc});
+            try {
+                await s.manager.start();
+                const [http, bin] = s.urls();
+                expect(http).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+                expect(http).not.toBe(`http://127.0.0.1:${String(taken)}`);
+                expect(bin).toBe(`xmlrpc_bin://127.0.0.1:${String(binrpc)}`);
+                const warnings = s.notices.filter((notice) => notice.level === 'warn');
+                expect(warnings).toHaveLength(1);
+                expect(warnings[0]?.message).toContain(`the default xmlrpc port ${String(taken)} is taken`);
+                expect(s.notices.filter((notice) => notice.level === 'error')).toEqual([]);
+            } finally {
+                await s.manager.stop();
+                await closed(blocker);
+            }
+        });
     });
 
     it("keeps the user's configured ports over the default pair", async () => {
-        const [xmlrpc, binrpc] = await freePorts();
-        const s = subscriber({xmlrpcPort: xmlrpc, binrpcPort: binrpc}, {xmlrpc: 2031, binrpc: 2032});
-        await s.manager.start();
-        expect(s.urls()).toEqual([`http://127.0.0.1:${String(xmlrpc)}`, `xmlrpc_bin://127.0.0.1:${String(binrpc)}`]);
-        await s.manager.stop();
+        await withFreePorts(async ([xmlrpc, binrpc]) => {
+            const s = subscriber({xmlrpcPort: xmlrpc, binrpcPort: binrpc}, {xmlrpc: 2031, binrpc: 2032});
+            try {
+                await s.manager.start();
+                expect(s.urls()).toEqual([
+                    `http://127.0.0.1:${String(xmlrpc)}`,
+                    `xmlrpc_bin://127.0.0.1:${String(binrpc)}`,
+                ]);
+            } finally {
+                await s.manager.stop();
+            }
+        });
     });
 
     /**
@@ -409,69 +447,80 @@ describe('the default callback ports', () => {
      * option, the state carries the reason, and nothing falls back to a free port.
      */
     it('fails loudly on a taken fixed port: no free port, the option in the log, the reason in the state', async () => {
-        const blocker = await listening();
-        const taken = portOf(blocker);
-        const [binrpc] = await freePorts();
-        const clients = fakeClients();
-        const notices: {level: string; message: string}[] = [];
-        let states: InterfaceState[] = [];
-        const manager = new InterfaceManager({
-            connection: normaliseConnection({
-                host: '127.0.0.1',
-                local: true,
-                interfaces: ['BidCos-RF', 'HmIP-RF'],
-                callback: {ip: '', xmlrpcPort: taken, binrpcPort: binrpc},
-            }),
-            handler: {} as CallbackHandler,
-            onStateChanged: (next) => {
-                states = next;
-            },
-            onNotice: (level, message) => notices.push({level, message}),
-            watchdogIntervalMs: 0,
-            initBackoffMs: 0,
-            createClient: clients.create,
-            probe: () => Promise.resolve(true),
-            callbackHost: '127.0.0.1',
-            // a default pair is there and must not be used: the configured port is fixed
-            defaultCallbackPorts: {xmlrpc: 2031, binrpc: 2032},
-            callbackPins: {xmlrpcPort: true},
+        await withFreePorts(async ([binrpc]) => {
+            const blocker = await listening();
+            const taken = portOf(blocker);
+            const clients = fakeClients();
+            const notices: {level: string; message: string}[] = [];
+            let states: InterfaceState[] = [];
+            const manager = new InterfaceManager({
+                connection: normaliseConnection({
+                    host: '127.0.0.1',
+                    local: true,
+                    interfaces: ['BidCos-RF', 'HmIP-RF'],
+                    callback: {ip: '', xmlrpcPort: taken, binrpcPort: binrpc},
+                }),
+                handler: {} as CallbackHandler,
+                onStateChanged: (next) => {
+                    states = next;
+                },
+                onNotice: (level, message) => notices.push({level, message}),
+                watchdogIntervalMs: 0,
+                initBackoffMs: 0,
+                createClient: clients.create,
+                probe: () => Promise.resolve(true),
+                callbackHost: '127.0.0.1',
+                // a default pair is there and must not be used: the configured port is fixed
+                defaultCallbackPorts: {xmlrpc: 2031, binrpc: 2032},
+                callbackPins: {xmlrpcPort: true},
+            });
+            try {
+                await manager.start();
+
+                const errors = notices.filter((notice) => notice.level === 'error');
+                expect(errors).toHaveLength(1);
+                expect(errors[0]?.message).toContain(`xmlrpc port ${String(taken)}`);
+                expect(errors[0]?.message).toContain('HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port');
+                expect(errors[0]?.message).toContain('is in use');
+                expect(notices.filter((notice) => notice.level === 'warn')).toEqual([]);
+
+                const xmlrpcState = states.find((state) => state.protocol === 'xmlrpc');
+                const binrpcState = states.find((state) => state.protocol === 'binrpc');
+                expect(xmlrpcState).toMatchObject({
+                    connected: false,
+                    error: `callback port ${String(taken)} is in use`,
+                    callbackFailure: {port: taken, inUse: true},
+                });
+                expect(xmlrpcState).not.toHaveProperty('callbackUrl');
+                // not subscribed with a URL nobody listens on, and not with a free port either
+                const inits = (name: string | undefined): unknown[] =>
+                    clients.calls
+                        .filter((call) => call.name === name && call.method === 'init' && call.params[1] !== '')
+                        .map((call) => call.params[0]);
+                expect(inits(xmlrpcState?.name)).toEqual([]);
+                // the other protocol is untouched, and its state names the URL it was given
+                expect(binrpcState).toMatchObject({
+                    connected: true,
+                    callbackUrl: `xmlrpc_bin://127.0.0.1:${String(binrpc)}`,
+                });
+                expect(binrpcState).not.toHaveProperty('callbackFailure');
+
+                // a retry after the port is free again binds it and subscribes
+                await closed(blocker);
+                await manager.reconnect();
+                expect(inits(xmlrpcState?.name)).toEqual([`http://127.0.0.1:${String(taken)}`]);
+                const recovered = manager.states().find((state) => state.protocol === 'xmlrpc');
+                expect(recovered).toMatchObject({connected: true, callbackUrl: `http://127.0.0.1:${String(taken)}`});
+                expect(recovered).not.toHaveProperty('callbackFailure');
+                expect(
+                    notices.some((notice) => notice.level === 'info' && notice.message.includes('is open now')),
+                ).toBe(true);
+            } finally {
+                await manager.stop();
+                // already closed when the test got that far; closing twice only hands close() an error
+                await closed(blocker);
+            }
         });
-        await manager.start();
-
-        const errors = notices.filter((notice) => notice.level === 'error');
-        expect(errors).toHaveLength(1);
-        expect(errors[0]?.message).toContain(`xmlrpc port ${String(taken)}`);
-        expect(errors[0]?.message).toContain('HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port');
-        expect(errors[0]?.message).toContain('is in use');
-        expect(notices.filter((notice) => notice.level === 'warn')).toEqual([]);
-
-        const xmlrpcState = states.find((state) => state.protocol === 'xmlrpc');
-        const binrpcState = states.find((state) => state.protocol === 'binrpc');
-        expect(xmlrpcState).toMatchObject({
-            connected: false,
-            error: `callback port ${String(taken)} is in use`,
-            callbackFailure: {port: taken, inUse: true},
-        });
-        expect(xmlrpcState).not.toHaveProperty('callbackUrl');
-        // not subscribed with a URL nobody listens on, and not with a free port either
-        const inits = (name: string | undefined): unknown[] =>
-            clients.calls
-                .filter((call) => call.name === name && call.method === 'init' && call.params[1] !== '')
-                .map((call) => call.params[0]);
-        expect(inits(xmlrpcState?.name)).toEqual([]);
-        // the other protocol is untouched, and its state names the URL it was given
-        expect(binrpcState).toMatchObject({connected: true, callbackUrl: `xmlrpc_bin://127.0.0.1:${String(binrpc)}`});
-        expect(binrpcState).not.toHaveProperty('callbackFailure');
-
-        // a retry after the port is free again binds it and subscribes
-        await closed(blocker);
-        await manager.reconnect();
-        expect(inits(xmlrpcState?.name)).toEqual([`http://127.0.0.1:${String(taken)}`]);
-        const recovered = manager.states().find((state) => state.protocol === 'xmlrpc');
-        expect(recovered).toMatchObject({connected: true, callbackUrl: `http://127.0.0.1:${String(taken)}`});
-        expect(recovered).not.toHaveProperty('callbackFailure');
-        expect(notices.some((notice) => notice.level === 'info' && notice.message.includes('is open now'))).toBe(true);
-        await manager.stop();
     });
 
     it('names the settings as the source of an unpinned fixed port, and a bind error that is not "in use"', async () => {

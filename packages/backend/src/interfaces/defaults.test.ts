@@ -42,27 +42,39 @@ async function closedPort(): Promise<number> {
 
 describe('InterfaceManager without injected parts', () => {
     it('starts real callback servers, fails to reach a closed port and stops cleanly', async () => {
-        const port = await closedPort();
-        const notices: string[] = [];
-        const manager = new InterfaceManager({
-            connection: normaliseConnection({
-                host: '127.0.0.1',
-                interfaces: ['HmIP-RF'],
-                autoDetect: true,
-                callback: {ip: '127.0.0.1', xmlrpcPort: 0, binrpcPort: 0},
-            }),
-            handler,
-            callbackHost: '127.0.0.1',
-            rpcTimeoutMs: 500,
-            // a real interval, short enough for the test and long enough not to fire during it
-            watchdogIntervalMs: 60_000,
-            portOverride: () => port,
-            onStateChanged: () => undefined,
-            onNotice: (_level, message) => notices.push(message),
-        });
-        managers.push(manager);
+        // The closed port was bound and closed again, and a test file running in parallel can be
+        // handed that number - an hm-simulator started by another file answers `init` on it. A
+        // manager that did connect lost that race and is tried again on another port, at most five
+        // times; every candidate is stopped by `afterEach`.
+        let manager: InterfaceManager | undefined;
+        let notices: string[] = [];
+        for (let attempt = 1; manager === undefined; attempt += 1) {
+            const port = await closedPort();
+            const seen: string[] = [];
+            const candidate = new InterfaceManager({
+                connection: normaliseConnection({
+                    host: '127.0.0.1',
+                    interfaces: ['HmIP-RF'],
+                    autoDetect: true,
+                    callback: {ip: '127.0.0.1', xmlrpcPort: 0, binrpcPort: 0},
+                }),
+                handler,
+                callbackHost: '127.0.0.1',
+                rpcTimeoutMs: 500,
+                // a real interval, short enough for the test and long enough not to fire during it
+                watchdogIntervalMs: 60_000,
+                portOverride: () => port,
+                onStateChanged: () => undefined,
+                onNotice: (_level, message) => seen.push(message),
+            });
+            managers.push(candidate);
+            await candidate.start();
+            if (!candidate.isConnected('HmIP-RF') || attempt >= 5) {
+                manager = candidate;
+                notices = seen;
+            }
+        }
 
-        await manager.start();
         expect(manager.isConnected('HmIP-RF')).toBe(false);
         expect(notices.some((message) => message.includes('HmIP-RF'))).toBe(true);
         // the background probe ran against the same closed port

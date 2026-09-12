@@ -325,42 +325,66 @@ describe.skipIf(!simulatorAvailable)('connecting to hm-simulator', () => {
     // The interface that is not there is the one the lab saw it on: BidCos-Wired, binrpc on the
     // CCU's loopback, pointed here at a port that was open long enough to be allocated and is
     // closed again. BidCos-RF next to it is the simulator, and has to come back working.
+    //
+    // A test file running in parallel can be handed that closed port's number before BidCos-Wired
+    // asks it, and then nothing refuses, which is not what this test is about: an attempt whose
+    // resubscribe did not meet a refusal runs again on another port, at most five times.
     it('reports a refused BIN-RPC port as refused, on the resubscribe too (D-31)', async () => {
         const sim = await startSimulator();
         running.push({close: () => sim.close()});
-        const closed = await closedPort();
-        const harness = await startBackend(sim, {
-            connection: {interfaces: ['BidCos-RF', 'BidCos-Wired']},
-            backend: {
-                idleUnsubscribeMs: 40,
-                interfaceManagerOptions: {
-                    watchdogIntervalMs: 0,
-                    portOverride: (name: string) =>
-                        name === 'BidCos-Wired' ? closed : (sim.ports.rfd as number | undefined),
-                },
-            },
-        });
-        running.unshift({close: () => harness.close()});
-
         const subscribers = (): number => Object.keys(sim.clients.rfd as object).length;
-        expect(subscribers()).toBe(1);
 
-        harness.backend.noteSessions(1);
-        harness.backend.noteSessions(0);
-        await waitFor(() => subscribers() === 0);
-        await waitFor(async () =>
-            (await harness.backend.request('interfaces.list')).every((state) => state.idle === true),
-        );
+        let harness: Awaited<ReturnType<typeof startBackend>> | undefined;
+        for (let attempt = 1; harness === undefined; attempt += 1) {
+            const closed = await closedPort();
+            const candidate = await startBackend(sim, {
+                connection: {interfaces: ['BidCos-RF', 'BidCos-Wired']},
+                backend: {
+                    idleUnsubscribeMs: 40,
+                    interfaceManagerOptions: {
+                        watchdogIntervalMs: 0,
+                        portOverride: (name: string) =>
+                            name === 'BidCos-Wired' ? closed : (sim.ports.rfd as number | undefined),
+                    },
+                },
+            });
+            let refused = false;
+            try {
+                expect(subscribers()).toBe(1);
 
-        // `unsubscribe()` clears the failure counters, so this really is the first failure again
-        // and the notice it produces is the one the lab read
-        harness.backend.noteSessions(1);
-        await waitFor(() => subscribers() === 1);
-        await waitFor(async () =>
-            (await harness.backend.request('interfaces.list')).some(
-                (state) => state.name === 'BidCos-Wired' && state.error !== undefined,
-            ),
-        );
+                candidate.backend.noteSessions(1);
+                candidate.backend.noteSessions(0);
+                await waitFor(() => subscribers() === 0);
+                await waitFor(async () =>
+                    (await candidate.backend.request('interfaces.list')).every((state) => state.idle === true),
+                );
+
+                // `unsubscribe()` clears the failure counters, so this really is the first failure again
+                // and the notice it produces is the one the lab read
+                const before = candidate.notices.length;
+                candidate.backend.noteSessions(1);
+                await waitFor(() => subscribers() === 1);
+                await waitFor(async () =>
+                    (await candidate.backend.request('interfaces.list')).some(
+                        (state) => state.name === 'BidCos-Wired' && state.error !== undefined,
+                    ),
+                );
+                refused = candidate.notices
+                    .slice(before)
+                    .some((notice) => notice.message.includes('BidCos-Wired: nothing is listening'));
+            } catch (error) {
+                if (attempt >= 5) {
+                    await candidate.close();
+                    throw error;
+                }
+            }
+            if (refused || attempt >= 5) {
+                running.unshift({close: () => candidate.close()});
+                harness = candidate;
+            } else {
+                await candidate.close();
+            }
+        }
 
         expect(harness.notices.filter((notice) => notice.message.includes('stream was destroyed'))).toEqual([]);
         expect(harness.notices.filter((notice) => notice.level === 'error')).toEqual([]);

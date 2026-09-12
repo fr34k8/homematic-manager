@@ -46,11 +46,18 @@ describe('probePort', () => {
     });
 
     it('is false for a closed port', async () => {
-        const server = net.createServer();
-        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-        const {port} = server.address() as AddressInfo;
-        await new Promise((resolve) => server.close(resolve));
-        await expect(probePort('127.0.0.1', port, {timeoutMs: 500})).resolves.toBe(false);
+        // A port that was bound and closed again can be handed to a test file running in parallel
+        // before the probe runs. A lost race takes another port, at most five times; a probe that
+        // wrongly answers "open" fails all five.
+        let open = true;
+        for (let attempt = 1; open && attempt <= 5; attempt += 1) {
+            const server = net.createServer();
+            await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+            const {port} = server.address() as AddressInfo;
+            await new Promise((resolve) => server.close(resolve));
+            open = await probePort('127.0.0.1', port, {timeoutMs: 500});
+        }
+        expect(open).toBe(false);
     });
 
     it('is false when the connection times out, and destroys the socket', async () => {

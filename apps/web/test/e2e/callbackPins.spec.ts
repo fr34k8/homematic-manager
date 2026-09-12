@@ -42,6 +42,24 @@ async function pinnedHost(language: 'de' | 'en', xmlrpcPort: number): Promise<Te
     });
 }
 
+/**
+ * A host pinned to a loopback port that was free a moment ago. Between the probe's close and the
+ * host's bind, the simulator and the host bind ports of their own, and a parallel worker may too;
+ * one of them can be handed the same number. That lost race shows as a callback failure on that
+ * port, and the host is started again on another one, at most five times.
+ */
+async function pinnedHostOnFreePort(language: 'de' | 'en'): Promise<{host: TestHost; xmlrpcPort: number}> {
+    for (let attempt = 1; ; attempt += 1) {
+        const xmlrpcPort = await freePort();
+        const host = await pinnedHost(language, xmlrpcPort);
+        const states = (await host.backend?.request('interfaces.list')) ?? [];
+        if (attempt >= 5 || !states.some((state) => state.callbackFailure?.port === xmlrpcPort)) {
+            return {host, xmlrpcPort};
+        }
+        await host.close();
+    }
+}
+
 const HINTS = {
     en: {
         ip: 'Set at start (HMM_CALLBACK_IP / --callback-ip)',
@@ -59,8 +77,7 @@ for (const language of ['en', 'de'] as const) {
     test(`the callback fields set at start are read-only in the settings, with the option named (${language})`, async ({
         page,
     }) => {
-        const xmlrpcPort = await freePort();
-        const host = await pinnedHost(language, xmlrpcPort);
+        const {host, xmlrpcPort} = await pinnedHostOnFreePort(language);
         try {
             await page.goto(host.url);
             await expect(page.getByTestId('interface-select-summary')).toHaveAttribute('data-mark', 'ok');

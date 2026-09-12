@@ -110,11 +110,27 @@ describe('runDev', () => {
 
 describe('freePort and waitForPort', () => {
     it('picks a port nothing is listening on, and waits for it to answer', async () => {
-        const port = await freePort();
-        expect(port).toBeGreaterThan(0);
-
-        const server = http.createServer();
-        await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+        // freePort() closes its probe before it answers, so a test file running in parallel may be
+        // handed the same number before this listens on it. That lost race is not what the test is
+        // about: it takes another port, at most five times.
+        let server: http.Server | undefined;
+        let port = 0;
+        for (let attempt = 1; server === undefined; attempt += 1) {
+            port = await freePort();
+            expect(port).toBeGreaterThan(0);
+            const candidate = http.createServer();
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    candidate.once('error', reject);
+                    candidate.listen(port, '127.0.0.1', resolve);
+                });
+                server = candidate;
+            } catch (error) {
+                if (attempt >= 5 || (error as NodeJS.ErrnoException).code !== 'EADDRINUSE') {
+                    throw error;
+                }
+            }
+        }
         try {
             expect((server.address() as AddressInfo).port).toBe(port);
             await expect(waitForPort(port, 2000)).resolves.toBeUndefined();
@@ -124,7 +140,16 @@ describe('freePort and waitForPort', () => {
     });
 
     it('gives up when nothing ever comes up', async () => {
-        const port = await freePort();
-        await expect(waitForPort(port, 100)).rejects.toThrow(/did not come up/);
+        // freePort() closes its probe, so a test file running in parallel may be handed the number and
+        // come up on it before the wait is over. That lost race takes another port, at most five times.
+        let failure: unknown;
+        for (let attempt = 1; failure === undefined && attempt <= 5; attempt += 1) {
+            failure = await waitForPort(await freePort(), 100).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+        }
+        expect(failure).toBeInstanceOf(Error);
+        expect((failure as Error).message).toMatch(/did not come up/);
     });
 });

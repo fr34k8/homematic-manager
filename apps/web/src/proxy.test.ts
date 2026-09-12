@@ -1,5 +1,6 @@
 import {randomBytes} from 'node:crypto';
 import http from 'node:http';
+import net from 'node:net';
 import type {AddressInfo, Socket} from 'node:net';
 
 import {afterEach, describe, expect, it} from 'vitest';
@@ -14,7 +15,7 @@ afterEach(async () => {
     }
 });
 
-async function listen(server: http.Server): Promise<string> {
+async function listen(server: net.Server): Promise<string> {
     // an upgraded socket is no longer one of the server's connections, so `closeAllConnections()`
     // does not reach it and `close()` would wait for it forever - they are tracked by hand
     const sockets = new Set<Socket>();
@@ -62,13 +63,16 @@ async function upstream(): Promise<string> {
     return listen(server);
 }
 
-/** A port nothing listens on, so a connection to it is refused at once. */
+/**
+ * A dev server that is not there as far as HTTP goes: it takes every connection and destroys it at
+ * once, so the proxy's request fails at once, and it stays bound until the test ends.
+ *
+ * It used to be a port that was bound and closed again. That is not race-free: a test file running in
+ * parallel can be handed the freed number, and the proxy then waited on a socket that never answers
+ * HTTP until the test timed out (CI "Test (Node 22)" on 3.0.0-beta.14, run 34695157421).
+ */
 async function deadTarget(): Promise<string> {
-    const probe = http.createServer();
-    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
-    const {port} = probe.address() as AddressInfo;
-    await new Promise<void>((resolve) => probe.close(() => resolve()));
-    return `http://127.0.0.1:${port}`;
+    return listen(net.createServer((socket) => socket.destroy()));
 }
 
 /** The front server the browser talks to; everything is proxied. */
