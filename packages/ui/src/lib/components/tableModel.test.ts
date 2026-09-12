@@ -14,6 +14,7 @@ import {
     rangeIds,
     groupSpans,
     hasActiveFilter,
+    sizedTemplate,
     tableLayout,
     visibleWindow,
     type DataTableColumn,
@@ -248,6 +249,43 @@ describe('tableLayout', () => {
 
     it('is the plain column template when there is no sub-grid', () => {
         expect(tableLayout(parent, undefined, false).template).toBe(gridTemplate(parent, false));
+    });
+});
+
+/**
+ * Task 40 (#157): a dragged column is pixels, the others keep sharing the rest by weight, and the
+ * fixed ones keep their pixels whatever is stored for them.
+ */
+describe('sizedTemplate', () => {
+    const parent: DataTableColumn<Row>[] = [
+        {key: 'icon', label: '', width: 24, fixed: true},
+        {key: 'name', label: 'Name', width: 200},
+        {key: 'address', label: 'ADDRESS', width: 40},
+        {key: 'type', label: 'TYPE'},
+    ];
+
+    it('is the designed template without widths', () => {
+        const layout = tableLayout(parent, undefined, true);
+        expect(sizedTemplate(layout).template).toBe(layout.template);
+        // 22 expander + 24 fixed + 56 + 40 (a declared width below the minimum) + 56
+        expect(sizedTemplate(layout).minWidth).toBe(198);
+    });
+
+    it('draws a user width as pixels and leaves the other columns proportional', () => {
+        const layout = tableLayout(parent, undefined, false);
+        const sized = sizedTemplate(layout, {name: 310, type: 90});
+        expect(sized.template).toBe('24px 310px minmax(40px, 40fr) 90px');
+        expect(sized.minWidth).toBe(24 + 310 + 40 + 90);
+    });
+
+    it('ignores a width for a fixed column and for a column that is not there', () => {
+        const layout = tableLayout(parent, undefined, false);
+        expect(sizedTemplate(layout, {icon: 300, gone: 500}).template).toBe(layout.template);
+    });
+
+    it('sizes a shared track once, for the device and the channel column alike', () => {
+        const layout = tableLayout(parent, [{key: 'name', label: 'Name', width: 90}], false);
+        expect(sizedTemplate(layout, {name: 250}).template).toBe('24px 250px minmax(40px, 40fr) minmax(56px, 120fr)');
     });
 });
 

@@ -9,6 +9,7 @@ import type {
 } from '@homematic-manager/core';
 
 import {resolveLanguage} from '../i18n/i18n.svelte.js';
+import {ColumnWidthsStore, profileKey} from './ColumnWidthsStore.svelte.js';
 import type {NoticesStore} from './NoticesStore.svelte.js';
 import {
     DEFAULT_TAB,
@@ -128,6 +129,11 @@ export class AppStore {
     configDialogOpen = $state(false);
     /** Open state of the RPC log drawer that replaces the modal `dialog-rpc` of 2.x. */
     rpcLogOpen = $state(false);
+    /**
+     * Task 40 (#157): the widths the user dragged the grid columns to, per table, kept in this
+     * browser for the connection profile that is loaded - see `ColumnWidthsStore` for why here.
+     */
+    readonly columnWidths: ColumnWidthsStore;
 
     readonly #transport: Transport;
     readonly #notices: NoticesStore;
@@ -142,6 +148,7 @@ export class AppStore {
         this.#location = options.location ?? defaultLocation();
         this.#storage = options.storage === undefined ? defaultStorage() : options.storage;
         this.#languages = options.languages;
+        this.columnWidths = new ColumnWidthsStore(this.#storage, () => profileKey(this.config?.connection.host ?? ''));
 
         const stored = this.#storage?.getItem(THEME_STORAGE_KEY);
         if (stored === 'light' || stored === 'dark' || stored === 'system') {

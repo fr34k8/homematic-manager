@@ -274,8 +274,11 @@ const MIN_TRACK_PX = 56;
 /** The weight of a column that declares no width: as much as an ordinary text column. */
 const DEFAULT_WEIGHT = 120;
 
+/** The track of the expand button in front of every row of a table with sub-rows. */
+const EXPANDER_PX = 22;
+
 /** One column track of the grid: the merged width of everything that is drawn in that column. */
-interface Track {
+export interface TableTrack {
     readonly key: string;
     readonly width: number | undefined;
     readonly fixed: boolean;
@@ -283,32 +286,85 @@ interface Track {
 
 /** Where each column of a depth sits, and the template every row of the table uses. */
 export interface TableLayout {
-    /** The `grid-template-columns` of the head, the filter row and **every** row, at any depth. */
+    /**
+     * The `grid-template-columns` of the head, the filter row and **every** row, at any depth - as
+     * designed, before a user dragged any column ({@link sizedTemplate} adds those widths).
+     */
     readonly template: string;
     /** 1-based grid track of a column, by key. Shared keys share a track. */
     readonly track: Readonly<Record<string, number>>;
+    /** The tracks in order, without the expander. */
+    readonly tracks: readonly TableTrack[];
+    readonly expander: boolean;
 }
 
 /**
- * `minmax(<min>px, <width>fr)` unless the column asked to stay fixed.
+ * `minmax(<min>px, <width>fr)` unless the column asked to stay fixed, or the user gave it pixels.
  *
  * The declared width is a weight, the way `she`'s tables give their `<col>`s a percentage under
  * `table-layout: fixed`: the grid then fills its container exactly, whatever the window is, so
  * there is no ragged strip on the right at one size and no horizontal scrollbar at another. The
  * minimum keeps a text column readable; below it the grid scrolls, which is what it did before.
+ *
+ * Task 40: a width the user dragged or fitted is pixels, and the columns nobody touched share what
+ * is left by their weights - so widening one column takes the room from the others, not from the
+ * window, until they are at their minimum and the grid scrolls sideways.
  */
-function trackSize(track: Track): string {
-    if (track.width === undefined) {
+function trackSize(track: TableTrack, userWidth: number | undefined): string {
+    if (track.width === undefined && userWidth === undefined) {
         return `minmax(${MIN_TRACK_PX}px, ${DEFAULT_WEIGHT}fr)`;
     }
-    if (track.fixed) {
+    if (track.fixed && track.width !== undefined) {
         return `${track.width}px`;
     }
-    return `minmax(${Math.min(track.width, MIN_TRACK_PX)}px, ${track.width}fr)`;
+    if (userWidth !== undefined) {
+        return `${userWidth}px`;
+    }
+    const width = track.width ?? DEFAULT_WEIGHT;
+    return `minmax(${Math.min(width, MIN_TRACK_PX)}px, ${width}fr)`;
 }
 
-function trackOf<T>(column: DataTableColumn<T>): Track {
+/** The narrowest a track can be drawn: what the grid needs before it scrolls sideways. */
+function trackMinimum(track: TableTrack, userWidth: number | undefined): number {
+    if (track.fixed && track.width !== undefined) {
+        return track.width;
+    }
+    if (userWidth !== undefined) {
+        return userWidth;
+    }
+    return Math.min(track.width ?? MIN_TRACK_PX, MIN_TRACK_PX);
+}
+
+function trackOf<T>(column: DataTableColumn<T>): TableTrack {
     return {key: column.key, width: column.width, fixed: column.fixed === true};
+}
+
+/** The template with the user's widths in it, and the width below which the grid scrolls sideways. */
+export interface SizedTemplate {
+    readonly template: string;
+    readonly minWidth: number;
+}
+
+/**
+ * The layout's template with the widths a user gave some of its columns (task 40).
+ *
+ * Fixed columns ignore a width - they keep their pixels. `minWidth` is what every row, the head and
+ * the filter row are drawn at least as wide as: when the pixels add up to more than the window, the
+ * body scrolls sideways, and a row whose box stopped at the window's edge would leave its hover and
+ * selection background behind while its cells scroll on.
+ */
+export function sizedTemplate(
+    layout: Pick<TableLayout, 'tracks' | 'expander'>,
+    widths: Readonly<Record<string, number>> = {},
+): SizedTemplate {
+    const parts: string[] = layout.expander ? [`${EXPANDER_PX}px`] : [];
+    let minWidth = layout.expander ? EXPANDER_PX : 0;
+    for (const track of layout.tracks) {
+        const userWidth = track.fixed ? undefined : widths[track.key];
+        parts.push(trackSize(track, userWidth));
+        minWidth += trackMinimum(track, userWidth);
+    }
+    return {template: parts.join(' '), minWidth};
 }
 
 /**
@@ -329,7 +385,7 @@ export function tableLayout<T>(
     subColumns: readonly DataTableColumn<T>[] | undefined,
     expander: boolean,
 ): TableLayout {
-    const tracks: Track[] = columns.filter((column) => column.hidden !== true).map((column) => trackOf(column));
+    const tracks: TableTrack[] = columns.filter((column) => column.hidden !== true).map((column) => trackOf(column));
     let next = 0;
     for (const column of subColumns ?? []) {
         if (column.hidden === true) {
@@ -348,8 +404,7 @@ export function tableLayout<T>(
     for (const [index, entry] of tracks.entries()) {
         track[entry.key] = index + offset;
     }
-    const parts = tracks.map((entry) => trackSize(entry));
-    return {template: expander ? `22px ${parts.join(' ')}` : parts.join(' '), track};
+    return {template: sizedTemplate({tracks, expander}).template, track, tracks, expander};
 }
 
 /**
