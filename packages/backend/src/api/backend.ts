@@ -53,6 +53,7 @@ import {
     type RpcWriteValue,
     type RssiInfo,
     type ServiceMessage,
+    type ConfigSetOptions,
     normaliseDescription,
 } from '@homematic-manager/core';
 
@@ -89,6 +90,14 @@ export const SERVICE_MESSAGE_POLL_MS = 300_000;
 
 /** How long the HmIP `getParamset(:0, VALUES)` sweep waits for the device list to settle. */
 export const HMIP_SWEEP_DELAY_MS = 1000;
+
+/**
+ * An HmIP interface, by name or by interface type - the same rule the UI's settings dialog uses to
+ * count the messages it asks about (task 34), so the question and the writes agree.
+ */
+function isHmipInterface(name: string, type: string): boolean {
+    return /hmip/i.test(name) || /hmip/i.test(type);
+}
 
 export interface BackendOptions extends Omit<ConfigStoreOptions, 'version'> {
     /** `AppConfig.version`; the host passes its package version. */
@@ -359,7 +368,7 @@ export class Backend {
             case 'config.get':
                 return this.#configWithDetected();
             case 'config.set':
-                return this.#setConfig(p[0]);
+                return this.#setConfig(p[0], params[1] as ConfigSetOptions | undefined);
             case 'config.discover':
                 return this.#discover();
             case 'config.clearCaches':
@@ -894,13 +903,24 @@ export class Backend {
      * a device that is unreachable is not going to take a write either, which is the normal case
      * here and not worth an error dialog.
      */
-    #noteUnreach(interfaceName: string, address: string, datapoint: string, value: RpcValue): void {
+    #noteUnreach(
+        interfaceName: string,
+        address: string,
+        datapoint: string,
+        value: RpcValue,
+        options: {acknowledge?: boolean} = {},
+    ): void {
         if (!this.#caches.unreach.note(interfaceName, address, datapoint, value, this.#now())) {
             return;
         }
         this.#caches.saveUnreach();
         this.events.emit('unreach.changed', this.#caches.unreach.list());
-        if (datapoint === 'STICKY_UNREACH' && value === true && this.#config.connection.autoAckStickyUnreach === true) {
+        if (
+            options.acknowledge !== false &&
+            datapoint === 'STICKY_UNREACH' &&
+            value === true &&
+            this.#config.connection.autoAckStickyUnreach === true
+        ) {
             void this.#acknowledge(interfaceName, address, datapoint).catch((error: unknown) => {
                 this.#notice(
                     'info',
@@ -952,8 +972,14 @@ export class Backend {
         return this.#config.config;
     }
 
-    async #setConfig(connection: unknown): Promise<AppConfig> {
+    async #setConfig(connection: unknown, options?: ConfigSetOptions): Promise<AppConfig> {
         const previousHost = this.#config.connection.host;
+        // Task 34 (#147, D-42): the messages the settings dialog asked about, taken before the
+        // reconnect, and only on the save that switches the auto-acknowledge from off to on.
+        const existing =
+            options?.acknowledgeExisting === true && this.#config.connection.autoAckStickyUnreach !== true
+                ? this.#stickyUnreachMessages()
+                : [];
         await this.#disconnect();
         const config = await this.#config.setConnection(connection);
         this.#writeLog.setRpcLogFolder(config.connection.rpcLogFolder);
@@ -971,8 +997,62 @@ export class Backend {
         this.events.emit('config.changed', config);
         if (!this.#stopped && validateConnection(config.connection).length === 0) {
             await this.#connect();
+            // after the reconnect, because a write needs the interface; not awaited, so the
+            // settings dialog closes as quickly as ever and the writes show up in the RPC log
+            if (
+                existing.length > 0 &&
+                config.connection.autoAckStickyUnreach === true &&
+                config.connection.host === previousHost
+            ) {
+                void this.#acknowledgeExisting(existing);
+            }
         }
         return config;
+    }
+
+    /**
+     * Task 34: the `STICKY_UNREACH` messages in the list, without HmIP's.
+     *
+     * D-42 says nothing is acknowledged on HmIP: hmipserver has no such flag on real hardware, and
+     * where one appears anyway (a simulator, a future firmware) this is not the switch that should
+     * start writing to those devices.
+     */
+    #stickyUnreachMessages(): ServiceMessage[] {
+        const states = this.#manager?.states() ?? [];
+        return this.#caches.listServiceMessages().filter((message) => {
+            if (message.datapoint !== 'STICKY_UNREACH' || message.value === false) {
+                return false;
+            }
+            const type = states.find((state) => state.name === message.interfaceName)?.type ?? '';
+            return !isHmipInterface(message.interfaceName, type);
+        });
+    }
+
+    /**
+     * Task 34 (#147, D-42): acknowledges the messages that were in the list when the option was
+     * switched on, one after another, each with exactly the write of the acknowledge button
+     * (`#acknowledge`, the paced `setValue`). A message that is gone by now - the device came back
+     * and somebody acknowledged it, or the edge above got there first - is skipped rather than
+     * written twice. A failure is a notice and the write log's red line, as for the edge.
+     */
+    async #acknowledgeExisting(messages: readonly ServiceMessage[]): Promise<void> {
+        for (const message of messages) {
+            const listed = this.#caches
+                .listServiceMessages(message.interfaceName)
+                .some((entry) => entry.address === message.address && entry.datapoint === message.datapoint);
+            if (!listed || this.#stopped) {
+                continue;
+            }
+            try {
+                await this.#acknowledge(message.interfaceName, message.address, message.datapoint);
+            } catch (error) {
+                this.#notice(
+                    'info',
+                    `${message.address}: STICKY_UNREACH could not be acknowledged: ${errorMessage(error)}`,
+                    message.interfaceName,
+                );
+            }
+        }
     }
 
     async #discover(): Promise<AppConfig['discovered']> {
@@ -1356,11 +1436,27 @@ export class Backend {
         }
     }
 
-    /** Files the RSSI and the service messages of a `getParamset(<device>:0, VALUES)` answer. */
+    /**
+     * Files the RSSI, the service messages and the unreach state of a `getParamset(<device>:0,
+     * VALUES)` answer.
+     *
+     * Task 34 (B-9): the unreach state goes through `#noteUnreach` like the BidCos poll's, so the
+     * Funk tab counts the outages of HmIP devices that no event reported. `UNREACH` is what says
+     * whether the device is away now; `STICKY_UNREACH` is only read where there is no `UNREACH`,
+     * because a standing sticky flag next to `UNREACH: false` would count the same outage again on
+     * every sweep. Nothing is acknowledged from here: a sweep is a read, and HmIP has nothing to
+     * acknowledge (D-42).
+     */
     #applyHmipMaintenance(interfaceName: string, address: string, values: Paramset): boolean {
         const device = address.split(':')[0] ?? address;
         this.#caches.rssi(interfaceName).applyHmipParamset(device, values);
-        return this.#caches.serviceMessages.applyParamset(interfaceName, address, values);
+        const changed = this.#caches.serviceMessages.applyParamset(interfaceName, address, values);
+        const datapoint = 'UNREACH' in values ? 'UNREACH' : 'STICKY_UNREACH';
+        const value = values[datapoint];
+        if (value !== undefined) {
+            this.#noteUnreach(interfaceName, address, datapoint, value, {acknowledge: false});
+        }
+        return changed;
     }
 
     /**

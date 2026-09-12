@@ -65,9 +65,45 @@ export const UI_MESSAGES: MessageCatalogue = {
     'Show links': {de: 'Verknüpfungen anzeigen', en: 'Show links'},
     Unreach: {de: 'Ausfälle', en: 'Unreach'},
     'Reset the unreach counters': {de: 'Ausfallzähler zurücksetzen', en: 'Reset the unreach counters'},
-    'Acknowledge STICKY_UNREACH automatically': {
-        de: 'STICKY_UNREACH automatisch bestätigen',
-        en: 'Acknowledge STICKY_UNREACH automatically',
+    // #147, task 34: the label says when it acts, and switching it on asks about what is already listed
+    'Acknowledge STICKY_UNREACH automatically as they occur': {
+        de: 'STICKY_UNREACH automatisch bestätigen, sobald sie auftreten',
+        en: 'Acknowledge STICKY_UNREACH automatically as they occur',
+    },
+    'Acknowledging is a write to the device. Switching this on asks once about the messages already in the list.': {
+        de: 'Das Bestätigen schreibt in das Gerät. Beim Einschalten wird einmal gefragt, was mit den Meldungen geschieht, die schon in der Liste stehen.',
+        en: 'Acknowledging is a write to the device. Switching this on asks once about the messages already in the list.',
+    },
+    'Acknowledge the messages already in the list?': {
+        de: 'Die Meldungen in der Liste auch bestätigen?',
+        en: 'Acknowledge the messages already in the list?',
+    },
+    '{count} STICKY_UNREACH messages are in the list now. Acknowledge them too?': {
+        de: {
+            one: 'In der Liste steht jetzt eine STICKY_UNREACH-Meldung. Soll sie auch bestätigt werden?',
+            other: 'In der Liste stehen jetzt {count} STICKY_UNREACH-Meldungen. Sollen sie auch bestätigt werden?',
+        },
+        en: {
+            one: 'One STICKY_UNREACH message is in the list now. Acknowledge it too?',
+            other: '{count} STICKY_UNREACH messages are in the list now. Acknowledge them too?',
+        },
+    },
+    'Each acknowledgement is a write to the device. Afterwards the list no longer shows which devices were away; the unreach counter in the RSSI tab keeps that.':
+        {
+            de: 'Jede Bestätigung schreibt in das Gerät. Danach zeigt die Liste nicht mehr, welche Geräte nicht erreichbar waren; der Ausfallzähler im Reiter Funk behält das.',
+            en: 'Each acknowledgement is a write to the device. Afterwards the list no longer shows which devices were away; the unreach counter in the RSSI tab keeps that.',
+        },
+    'Acknowledge them': {de: 'Auch bestätigen', en: 'Acknowledge them'},
+    'Only new ones': {de: 'Nur neue', en: 'Only new ones'},
+    '{count} messages in the list are acknowledged when this is saved': {
+        de: {
+            one: 'Die Meldung in der Liste wird beim Speichern bestätigt',
+            other: 'Die {count} Meldungen in der Liste werden beim Speichern bestätigt',
+        },
+        en: {
+            one: 'The message in the list is acknowledged when this is saved',
+            other: 'The {count} messages in the list are acknowledged when this is saved',
+        },
     },
     'Used for every pair without its own name': {
         de: 'Gilt für jedes Paar ohne eigenen Namen',
@@ -468,10 +504,6 @@ export const UI_MESSAGES: MessageCatalogue = {
     'Shortest pause between two writes': {
         de: 'Kürzeste Pause zwischen zwei Schreibzugriffen',
         en: 'Shortest pause between two writes',
-    },
-    'Acknowledging is a write to the device': {
-        de: 'Das Bestätigen schreibt in das Gerät',
-        en: 'Acknowledging is a write to the device',
     },
     'Empty switches the dumps off': {de: 'Leer schaltet die Mitschrift ab', en: 'Empty switches the dumps off'},
     'Discards the caches when this is saved': {

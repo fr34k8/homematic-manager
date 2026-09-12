@@ -280,15 +280,142 @@ describe('ConfigDialog', () => {
         });
     });
 
+    /** The demo list minus its one STICKY_UNREACH, so nothing is there to ask about. */
+    function withoutSticky(): void {
+        transport.result('serviceMessages.list', [
+            {interfaceName: 'BidCos-RF', address: 'LEQ0456789:0', datapoint: 'LOWBAT', value: true, since: 0},
+            // HmIP is not asked about: nothing is acknowledged there (D-42)
+            {interfaceName: 'HmIP-RF', address: '0001D3C99ABCDE:0', datapoint: 'STICKY_UNREACH', value: true, since: 0},
+        ]);
+    }
+
     it('offers the STICKY_UNREACH auto-acknowledge, off, and saves it when it is ticked (#26)', async () => {
+        withoutSticky();
         await open(transport);
         const box = screen.getByTestId<HTMLInputElement>('config-auto-ack-unreach');
         expect(box.checked).toBe(false);
 
         await fireEvent.click(box);
+        // no STICKY_UNREACH outside HmIP in the list: it switches on without a question
+        expect(screen.queryByTestId('auto-ack-question')?.hasAttribute('open') ?? false).toBe(false);
         await fireEvent.click(screen.getByTestId('config-save'));
         await waitFor(() => {
             expect(transport.lastCall('config.set')?.[0]?.autoAckStickyUnreach).toBe(true);
+        });
+        // a plain save, no second argument
+        expect(transport.lastCall('config.set')).toHaveLength(1);
+    });
+
+    /** Task 34 (#147): the label says when it acts, and the help names the one-time question. */
+    it('labels the switch with when it acts, in German and in English', async () => {
+        const stores = await open(transport);
+        const dialog = screen.getByTestId('config-dialog');
+        expect(dialog.textContent).toContain('STICKY_UNREACH automatisch bestätigen, sobald sie auftreten');
+        expect(dialog.textContent).toContain('Beim Einschalten wird einmal gefragt');
+
+        stores.i18n.language = 'en';
+        await waitFor(() => {
+            expect(dialog.textContent).toContain('Acknowledge STICKY_UNREACH automatically as they occur');
+        });
+        expect(dialog.textContent).toContain('Switching this on asks once about the messages already in the list.');
+    });
+
+    describe('the one-time question when it is switched on (task 34)', () => {
+        async function tick(): Promise<HTMLElement> {
+            await fireEvent.click(screen.getByTestId('config-auto-ack-unreach'));
+            return waitFor(() => {
+                const question = screen.getByTestId('auto-ack-question');
+                expect(question.hasAttribute('open')).toBe(true);
+                return question;
+            });
+        }
+
+        it('asks when a STICKY_UNREACH is in the list, and counts only those', async () => {
+            await open(transport);
+            await tick();
+            // the demo list holds a LOWBAT and one STICKY_UNREACH: the question is about one message
+            expect(screen.getByTestId('auto-ack-question-text').textContent).toContain(
+                'In der Liste steht jetzt eine STICKY_UNREACH-Meldung',
+            );
+            expect(screen.getByTestId('auto-ack-question').textContent).toContain('Ausfallzähler im Reiter Funk');
+        });
+
+        it('sends acknowledgeExisting with the save after "acknowledge them"', async () => {
+            await open(transport);
+            await tick();
+            await fireEvent.click(screen.getByTestId('auto-ack-existing'));
+
+            await waitFor(() => {
+                expect(screen.getByTestId('auto-ack-question').hasAttribute('open')).toBe(false);
+            });
+            expect(screen.getByTestId<HTMLInputElement>('config-auto-ack-unreach').checked).toBe(true);
+            expect(screen.getByTestId('config-auto-ack-existing-note').textContent).toContain(
+                'Die Meldung in der Liste wird beim Speichern bestätigt',
+            );
+            // nothing is written before the save - the question only records the answer
+            expect(transport.countOf('serviceMessages.ack')).toBe(0);
+            expect(transport.countOf('config.set')).toBe(0);
+
+            await fireEvent.click(screen.getByTestId('config-save'));
+            await waitFor(() => {
+                expect(transport.lastCall('config.set')?.[1]).toEqual({acknowledgeExisting: true});
+            });
+            expect(transport.lastCall('config.set')?.[0]?.autoAckStickyUnreach).toBe(true);
+            expect(transport.countOf('serviceMessages.ack')).toBe(0);
+        });
+
+        it('saves without it after "only new ones"', async () => {
+            await open(transport);
+            await tick();
+            await fireEvent.click(screen.getByTestId('auto-ack-only-new'));
+
+            expect(screen.getByTestId<HTMLInputElement>('config-auto-ack-unreach').checked).toBe(true);
+            expect(screen.queryByTestId('config-auto-ack-existing-note')).toBeNull();
+            await fireEvent.click(screen.getByTestId('config-save'));
+            await waitFor(() => {
+                expect(transport.lastCall('config.set')?.[0]?.autoAckStickyUnreach).toBe(true);
+            });
+            expect(transport.lastCall('config.set')).toHaveLength(1);
+        });
+
+        it('leaves the switch off when the question is closed without an answer', async () => {
+            await open(transport);
+            const question = await tick();
+            await fireEvent.click(within(question).getByLabelText('Close'));
+
+            await waitFor(() => {
+                expect(screen.getByTestId<HTMLInputElement>('config-auto-ack-unreach').checked).toBe(false);
+            });
+            // nothing changed, so there is nothing to save
+            expect(screen.getByTestId<HTMLButtonElement>('config-save').disabled).toBe(true);
+        });
+
+        it('forgets the answer when the switch goes off again, and asks nothing for that', async () => {
+            await open(transport);
+            await tick();
+            await fireEvent.click(screen.getByTestId('auto-ack-existing'));
+            await fireEvent.click(screen.getByTestId('config-auto-ack-unreach'));
+
+            expect(screen.getByTestId('auto-ack-question').hasAttribute('open')).toBe(false);
+            expect(screen.queryByTestId('config-auto-ack-existing-note')).toBeNull();
+            await fireEvent.click(screen.getByTestId('config-clear-cache'));
+            await fireEvent.click(screen.getByTestId('config-save'));
+            await waitFor(() => expect(transport.countOf('config.set')).toBe(1));
+            expect(transport.lastCall('config.set')).toHaveLength(1);
+            expect(transport.lastCall('config.set')?.[0]?.autoAckStickyUnreach).toBe(false);
+        });
+
+        it('does not ask when the option is already on', async () => {
+            transport.result('config.get', {
+                ...DEMO_CONFIG,
+                connection: {...DEMO_CONFIG.connection, autoAckStickyUnreach: true},
+            });
+            await open(transport);
+            // off, and on again within the same dialog: the backend never saw it off
+            await fireEvent.click(screen.getByTestId('config-auto-ack-unreach'));
+            await fireEvent.click(screen.getByTestId('config-auto-ack-unreach'));
+            expect(screen.queryByTestId('auto-ack-question')?.hasAttribute('open') ?? false).toBe(false);
+            expect(screen.getByTestId<HTMLInputElement>('config-auto-ack-unreach').checked).toBe(true);
         });
     });
 });

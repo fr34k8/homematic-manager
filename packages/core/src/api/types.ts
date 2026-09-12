@@ -478,6 +478,20 @@ export interface SessionInfo {
     level: number;
 }
 
+/** What a save does besides storing the connection - `config.set`'s optional second argument. */
+export interface ConfigSetOptions {
+    /**
+     * Task 34 (#147, D-42): the answer to the question the settings dialog asks when
+     * `autoAckStickyUnreach` is switched on - acknowledge the `STICKY_UNREACH` messages that are
+     * already in the list as well, not only the ones that appear afterwards.
+     *
+     * It counts only on the save that switches the option from off to on, and only for the CCU the
+     * list belongs to (a save that also changes the host acknowledges nothing). Each message gets
+     * exactly the write of `serviceMessages.ack`; HmIP messages are left alone.
+     */
+    acknowledgeExisting?: boolean;
+}
+
 /**
  * Request methods: `params` is the positional tuple the UI sends, `result` what it receives.
  * Every method rejects with `ApiError` on failure; RPC faults keep their `faultCode`. Methods
@@ -486,7 +500,7 @@ export interface SessionInfo {
 export interface ApiMethods {
     'config.get': {params: []; result: AppConfig};
     /** Persist and reconnect. */
-    'config.set': {params: [connection: ConnectionConfig]; result: AppConfig};
+    'config.set': {params: [connection: ConnectionConfig, options?: ConfigSetOptions]; result: AppConfig};
     'config.discover': {params: []; result: DiscoveredCcu[]};
     'config.clearCaches': {params: []; result: null};
 

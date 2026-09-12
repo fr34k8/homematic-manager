@@ -1,5 +1,6 @@
 import type {
     AppConfig,
+    ConfigSetOptions,
     ConnectionConfig,
     Language,
     LanguageChoice,
@@ -277,11 +278,18 @@ export class AppStore {
         }
     }
 
-    /** Persists a changed connection and applies what the backend answered. */
-    async save(connection: ConnectionConfig): Promise<boolean> {
+    /**
+     * Persists a changed connection and applies what the backend answered. `options` is only sent
+     * when there is one, so a plain save stays the one-argument call it always was.
+     */
+    async save(connection: ConnectionConfig, options?: ConfigSetOptions): Promise<boolean> {
         this.saveError = '';
         try {
-            this.applyConfig(await this.#transport.request('config.set', connection));
+            this.applyConfig(
+                await (options === undefined
+                    ? this.#transport.request('config.set', connection)
+                    : this.#transport.request('config.set', connection, options)),
+            );
             this.configDialogOpen = false;
             return true;
         } catch (error) {

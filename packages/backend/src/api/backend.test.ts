@@ -366,6 +366,292 @@ describe('unreach counters and the auto-acknowledge (#26)', () => {
         await h.backend.stop();
     });
 
+    /**
+     * Task 34 (#147, D-42): the messages already in the list when the option is switched on. Their
+     * STICKY_UNREACH was raised before anything listened, so there is no edge that would ever
+     * acknowledge them; the settings dialog asks, and `acknowledgeExisting` is the answer.
+     */
+    describe('switching it on with messages already in the list (task 34)', () => {
+        const BIDCOS_TWO: DeviceDescription[] = [
+            ...BIDCOS_DEVICES,
+            {ADDRESS: 'LEQ2', TYPE: 'HM-Sec-SC-2', FIRMWARE: '2.8', VERSION: 1, CHILDREN: ['LEQ2:0']},
+            {ADDRESS: 'LEQ2:0', TYPE: 'MAINTENANCE', PARENT: 'LEQ2', VERSION: 1},
+        ];
+
+        /**
+         * A BidCos-RF whose `getServiceMessages` is what its values say, so an acknowledgement
+         * really takes a message out of the next answer - plus an HmIP-RF with a sticky flag of its
+         * own, which must never be written.
+         */
+        function stickyWorld(): {answers: Record<string, Answer>; values: Map<string, RpcValue>} {
+            const values = new Map<string, RpcValue>([
+                ['LEQ1:0|STICKY_UNREACH', true],
+                ['LEQ1:0|LOWBAT', true],
+                ['LEQ2:0|STICKY_UNREACH', true],
+                ['LEQ2:0|SABOTAGE', true],
+                ['LEQ2:0|UNREACH', true],
+            ]);
+            const bidcos: Answer = (method, params) => {
+                switch (method) {
+                    case 'listDevices':
+                        return BIDCOS_TWO as unknown as RpcValue;
+                    case 'getServiceMessages':
+                        return [...values]
+                            .filter(([, value]) => value !== false)
+                            .map(([key, value]) => [...key.split('|'), value] as RpcValue);
+                    case 'getParamsetDescription':
+                        return {
+                            STICKY_UNREACH: {TYPE: 'BOOL', OPERATIONS: 7},
+                            SABOTAGE: {TYPE: 'BOOL', OPERATIONS: 7},
+                            LOWBAT: {TYPE: 'BOOL', OPERATIONS: 5},
+                            UNREACH: {TYPE: 'BOOL', OPERATIONS: 5},
+                        };
+                    case 'setValue':
+                        values.set(`${params[0] as string}|${params[1] as string}`, params[2] as RpcValue);
+                        return '';
+                    default:
+                        return '';
+                }
+            };
+            const hmip: Answer = (method, params) => {
+                switch (method) {
+                    case 'listDevices':
+                        return HMIP_DEVICES as unknown as RpcValue;
+                    case 'getParamset':
+                        return params[1] === 'VALUES' ? {RSSI_DEVICE: -60, STICKY_UNREACH: true, UNREACH: false} : {};
+                    case 'getParamsetDescription':
+                        return {STICKY_UNREACH: {TYPE: 'BOOL', OPERATIONS: 7}};
+                    default:
+                        return '';
+                }
+            };
+            return {answers: {'BidCos-RF': bidcos, 'HmIP-RF': hmip}, values};
+        }
+
+        const acknowledgements = (h: Harness): string[] =>
+            h.calls
+                .filter((call) => call.method === 'setValue')
+                .map((call) => `${call.interfaceName} ${call.params[0] as string} ${call.params[1] as string}`);
+
+        async function withMessages(): Promise<Harness> {
+            const world = stickyWorld();
+            // the sweep runs when the test says so, not on the connect's timer in the middle of it
+            const h = await harness({answers: world.answers, backend: {hmipSweepDelayMs: 600_000}});
+            await h.backend.sweepHmip();
+            const listed = await h.backend.request('serviceMessages.list');
+            expect(listed.map((message) => `${message.interfaceName} ${message.address} ${message.datapoint}`)).toEqual(
+                expect.arrayContaining([
+                    'BidCos-RF LEQ1:0 STICKY_UNREACH',
+                    'BidCos-RF LEQ2:0 STICKY_UNREACH',
+                    'BidCos-RF LEQ2:0 SABOTAGE',
+                    'HmIP-RF ABC1:0 STICKY_UNREACH',
+                ]),
+            );
+            return h;
+        }
+
+        it('acknowledges each STICKY_UNREACH once with the button’s write, and nothing else', async () => {
+            const h = await withMessages();
+            const config = await h.backend.request('config.get');
+            await h.backend.request(
+                'config.set',
+                {...config.connection, autoAckStickyUnreach: true},
+                {acknowledgeExisting: true},
+            );
+
+            await vi.waitFor(() => {
+                expect(acknowledgements(h)).toHaveLength(2);
+            });
+            // one write per sticky message, and `false` - what `serviceMessages.ack` sends
+            expect(acknowledgements(h).sort()).toEqual([
+                'BidCos-RF LEQ1:0 STICKY_UNREACH',
+                'BidCos-RF LEQ2:0 STICKY_UNREACH',
+            ]);
+            expect(h.calls.filter((call) => call.method === 'setValue').map((call) => call.params[2])).toEqual([
+                false,
+                false,
+            ]);
+            // the two are gone from the list; LOWBAT, SABOTAGE, UNREACH and HmIP are untouched
+            await vi.waitFor(async () => {
+                const left = (await h.backend.request('serviceMessages.list')).map(
+                    (message) => `${message.interfaceName} ${message.address} ${message.datapoint}`,
+                );
+                expect(left).not.toContain('BidCos-RF LEQ1:0 STICKY_UNREACH');
+                expect(left).not.toContain('BidCos-RF LEQ2:0 STICKY_UNREACH');
+                expect(left).toEqual(
+                    expect.arrayContaining([
+                        'BidCos-RF LEQ1:0 LOWBAT',
+                        'BidCos-RF LEQ2:0 SABOTAGE',
+                        'HmIP-RF ABC1:0 STICKY_UNREACH',
+                    ]),
+                );
+            });
+            // and the Funk tab still knows both devices were away
+            const counters = await h.backend.request('unreach.list', 'BidCos-RF');
+            expect(counters.map((counter) => counter.address).sort()).toEqual(['LEQ1', 'LEQ2']);
+            await h.backend.stop();
+        });
+
+        it('writes nothing for "only new ones"', async () => {
+            const h = await withMessages();
+            const config = await h.backend.request('config.get');
+            await h.backend.request('config.set', {...config.connection, autoAckStickyUnreach: true});
+            await h.backend.request('config.set', {...config.connection, autoAckStickyUnreach: true}, {});
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(acknowledgements(h)).toEqual([]);
+            await h.backend.stop();
+        });
+
+        it('writes nothing when the option was already on, or when the save switches it off', async () => {
+            const h = await withMessages();
+            const config = await h.backend.request('config.get');
+            await h.backend.request('config.set', {...config.connection, autoAckStickyUnreach: true});
+            // already on: the answer belongs to a question that was never asked
+            await h.backend.request(
+                'config.set',
+                {...config.connection, autoAckStickyUnreach: true},
+                {acknowledgeExisting: true},
+            );
+            // switched off in the same save: nothing to acknowledge either
+            await h.backend.request(
+                'config.set',
+                {...config.connection, autoAckStickyUnreach: false},
+                {acknowledgeExisting: true},
+            );
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(acknowledgements(h)).toEqual([]);
+            await h.backend.stop();
+        });
+
+        it('acknowledges nothing when the same save moves to another CCU', async () => {
+            const world = stickyWorld();
+            const h = await harness({answers: world.answers, backend: {hmipSweepDelayMs: 600_000}});
+            expect(await h.backend.request('serviceMessages.list', 'BidCos-RF')).not.toEqual([]);
+            // the other CCU has nothing pending, so a write after the move can only be the old list
+            world.values.clear();
+            const config = await h.backend.request('config.get');
+            await h.backend.request(
+                'config.set',
+                {...config.connection, host: 'other.lan', autoAckStickyUnreach: true},
+                {acknowledgeExisting: true},
+            );
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(acknowledgements(h)).toEqual([]);
+            await h.backend.stop();
+        });
+
+        it('reports a message that will not take it as a notice, and goes on with the next', async () => {
+            const world = stickyWorld();
+            const bidcos = world.answers['BidCos-RF'] ?? (() => '');
+            const h = await harness({
+                answers: {
+                    ...world.answers,
+                    'BidCos-RF': (method, params) =>
+                        method === 'setValue' && params[0] === 'LEQ1:0'
+                            ? new BackendError({message: 'not reachable', kind: 'rpc'})
+                            : bidcos(method, params),
+                },
+            });
+            const config = await h.backend.request('config.get');
+            await h.backend.request(
+                'config.set',
+                {...config.connection, autoAckStickyUnreach: true},
+                {acknowledgeExisting: true},
+            );
+            await vi.waitFor(() => {
+                expect(acknowledgements(h)).toHaveLength(2);
+                expect(
+                    h.events.some(
+                        (event) =>
+                            event.name === 'notice' &&
+                            JSON.stringify(event.payload).includes('LEQ1:0: STICKY_UNREACH could not be acknowledged'),
+                    ),
+                ).toBe(true);
+            });
+            // the failure is in the write log as well, which is what the RPC log drawer shows
+            const log = await h.backend.request('writeLog.list');
+            expect(
+                log
+                    .filter((entry) => entry.method === 'setValue')
+                    .map((entry) => entry.ok)
+                    .sort(),
+            ).toEqual([false, true]);
+            await h.backend.stop();
+        });
+
+        it('keeps the edge behaviour: a new STICKY_UNREACH is acknowledged once after the switch', async () => {
+            const h = await withMessages();
+            const config = await h.backend.request('config.get');
+            await h.backend.request('config.set', {...config.connection, autoAckStickyUnreach: true});
+            expect(acknowledgements(h)).toEqual([]);
+
+            // LEQ1 comes back and goes away again - that edge is acknowledged, as before
+            h.handler.event('BidCos-RF', 'LEQ1:0', 'UNREACH', false);
+            h.handler.event('BidCos-RF', 'LEQ1:0', 'STICKY_UNREACH', true);
+            await vi.waitFor(() => {
+                expect(acknowledgements(h)).toEqual(['BidCos-RF LEQ1:0 STICKY_UNREACH']);
+            });
+            // the same flag once more is the same outage, and no second write
+            h.handler.event('BidCos-RF', 'LEQ1:0', 'STICKY_UNREACH', true);
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(acknowledgements(h)).toHaveLength(1);
+            await h.backend.stop();
+        });
+    });
+
+    /**
+     * Task 34 (B-9): the HmIP sweep reads the `:0` channels, and until now nothing it read reached
+     * the unreach counter - the Funk tab counted HmIP outages only when an event said so.
+     */
+    it('counts an unreach edge the HmIP sweep reads, and acknowledges nothing', async () => {
+        let unreach = false;
+        // sticky, as its name says: once raised it stays in every later paramset until written back
+        let sticky = false;
+        const h = await harness({
+            answers: {
+                'HmIP-RF': (method, params) => {
+                    switch (method) {
+                        case 'listDevices':
+                            return HMIP_DEVICES as unknown as RpcValue;
+                        case 'getParamset':
+                            sticky = sticky || unreach;
+                            return params[1] === 'VALUES'
+                                ? {RSSI_DEVICE: -60, UNREACH: unreach, STICKY_UNREACH: sticky}
+                                : {};
+                        case 'getParamsetDescription':
+                            return {STICKY_UNREACH: {TYPE: 'BOOL', OPERATIONS: 7}};
+                        default:
+                            return '';
+                    }
+                },
+            },
+            backend: {hmipSweepDelayMs: 600_000},
+        });
+        const config = await h.backend.request('config.get');
+        await h.backend.request('config.set', {...config.connection, autoAckStickyUnreach: true});
+
+        await h.backend.sweepHmip();
+        expect(await h.backend.request('unreach.list', 'HmIP-RF')).toEqual([]);
+
+        unreach = true;
+        await h.backend.sweepHmip();
+        await h.backend.sweepHmip();
+        expect(await h.backend.request('unreach.list', 'HmIP-RF')).toEqual([
+            expect.objectContaining({address: 'ABC1', count: 1, unreach: true}),
+        ]);
+
+        // back, and away again: a second outage
+        unreach = false;
+        await h.backend.sweepHmip();
+        unreach = true;
+        await h.backend.sweepHmip();
+        expect((await h.backend.request('unreach.list', 'HmIP-RF'))[0]?.count).toBe(2);
+
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(h.calls.filter((call) => call.method === 'setValue')).toEqual([]);
+        await h.backend.stop();
+    });
+
     it('resets one device, one interface and everything', async () => {
         const h = await harness();
         h.handler.event('BidCos-RF', 'LEQ1:0', 'UNREACH', true);

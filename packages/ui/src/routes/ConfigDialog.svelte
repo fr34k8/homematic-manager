@@ -16,6 +16,8 @@
     import LanguageSwitch from '../lib/components/LanguageSwitch.svelte';
     import MultiSelect from '../lib/components/MultiSelect.svelte';
     import {getStores} from '../lib/stores/context.js';
+    import {isHmipInterface} from '../lib/stores/suppression.js';
+    import StickyUnreachQuestion from './StickyUnreachQuestion.svelte';
 
     interface Props {
         open?: boolean;
@@ -50,6 +52,9 @@
     $effect(() => {
         if (open && draft === undefined) {
             stores.app.saveError = '';
+            // task 34: an answer belongs to the dialog it was given in, not to the next one
+            askAboutExisting = false;
+            acknowledgeExisting = false;
             const connection = stores.app.config?.connection;
             draft = connection
                 ? structuredClone($state.snapshot(connection))
@@ -113,7 +118,11 @@
         if (!useAuth) {
             delete (connection as {auth?: unknown}).auth;
         }
-        const ok = await stores.app.save(connection);
+        // task 34: the answer to the one-time question, only while the switch is still on
+        const ok = await stores.app.save(
+            connection,
+            connection.autoAckStickyUnreach === true && acknowledgeExisting ? {acknowledgeExisting: true} : undefined,
+        );
         if (ok && clearCaches) {
             await stores.app.clearCaches();
             clearCaches = false;
@@ -152,11 +161,60 @@
         }
     }
 
-    /** #26: the auto-acknowledge switch, guarded the way every other draft field is. */
+    /**
+     * Task 34 (#147, D-42): the STICKY_UNREACH messages in the list that switching the
+     * auto-acknowledge on would leave there for good - HmIP's left out, because nothing is
+     * acknowledged on HmIP. The backend applies the same rule to `acknowledgeExisting`.
+     */
+    const stickyCount = $derived(
+        stores.serviceMessages.messages.filter(
+            (message) =>
+                message.datapoint === 'STICKY_UNREACH' &&
+                message.value !== false &&
+                !isHmipInterface(message.interfaceName, stores.interfaces.typeOf(message.interfaceName)),
+        ).length,
+    );
+    /** The one-time question is open. */
+    let askAboutExisting = $state(false);
+    /** The answer was "acknowledge them": sent with the save, forgotten when the switch goes off. */
+    let acknowledgeExisting = $state(false);
+    /**
+     * What the draft said before the click that opened the question - `undefined` included, since
+     * a profile that never stored the option has no key, and putting back an explicit `false`
+     * would make an untouched dialog look changed (#149's dirty check).
+     */
+    let autoAckBeforeQuestion: boolean | undefined;
+
+    /**
+     * #26: the auto-acknowledge switch, guarded the way every other draft field is.
+     *
+     * Task 34: switched on while the stored option is off and such messages are listed, it asks
+     * first. The draft is on while the question is open, so the box shows what was clicked, and a
+     * question closed without an answer puts it back. Nothing is written here either way - the
+     * answer travels with "Save & Restart".
+     */
     function setAutoAck(value: boolean): void {
-        if (draft) {
-            draft.autoAckStickyUnreach = value;
+        if (!draft) {
+            return;
         }
+        const before = draft.autoAckStickyUnreach;
+        draft.autoAckStickyUnreach = value;
+        acknowledgeExisting = false;
+        if (value && stored?.autoAckStickyUnreach !== true && stickyCount > 0) {
+            autoAckBeforeQuestion = before;
+            askAboutExisting = true;
+        }
+    }
+
+    function cancelAutoAck(): void {
+        if (draft) {
+            if (autoAckBeforeQuestion === undefined) {
+                delete draft.autoAckStickyUnreach;
+            } else {
+                draft.autoAckStickyUnreach = autoAckBeforeQuestion;
+            }
+        }
+        acknowledgeExisting = false;
     }
 
     /** #54: the same for the ReGa inbox, which only means anything while ReGa is on (D-2). */
@@ -542,7 +600,9 @@
                                 is what keeps that information either way.
                             -->
                             <label class="hmm-config-row">
-                                <span class="hmm-config-label">{t('Acknowledge STICKY_UNREACH automatically')}</span>
+                                <span class="hmm-config-label"
+                                    >{t('Acknowledge STICKY_UNREACH automatically as they occur')}</span
+                                >
                                 <span class="hmm-config-field">
                                     <input
                                         type="checkbox"
@@ -550,7 +610,21 @@
                                         data-testid="config-auto-ack-unreach"
                                         onchange={(event) => setAutoAck(event.currentTarget.checked)}
                                     />
-                                    <small class="hmm-config-help">{t('Acknowledging is a write to the device')}</small>
+                                    <small class="hmm-config-help"
+                                        >{t(
+                                            'Acknowledging is a write to the device. Switching this on asks once about the messages already in the list.',
+                                        )}</small
+                                    >
+                                    {#if acknowledgeExisting && draft.autoAckStickyUnreach === true}
+                                        <!-- task 34: the answer to the question, until it is saved -->
+                                        <small class="hmm-config-note" data-testid="config-auto-ack-existing-note"
+                                            >{t(
+                                                '{count} messages in the list are acknowledged when this is saved',
+                                                {},
+                                                stickyCount,
+                                            )}</small
+                                        >
+                                    {/if}
                                 </span>
                             </label>
 
@@ -695,6 +769,15 @@
     {/snippet}
 </Dialog>
 
+<!-- task 34: stacked over the settings while the auto-acknowledge is being switched on -->
+<StickyUnreachQuestion
+    bind:open={askAboutExisting}
+    count={stickyCount}
+    onacknowledge={() => (acknowledgeExisting = true)}
+    onlynew={() => (acknowledgeExisting = false)}
+    oncancel={cancelAutoAck}
+/>
+
 <style>
     /*
         Task 32: a pill in the accent, with the ring of the toolbar's busy icon in front. The text
@@ -827,6 +910,12 @@
 
     .hmm-config-help {
         color: var(--hmm-fg-muted);
+        font-size: var(--hmm-font-size-small);
+    }
+
+    /* Task 34: what "Save & Restart" will also do, in the accent so it is not read past as help. */
+    .hmm-config-note {
+        color: var(--hmm-accent);
         font-size: var(--hmm-font-size-small);
     }
 

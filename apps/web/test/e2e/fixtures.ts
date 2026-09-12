@@ -348,6 +348,12 @@ export interface Simulator {
      * a version, so this repository stays green against 1.0.0.
      */
     getTempKey?: (iface: string) => string;
+    /**
+     * What a behaviour script does: `emit('setValue', iface, address, datapoint, value)` stores the
+     * value and sends its event, so a flag with the SERVICE bit is in `getServiceMessages` until it
+     * is written back - a real pending message, not only an event.
+     */
+    api: {emit(event: 'setValue', iface: string, address: string, datapoint: string, value: unknown): void};
     /** The ReGa mock; `renames` is every `dom.GetObject(id).Name(...)` script it was sent. */
     regaSim: {renames: {id: number; name: string; script: string}[]};
 }
