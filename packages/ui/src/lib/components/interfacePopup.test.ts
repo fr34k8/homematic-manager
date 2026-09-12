@@ -3,7 +3,7 @@ import {fireEvent, render, screen} from '@testing-library/svelte';
 import {describe, expect, it, vi} from 'vitest';
 
 import InterfacePopup from './InterfacePopup.svelte';
-import {detailParts, markOf, summaryMark} from './interfacePopup.js';
+import {callbackLine, detailParts, markOf, summaryMark} from './interfacePopup.js';
 
 function state(name: string, extra: Partial<InterfaceState> = {}): InterfaceState {
     return {name, type: name, protocol: 'xmlrpc', host: 'ccu', port: 2001, connected: true, ...extra};
@@ -128,7 +128,78 @@ describe('the second line of an item', () => {
     });
 });
 
+/** Task 38: the URL an interface was told to call back on, or why it was told none. */
+describe('the callback line of an item', () => {
+    const labels = {
+        portInUse: (port: number) => `Callback-Port ${String(port)} ist belegt`,
+        portFailed: (port: number) => `Callback-Port ${String(port)} lässt sich nicht öffnen`,
+        publish: 'Diesen Port unverändert veröffentlichen',
+    };
+
+    it('names the URL, and nothing where the interface was given none', () => {
+        expect(callbackLine(state('HmIP-RF', {callbackUrl: 'http://192.168.1.10:2126'}), false, labels)).toEqual({
+            text: 'http://192.168.1.10:2126',
+            bad: false,
+        });
+        expect(callbackLine(state('CUxD', {protocol: 'binrpc'}), false, labels)).toBeUndefined();
+    });
+
+    it('asks for the port to be published unchanged where the host says so', () => {
+        expect(callbackLine(state('CUxD', {callbackUrl: 'xmlrpc_bin://192.168.1.10:2127'}), true, labels)).toEqual({
+            text: 'xmlrpc_bin://192.168.1.10:2127 · Diesen Port unverändert veröffentlichen',
+            bad: false,
+        });
+    });
+
+    it('says why there is no callback, whatever else the state says', () => {
+        const taken = state('HmIP-RF', {connected: false, callbackFailure: {port: 2126, inUse: true}});
+        expect(callbackLine(taken, true, labels)).toEqual({text: 'Callback-Port 2126 ist belegt', bad: true});
+        const refused = state('HmIP-RF', {connected: false, callbackFailure: {port: 80, inUse: false}});
+        expect(callbackLine(refused, false, labels)?.text).toBe('Callback-Port 80 lässt sich nicht öffnen');
+    });
+});
+
 describe('InterfacePopup', () => {
+    /** Task 38: the third line, drawn only where there is something to say. */
+    it('draws the callback URL, the publish reminder and a taken port under the items', async () => {
+        mount({
+            interfaces: [
+                state('HmIP-RF', {callbackUrl: 'http://192.168.1.10:2126'}),
+                state('CUxD', {
+                    protocol: 'binrpc',
+                    port: 8701,
+                    connected: false,
+                    callbackFailure: {port: 2127, inUse: true},
+                }),
+                state('VirtualDevices', {port: 9292}),
+            ],
+            selected: 'HmIP-RF',
+            publishCallbackPorts: true,
+            publishPortText: 'Diesen Port unverändert veröffentlichen',
+            callbackPortInUseLabel: (port: number) => `Callback-Port ${String(port)} ist belegt`,
+        });
+        await openPopup();
+        const callback = screen.getByTestId('interface-callback-HmIP-RF');
+        expect(callback.textContent).toBe('http://192.168.1.10:2126 · Diesen Port unverändert veröffentlichen');
+        expect(callback.classList.contains('hmm-interface-item-callback-bad')).toBe(false);
+        const taken = screen.getByTestId('interface-callback-CUxD');
+        expect(taken.textContent).toBe('Callback-Port 2127 ist belegt');
+        expect(taken.classList.contains('hmm-interface-item-callback-bad')).toBe(true);
+        expect(screen.queryByTestId('interface-callback-VirtualDevices')).toBeNull();
+    });
+
+    it('draws the URL alone outside a container, in English by default', async () => {
+        render(InterfacePopup, {
+            props: {
+                interfaces: [state('HmIP-RF', {callbackUrl: 'http://10.0.0.2:40123'})],
+                selected: 'HmIP-RF',
+                testId: 'interface-select',
+            },
+        });
+        await openPopup();
+        expect(screen.getByTestId('interface-callback-HmIP-RF').textContent).toBe('http://10.0.0.2:40123');
+    });
+
     it('shows the selected interface and the summary mark, and nothing else, while it is closed', () => {
         mount();
         expect(trigger().textContent).toContain('BidCos-RF');

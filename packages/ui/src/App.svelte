@@ -182,6 +182,10 @@
             portLabel={t('Port')}
             devicesLabel={(count) => t('{count} devices', {count}, count)}
             dutyCycleLabel={(value) => t('Duty cycle {value} %', {value})}
+            publishCallbackPorts={app.config?.publishCallbackPorts === true}
+            callbackPortInUseLabel={(port) => t('Callback port {port} is in use', {port: String(port)})}
+            callbackPortFailedLabel={(port) => t('Callback port {port} cannot be opened', {port: String(port)})}
+            publishPortText={t('Publish this port unchanged')}
             testId="interface-select"
             onselect={(name) => void stores.selectInterface(name)}
             store={storeEntry}

@@ -83,6 +83,33 @@ export interface InterfaceDetails {
     readonly dutyCycle?: number | undefined;
 }
 
+export interface CallbackLabels {
+    readonly portInUse: (port: number) => string;
+    readonly portFailed: (port: number) => string;
+    readonly publish: string;
+}
+
+/**
+ * Task 38: the third line of an item - the URL the interface was told to call back on, or why it
+ * was told none. In a container whose callback servers listen beyond the loopback the URL carries
+ * the reminder that its port has to be published unchanged; `undefined` when there is nothing to
+ * say, which is every interface that takes no `init`.
+ */
+export function callbackLine(
+    state: InterfaceState,
+    publish: boolean,
+    labels: CallbackLabels,
+): {text: string; bad: boolean} | undefined {
+    if (state.callbackFailure !== undefined) {
+        const {port, inUse} = state.callbackFailure;
+        return {text: inUse ? labels.portInUse(port) : labels.portFailed(port), bad: true};
+    }
+    if (state.callbackUrl === undefined) {
+        return undefined;
+    }
+    return {text: publish ? `${state.callbackUrl} · ${labels.publish}` : state.callbackUrl, bad: false};
+}
+
 export interface DetailLabels {
     readonly port: string;
     readonly tls: string;

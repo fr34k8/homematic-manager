@@ -441,4 +441,65 @@ describe('ConfigDialog', () => {
         await open(transport);
         expect(screen.getAllByText('0 wählt einen freien Port')).toHaveLength(2);
     });
+
+    /**
+     * Task 38: a callback field the host was started with (`HMM_CALLBACK_*`, `--callback-*`) wins
+     * over the profile, so the dialog shows it read-only with the option that set it, and a save
+     * sends back the value it shows.
+     */
+    it('shows the callback fields the host pinned read-only, with the option that set them (task 38)', async () => {
+        transport.result('config.get', {
+            ...DEMO_CONFIG,
+            connection: {...DEMO_CONFIG.connection, callback: {ip: '192.168.1.10', xmlrpcPort: 2126, binrpcPort: 0}},
+            callbackPinned: {ip: true, xmlrpcPort: true},
+        });
+        await open(transport);
+        const ip = screen.getByTestId<HTMLSelectElement>('config-callback-ip');
+        const xmlrpc = screen.getByTestId<HTMLInputElement>('config-callback-xmlrpc-port');
+        const binrpc = screen.getByTestId<HTMLInputElement>('config-callback-binrpc-port');
+        expect(ip.disabled).toBe(true);
+        // the Docker host's address is none of this machine's and is shown all the same
+        expect(ip.value).toBe('192.168.1.10');
+        expect(xmlrpc.disabled).toBe(true);
+        expect(xmlrpc.value).toBe('2126');
+        expect(binrpc.disabled).toBe(false);
+        expect(screen.getByTestId('config-callback-ip-hint').textContent).toBe(
+            'Beim Start festgelegt (HMM_CALLBACK_IP / --callback-ip)',
+        );
+        expect(screen.getByTestId('config-callback-xmlrpc-port-hint').textContent).toBe(
+            'Beim Start festgelegt (HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port)',
+        );
+        expect(screen.getByTestId('config-callback-binrpc-port-hint').textContent).toBe('0 wählt einen freien Port');
+
+        await fireEvent.input(binrpc, {target: {value: '5000'}});
+        await fireEvent.click(screen.getByTestId('config-save'));
+        await waitFor(() => {
+            expect(transport.lastCall('config.set')?.[0]?.callback).toEqual({
+                ip: '192.168.1.10',
+                xmlrpcPort: 2126,
+                binrpcPort: 5000,
+            });
+        });
+    });
+
+    it('words the read-only hint in English as well (task 38)', async () => {
+        transport.result('config.get', {
+            ...DEMO_CONFIG,
+            connection: {
+                ...DEMO_CONFIG.connection,
+                language: 'en',
+                callback: {ip: '', xmlrpcPort: 0, binrpcPort: 2127},
+            },
+            callbackPinned: {binrpcPort: true},
+        });
+        await open(transport);
+        expect(screen.getByTestId<HTMLInputElement>('config-callback-binrpc-port').disabled).toBe(true);
+        expect(screen.getByTestId<HTMLSelectElement>('config-callback-ip').disabled).toBe(false);
+        expect(screen.getByTestId('config-callback-binrpc-port-hint').textContent).toBe(
+            'Set at start (HMM_CALLBACK_BINRPC_PORT / --callback-binrpc-port)',
+        );
+        expect(screen.getByTestId('config-callback-ip-hint').textContent).toBe(
+            'The address the interface processes call back to',
+        );
+    });
 });

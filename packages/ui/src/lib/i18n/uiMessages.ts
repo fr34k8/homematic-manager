@@ -161,6 +161,16 @@ export const UI_MESSAGES: MessageCatalogue = {
     },
     // `{count} devices` is core's own plural key and is used as it is.
     'Duty cycle {value} %': {de: 'Duty Cycle {value} %', en: 'Duty cycle {value} %'},
+    // Task 38: the popup's callback line - why an interface has no callback, and what a container must publish.
+    'Callback port {port} is in use': {de: 'Callback-Port {port} ist belegt', en: 'Callback port {port} is in use'},
+    'Callback port {port} cannot be opened': {
+        de: 'Callback-Port {port} lässt sich nicht öffnen',
+        en: 'Callback port {port} cannot be opened',
+    },
+    'Publish this port unchanged': {
+        de: 'Diesen Port unverändert veröffentlichen',
+        en: 'Publish this port unchanged',
+    },
     'Use ReGa': {de: 'ReGa verwenden', en: 'Use ReGa'},
     'Detect interfaces': {de: 'Schnittstellen erkennen', en: 'Detect interfaces'},
     Interfaces: {de: 'Schnittstellen', en: 'Interfaces'},
@@ -183,6 +193,8 @@ export const UI_MESSAGES: MessageCatalogue = {
         de: '0 verwendet Port {port} oder, wenn er belegt ist, einen freien',
         en: '0 uses port {port}, or a free one when it is taken',
     },
+    // Task 38: a callback field the host was started with; `{option}` is `HMM_CALLBACK_IP / --callback-ip`
+    'Set at start ({option})': {de: 'Beim Start festgelegt ({option})', en: 'Set at start ({option})'},
     Dismiss: {de: 'Ausblenden', en: 'Dismiss'},
     // The toast stack collapses everything past the fifth into this counter (D-34).
     '{count} more': {

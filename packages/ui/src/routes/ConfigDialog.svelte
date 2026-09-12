@@ -1,11 +1,13 @@
 <script lang="ts">
     import type {
+        CallbackPins,
         ConnectionConfig,
         LanguageChoice,
         MetaProviderChoice,
         UserDefinedInterface,
     } from '@homematic-manager/core';
     import {
+        callbackPinOption,
         DEFAULT_INTERFACES,
         INTERFACE_NAMES,
         META_PROVIDERS,
@@ -43,6 +45,20 @@
     const stored = $derived(stores.app.config?.connection);
     /** Task 35: the ports a `0` stands for in the CCU addon; absent everywhere else. */
     const callbackDefaults = $derived(stores.app.config?.callbackDefaultPorts);
+    /**
+     * Task 38: the callback fields the host was started with (`HMM_CALLBACK_*`, `--callback-*`).
+     * They win over anything saved here, so they are shown read-only with the option that set them;
+     * the backend would not save another value over them either.
+     */
+    const callbackPinned = $derived(stores.app.config?.callbackPinned);
+
+    function pinned(field: keyof CallbackPins): boolean {
+        return callbackPinned?.[field] === true;
+    }
+
+    function pinHint(field: keyof CallbackPins): string {
+        return t('Set at start ({option})', {option: callbackPinOption(field)});
+    }
     const dirty = $derived(
         clearCaches ||
             draft === undefined ||
@@ -402,14 +418,29 @@
                             <label class="hmm-config-row">
                                 <span class="hmm-config-label">{t('Homematic Manager Address')}</span>
                                 <span class="hmm-config-field">
-                                    <select class="hmm-select hmm-config-wide" bind:value={draft.callback.ip}>
+                                    <select
+                                        class="hmm-select hmm-config-wide"
+                                        bind:value={draft.callback.ip}
+                                        disabled={pinned('ip')}
+                                        data-testid="config-callback-ip"
+                                    >
                                         <option value="">{t('Select')}</option>
                                         {#each addressOptions as address (address)}
                                             <option value={address}>{address}</option>
                                         {/each}
+                                        <!--
+                                            Task 38: an address that is not one of this machine's - the
+                                            Docker host's, seen from a container - is still what is set,
+                                            so it is shown rather than an empty "Select".
+                                        -->
+                                        {#if draft.callback.ip !== '' && !addressOptions.includes(draft.callback.ip)}
+                                            <option value={draft.callback.ip}>{draft.callback.ip}</option>
+                                        {/if}
                                     </select>
-                                    <small class="hmm-config-help"
-                                        >{t('The address the interface processes call back to')}</small
+                                    <small class="hmm-config-help" data-testid="config-callback-ip-hint"
+                                        >{pinned('ip')
+                                            ? pinHint('ip')
+                                            : t('The address the interface processes call back to')}</small
                                     >
                                 </span>
                             </label>
@@ -422,13 +453,17 @@
                                         type="number"
                                         min="0"
                                         bind:value={draft.callback.xmlrpcPort}
+                                        disabled={pinned('xmlrpcPort')}
+                                        data-testid="config-callback-xmlrpc-port"
                                     />
-                                    <small class="hmm-config-help"
-                                        >{callbackDefaults && callbackDefaults.xmlrpc !== 0
-                                            ? t('0 uses port {port}, or a free one when it is taken', {
-                                                  port: String(callbackDefaults.xmlrpc),
-                                              })
-                                            : t('0 picks a free port')}</small
+                                    <small class="hmm-config-help" data-testid="config-callback-xmlrpc-port-hint"
+                                        >{pinned('xmlrpcPort')
+                                            ? pinHint('xmlrpcPort')
+                                            : callbackDefaults && callbackDefaults.xmlrpc !== 0
+                                              ? t('0 uses port {port}, or a free one when it is taken', {
+                                                    port: String(callbackDefaults.xmlrpc),
+                                                })
+                                              : t('0 picks a free port')}</small
                                     >
                                 </span>
                             </label>
@@ -441,13 +476,17 @@
                                         type="number"
                                         min="0"
                                         bind:value={draft.callback.binrpcPort}
+                                        disabled={pinned('binrpcPort')}
+                                        data-testid="config-callback-binrpc-port"
                                     />
-                                    <small class="hmm-config-help"
-                                        >{callbackDefaults && callbackDefaults.binrpc !== 0
-                                            ? t('0 uses port {port}, or a free one when it is taken', {
-                                                  port: String(callbackDefaults.binrpc),
-                                              })
-                                            : t('0 picks a free port')}</small
+                                    <small class="hmm-config-help" data-testid="config-callback-binrpc-port-hint"
+                                        >{pinned('binrpcPort')
+                                            ? pinHint('binrpcPort')
+                                            : callbackDefaults && callbackDefaults.binrpc !== 0
+                                              ? t('0 uses port {port}, or a free one when it is taken', {
+                                                    port: String(callbackDefaults.binrpc),
+                                                })
+                                              : t('0 picks a free port')}</small
                                     >
                                 </span>
                             </label>

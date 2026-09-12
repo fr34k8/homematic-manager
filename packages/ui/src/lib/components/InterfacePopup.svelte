@@ -3,6 +3,7 @@
 
     import ConnectionIndicator from './ConnectionIndicator.svelte';
     import {
+        callbackLine,
         detailParts,
         MARK_GLYPH,
         markOf,
@@ -33,6 +34,14 @@
         tlsLabel?: string;
         devicesLabel?: (count: number) => string;
         dutyCycleLabel?: (value: number) => string;
+        /**
+         * Task 38: the host runs in a container and its callback servers listen beyond the loopback
+         * (`AppConfig.publishCallbackPorts`), so every callback URL says its port must be published.
+         */
+        publishCallbackPorts?: boolean;
+        callbackPortInUseLabel?: (port: number) => string;
+        callbackPortFailedLabel?: (port: number) => string;
+        publishPortText?: string;
         onselect?: ((interfaceName: string) => void) | undefined;
         /**
          * The metadata store as an entry of its own, under the host and above the interfaces
@@ -62,6 +71,10 @@
         tlsLabel = 'TLS',
         devicesLabel = (count: number) => `${String(count)} devices`,
         dutyCycleLabel = (value: number) => `Duty cycle ${String(value)} %`,
+        publishCallbackPorts = false,
+        callbackPortInUseLabel = (port: number) => `Callback port ${String(port)} is in use`,
+        callbackPortFailedLabel = (port: number) => `Callback port ${String(port)} cannot be opened`,
+        publishPortText = 'Publish this port unchanged',
         onselect = undefined,
         store = undefined,
         storeTestId = undefined,
@@ -324,6 +337,11 @@
                 {#each interfaces as state, offset (state.name)}
                     {@const mark = markOf(state)}
                     {@const index = storeIndex + 1 + offset}
+                    {@const callback = callbackLine(state, publishCallbackPorts, {
+                        portInUse: callbackPortInUseLabel,
+                        portFailed: callbackPortFailedLabel,
+                        publish: publishPortText,
+                    })}
                     <button
                         type="button"
                         role="option"
@@ -345,6 +363,14 @@
                             </span>
                         </span>
                         <span class="hmm-interface-item-line">{lineOf(state)}</span>
+                        {#if callback !== undefined}
+                            <!-- Task 38: the URL the CCU was told, or why it was told none -->
+                            <span
+                                class="hmm-interface-item-callback"
+                                class:hmm-interface-item-callback-bad={callback.bad}
+                                data-testid={`interface-callback-${state.name}`}>{callback.text}</span
+                            >
+                        {/if}
                     </button>
                 {/each}
             </div>
@@ -562,6 +588,17 @@
     .hmm-interface-item-line {
         color: var(--hmm-fg-muted);
         font-size: var(--hmm-font-size-small);
+    }
+
+    /* Task 38: a URL is long and has no spaces; it wraps rather than widening the menu */
+    .hmm-interface-item-callback {
+        color: var(--hmm-fg-muted);
+        font-size: var(--hmm-font-size-small);
+        overflow-wrap: anywhere;
+    }
+
+    .hmm-interface-item-callback-bad {
+        color: var(--hmm-error);
     }
 
     .hmm-interface-mark-ok {

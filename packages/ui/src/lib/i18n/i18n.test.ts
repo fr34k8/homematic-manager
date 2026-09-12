@@ -27,6 +27,30 @@ describe('I18n', () => {
         expect(createI18n('en').t('Add link')).toBe('Add link');
     });
 
+    it('words the pinned callback fields and the callback line of the interface popup (task 38)', () => {
+        const option = {option: 'HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port'};
+        expect(createI18n('de').t('Set at start ({option})', option)).toBe(
+            'Beim Start festgelegt (HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port)',
+        );
+        expect(createI18n('en').t('Set at start ({option})', option)).toBe(
+            'Set at start (HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port)',
+        );
+        expect(createI18n('de').t('Callback port {port} is in use', {port: '2126'})).toBe(
+            'Callback-Port 2126 ist belegt',
+        );
+        expect(createI18n('en').t('Callback port {port} is in use', {port: '2126'})).toBe(
+            'Callback port 2126 is in use',
+        );
+        expect(createI18n('de').t('Callback port {port} cannot be opened', {port: '80'})).toBe(
+            'Callback-Port 80 lässt sich nicht öffnen',
+        );
+        expect(createI18n('en').t('Callback port {port} cannot be opened', {port: '80'})).toBe(
+            'Callback port 80 cannot be opened',
+        );
+        expect(createI18n('de').t('Publish this port unchanged')).toBe('Diesen Port unverändert veröffentlichen');
+        expect(createI18n('en').t('Publish this port unchanged')).toBe('Publish this port unchanged');
+    });
+
     it('re-translates when the language changes', () => {
         const i18n = createI18n('de');
         expect(i18n.t('Devices')).toBe('Geräte');
