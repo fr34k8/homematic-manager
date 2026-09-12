@@ -2,7 +2,7 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 
 import type {UpdateState} from '../shared/ipc.js';
 
-import {UpdateFlow, updaterDisabledReason, type AutoUpdaterLike} from './updater.js';
+import {manualCheckReport, UpdateFlow, updaterDisabledReason, type AutoUpdaterLike} from './updater.js';
 
 /** An `autoUpdater` whose answers the test decides and whose events it fires. */
 class FakeUpdater implements AutoUpdaterLike {
@@ -198,6 +198,21 @@ describe('UpdateFlow', () => {
         expect(f.state).toMatchObject({phase: 'available', version: '3.2.0', dismissed: false});
     });
 
+    it('announces a dismissed version again when the user checks from the menu (#160)', async () => {
+        updater.available = '3.1.0';
+        const f = flow();
+        await f.check();
+        f.dismiss();
+        await expect(f.check({manual: true})).resolves.toEqual({
+            phase: 'available',
+            version: '3.1.0',
+            dismissed: false,
+        });
+        // and the six-hourly check after it keeps the dismissal rules as they were
+        f.dismiss();
+        await expect(f.check()).resolves.toMatchObject({dismissed: true});
+    });
+
     it('disarms the install when the user dismisses after confirming', async () => {
         updater.available = '3.1.0';
         const f = flow();
@@ -305,5 +320,56 @@ describe('updaterDisabledReason', () => {
 
     it('says nothing when the updater is on', () => {
         expect(updaterDisabledReason({packaged: true, disabledBySetting: false})).toBeUndefined();
+    });
+});
+
+describe('manualCheckReport (#160)', () => {
+    const PHASES: UpdateState['phase'][] = [
+        'disabled',
+        'idle',
+        'checking',
+        'available',
+        'downloading',
+        'downloaded',
+        'installOnQuit',
+        'error',
+    ];
+
+    it('says the app is up to date when the check found nothing - which used to show nothing at all', async () => {
+        updater.available = '3.0.0';
+        const result = await flow().check({manual: true});
+        expect(manualCheckReport(result, '3.0.0')).toEqual({
+            type: 'info',
+            message: 'Homematic Manager is up to date.',
+            detail: '3.0.0 is the newest version.',
+        });
+        // no release at all is the same answer
+        updater.available = null;
+        expect(manualCheckReport(await flow().check({manual: true}), '3.0.0').message).toContain('up to date');
+    });
+
+    it('names a newer version and where it is offered, without promising a download', async () => {
+        updater.available = '3.1.0';
+        const report = manualCheckReport(await flow().check({manual: true}), '3.0.0');
+        expect(report.type).toBe('info');
+        expect(report.message).toBe('Version 3.1.0 is available.');
+        expect(report.detail).toContain('You have 3.0.0');
+        expect(report.detail).toContain('without your confirmation');
+    });
+
+    it('says a failed check failed, with its reason', async () => {
+        updater.failCheck = new Error('net::ERR_INTERNET_DISCONNECTED');
+        const report = manualCheckReport(await flow().check({manual: true}), '3.0.0');
+        expect(report.type).toBe('error');
+        expect(report.message).toBe('The update check failed.');
+        expect(report.detail).toContain('net::ERR_INTERNET_DISCONNECTED');
+    });
+
+    it('answers every phase with a message, so no click on the menu ends silently', () => {
+        for (const phase of PHASES) {
+            const report = manualCheckReport({phase, dismissed: false, version: '3.1.0'}, '3.0.0');
+            expect(report.message, phase).not.toBe('');
+            expect(['info', 'error'], phase).toContain(report.type);
+        }
     });
 });

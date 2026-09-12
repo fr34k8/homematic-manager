@@ -46,7 +46,7 @@ import {buildMenuTemplate, externalUrlFromRenderer, isAllowedExternalUrl, ISSUES
 import {fileRoots, resolvePaths} from './paths.js';
 import {createImageProtocolHandler, PRIVILEGED_SCHEMES} from './protocol.js';
 import {createStartupTrace} from './startupTrace.js';
-import {UpdateFlow, updaterDisabledReason, type AutoUpdaterLike} from './updater.js';
+import {manualCheckReport, UpdateFlow, updaterDisabledReason, type AutoUpdaterLike} from './updater.js';
 import {browserWindowBounds, WindowStateKeeper} from './windowState.js';
 
 const APP_ID = 'de.hobbyquaker.homematic-manager';
@@ -256,7 +256,7 @@ function buildMenu(): void {
                     app.showAboutPanel();
                 },
                 onCheckForUpdates: () => {
-                    void updates?.check();
+                    void checkForUpdatesFromMenu();
                 },
                 onOpenIssues: () => {
                     void shell.openExternal(ISSUES_URL);
@@ -270,6 +270,30 @@ function buildMenu(): void {
             }) as Electron.MenuItemConstructorOptions[],
         ),
     );
+}
+
+/**
+ * #160: the menu's "Check for Updates..." answers every outcome in a message box. The strip in the
+ * window only appears for a version to download or install, so a check that found nothing - or
+ * failed - used to end without anything to see.
+ */
+async function checkForUpdatesFromMenu(): Promise<void> {
+    if (!updates) {
+        return;
+    }
+    const report = manualCheckReport(await updates.check({manual: true}), version);
+    const options: Electron.MessageBoxOptions = {
+        type: report.type,
+        title: 'Homematic Manager',
+        message: report.message,
+        detail: report.detail,
+        buttons: ['OK'],
+    };
+    try {
+        await (mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options));
+    } catch (error) {
+        errorLog.append('update:dialog', error);
+    }
 }
 
 function registerHostCommands(): void {

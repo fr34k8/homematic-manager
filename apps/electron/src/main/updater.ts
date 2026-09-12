@@ -134,8 +134,13 @@ export class UpdateFlow {
         }
     }
 
-    /** Asks GitHub. Answers with the new state; never throws. */
-    async check(): Promise<UpdateState> {
+    /**
+     * Asks GitHub. Answers with the new state; never throws.
+     *
+     * `manual` is the menu's "Check for Updates...": the user asked, so a version they dismissed
+     * earlier is announced again rather than kept out of sight (#160).
+     */
+    async check(options: {readonly manual?: boolean} = {}): Promise<UpdateState> {
         if (!this.#options.enabled || this.#busy) {
             return this.state;
         }
@@ -153,8 +158,9 @@ export class UpdateFlow {
             if (version === undefined || version === this.#options.currentVersion) {
                 this.#emit(state('idle'));
             } else {
-                // A dismissal is for one version; a newer one is announced again.
-                this.#emit(state('available', {version}, dismissed && version === known));
+                // A dismissal is for one version; a newer one is announced again, and so is the same
+                // one when the user asks from the menu.
+                this.#emit(state('available', {version}, options.manual !== true && dismissed && version === known));
             }
         } catch (error) {
             this.#fail('check', error);
@@ -258,4 +264,73 @@ export function updaterDisabledReason(input: {
         return 'automatic updates are switched off in host.json';
     }
     return undefined;
+}
+
+/** The message box the menu's "Check for Updates..." answers with (#160). */
+export interface UpdateCheckReport {
+    readonly type: 'info' | 'error';
+    readonly message: string;
+    readonly detail: string;
+}
+
+/**
+ * What a check the user started from the menu found, in words (#160).
+ *
+ * The strip under the header only appears when there is something to download or install, so a
+ * check that found nothing - or failed - used to end without anything visible at all: "Es gibt kein
+ * sichtbares Ergebnis." The menu entry answers every outcome with a message box instead; the strip
+ * stays what offers the download.
+ */
+export function manualCheckReport(result: UpdateState, currentVersion: string): UpdateCheckReport {
+    const version = result.version ?? '';
+    switch (result.phase) {
+        case 'idle':
+            return {
+                type: 'info',
+                message: 'Homematic Manager is up to date.',
+                detail: `${currentVersion} is the newest version.`,
+            };
+        case 'available':
+            return {
+                type: 'info',
+                message: `Version ${version} is available.`,
+                detail: `You have ${currentVersion}. The bar at the top of the window offers the download; nothing is downloaded or installed without your confirmation.`,
+            };
+        case 'downloading':
+            return {
+                type: 'info',
+                message: `Version ${version} is being downloaded.`,
+                detail: 'The bar at the top of the window shows the progress.',
+            };
+        case 'downloaded':
+            return {
+                type: 'info',
+                message: `Version ${version} is downloaded.`,
+                detail: 'The bar at the top of the window offers to install it.',
+            };
+        case 'installOnQuit':
+            return {
+                type: 'info',
+                message: `Version ${version} is installed when you quit Homematic Manager.`,
+                detail: `You have ${currentVersion}.`,
+            };
+        case 'checking':
+            return {
+                type: 'info',
+                message: 'An update check is already running.',
+                detail: 'If it finds a new version, the bar at the top of the window says so.',
+            };
+        case 'disabled':
+            return {
+                type: 'info',
+                message: 'Automatic updates are off.',
+                detail: result.message ?? '',
+            };
+        case 'error':
+            return {
+                type: 'error',
+                message: 'The update check failed.',
+                detail: `${result.message ?? 'No reason was given.'}\n\nThe releases are also on https://github.com/hobbyquaker/homematic-manager/releases`,
+            };
+    }
 }
