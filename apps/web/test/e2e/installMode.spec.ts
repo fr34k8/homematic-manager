@@ -6,6 +6,7 @@
  */
 
 import {expect, simulatorReady, test} from './fixtures.js';
+import {expectPrimaryToolbarButton} from './primaryButton.js';
 
 const NEW_DEVICE = 'LEQ0000009';
 
@@ -141,4 +142,33 @@ test('an HmIP interface is armed for any device without an SGTIN (task 28)', asy
         .locator('.hmm-rpclog-entry', {hasText: 'HmIP-RF setInstallMode'})
         .locator('.hmm-rpclog-params');
     await expect.poll(async () => (await calls.allTextContents()).sort()).toEqual(['false', 'true, 60']);
+});
+
+/**
+ * Task 28, maintainer 2026-09-11: "Pair device" / "Gerät anlernen" is a captioned, larger button
+ * with the `+` icon at the start of the band, the same one the Links tab's "Add link" is (task 33).
+ */
+test('"Pair device" is the captioned main action of the Devices tab (task 28)', async ({page, host}) => {
+    await page.goto(`${host.url}#/HmIP-RF/devices`);
+    await expect(page.getByTestId('devices-table')).toBeVisible();
+    await expectPrimaryToolbarButton(page, {
+        testId: 'devices-add',
+        neighbour: 'devices-rename',
+        dialog: 'add-device-dialog',
+        captions: {en: 'Pair device', de: 'Gerät anlernen'},
+    });
+});
+
+test('"Pair device" is disabled with its reason where there is no install mode (task 28)', async ({page, host}) => {
+    // the CCU's group process makes its groups itself; there is nothing to pair
+    await page.goto(`${host.url}#/VirtualDevices/devices`);
+    await expect(page.getByTestId('devices-table')).toBeVisible();
+    await expect(page.getByTestId('devices-add')).toBeDisabled();
+    await expect(page.getByTestId('devices-add-tooltip')).toHaveAttribute(
+        'data-tooltip',
+        'Pair device — This interface cannot pair devices',
+    );
+
+    await page.goto(`${host.url}#/HmIP-RF/devices`);
+    await expect(page.getByTestId('devices-add')).toBeEnabled();
 });

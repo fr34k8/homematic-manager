@@ -20,7 +20,9 @@ describe('I18n', () => {
         expect(i18n.t('Theme')).toBe('Design');
     });
 
-    it('captions the main action of the Links tab (task 33)', () => {
+    it('captions the main actions of the Devices and the Links tab (tasks 28 and 33)', () => {
+        expect(createI18n('de').t('Pair device')).toBe('Gerät anlernen');
+        expect(createI18n('en').t('Pair device')).toBe('Pair device');
         expect(createI18n('de').t('Add link')).toBe('Verknüpfung anlegen');
         expect(createI18n('en').t('Add link')).toBe('Add link');
     });

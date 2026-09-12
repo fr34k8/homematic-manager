@@ -2,6 +2,7 @@
     import type {DeviceDescription} from '@homematic-manager/core';
     import {
         asStringList,
+        canPairDevices,
         decodeDeviceFlags,
         decodeDirection,
         decodeRxMode,
@@ -17,6 +18,7 @@
     import DataTable from '../lib/components/DataTable.svelte';
     import DeviceImage from '../lib/components/DeviceImage.svelte';
     import {ICON_COLUMN_WIDTH} from '../lib/components/metrics.js';
+    import PrimaryToolbarButton from '../lib/components/PrimaryToolbarButton.svelte';
     import ToolbarButton from '../lib/components/ToolbarButton.svelte';
     import type {DataTableColumn} from '../lib/components/tableModel.js';
     import {getStores} from '../lib/stores/context.js';
@@ -209,6 +211,8 @@
     const canDelete = $derived(oneDevice !== '' && !dontDelete);
     /** `restoreConfigToDevice` and `clearConfigCache` are BidCos-only, as the 2.x menu classes said. */
     const isBidcos = $derived(interfaceType.startsWith('BidCos'));
+    /** Task 28: VirtualDevices and CUxD have no install mode, so there is nothing to pair there. */
+    const canPair = $derived(canPairDevices(interfaceType));
 
     function reasonFor(kind: 'device' | 'channel' | 'delete' | 'bidcos'): string {
         switch (kind) {
@@ -648,7 +652,14 @@
             testId="devices-table"
         >
             {#snippet toolbar()}
-                <ToolbarButton title={t('Add device')} icon="+" testId="devices-add" onclick={() => (addOpen = true)} />
+                <PrimaryToolbarButton
+                    caption={t('Pair device')}
+                    icon="+"
+                    disabled={!canPair}
+                    reason={t('This interface cannot pair devices')}
+                    testId="devices-add"
+                    onclick={() => (addOpen = true)}
+                />
                 <ToolbarButton
                     title={t('Rename device')}
                     icon="✎"

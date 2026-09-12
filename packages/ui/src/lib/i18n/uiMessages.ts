@@ -186,6 +186,8 @@ export const UI_MESSAGES: MessageCatalogue = {
     },
     'Show fewer': {de: 'Weniger anzeigen', en: 'Show fewer'},
     'Add device': {de: 'Gerät anlernen', en: 'Add device'},
+    // Task 28: the Devices tab's captioned main action; "Add device" stays the pairing dialog's title.
+    'Pair device': {de: 'Gerät anlernen', en: 'Pair device'},
     'reportValueUsage 0': {de: 'reportValueUsage 0', en: 'reportValueUsage 0'},
     'reportValueUsage 1': {de: 'reportValueUsage 1', en: 'reportValueUsage 1'},
     'Expand row': {de: 'Zeile aufklappen', en: 'Expand row'},
@@ -285,6 +287,11 @@ export const UI_MESSAGES: MessageCatalogue = {
     'Only available on BidCos interfaces': {
         de: 'Nur bei BidCos-Schnittstellen verfügbar',
         en: 'Only available on BidCos interfaces',
+    },
+    // Task 28: VirtualDevices and CUxD have no install mode.
+    'This interface cannot pair devices': {
+        de: 'Diese Schnittstelle kann keine Geräte anlernen',
+        en: 'This interface cannot pair devices',
     },
     'reportValueUsage {value}: {count} datapoints on {channels} channels': {
         de: 'reportValueUsage {value}: {count} Datenpunkte auf {channels} Kanälen',

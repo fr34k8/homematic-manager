@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 
 import {
+    canPairDevices,
     DEFAULT_INTERFACES,
     DEFAULT_PING_TIMEOUT_SECONDS,
     INTERFACE_NAMES,
@@ -55,6 +56,18 @@ describe('the interface table', () => {
     it('returns a definition only for known names', () => {
         expect(interfaceDefinition('CUxD')?.port).toBe(8701);
         expect(interfaceDefinition('nope')).toBeUndefined();
+    });
+
+    it('knows which interfaces devices can be paired to (task 28)', () => {
+        expect(canPairDevices('BidCos-RF')).toBe(true);
+        // no install mode, but the dialog's searchDevices
+        expect(canPairDevices('BidCos-Wired')).toBe(true);
+        expect(canPairDevices('HmIP-RF')).toBe(true);
+        expect(canPairDevices('VirtualDevices')).toBe(false);
+        expect(canPairDevices('CUxD')).toBe(false);
+        // a user-defined interface, and one whose type is not known yet, get the dialog
+        expect(canPairDevices('custom')).toBe(true);
+        expect(canPairDevices('')).toBe(true);
     });
 });
 

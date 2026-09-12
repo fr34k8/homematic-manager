@@ -438,3 +438,69 @@ describe('the ReGa inbox (#54)', () => {
         expect(screen.queryByTestId('add-device-confirm-inbox')).toBeNull();
     });
 });
+
+/**
+ * Task 28, maintainer 2026-09-11: the way into pairing was a bare `+` the size of every toolbar
+ * icon. It is a captioned button now - "Pair device" / "Gerät anlernen" - that opens the same
+ * dialog, and it says why where there is nothing to pair.
+ */
+describe('the "Pair device" button', () => {
+    let transport: MockTransport;
+
+    beforeEach(() => {
+        transport = new MockTransport({demo: true});
+    });
+
+    it('is a captioned button that opens the pairing dialog', async () => {
+        await mountApp({transport, hash: '#/HmIP-RF/devices'});
+        const button = screen.getByRole<HTMLButtonElement>('button', {name: 'Gerät anlernen'});
+        expect(button.getAttribute('data-testid')).toBe('devices-add');
+        expect(button.classList.contains('hmm-primary-button')).toBe(true);
+        await waitFor(() => {
+            expect(screen.getByTestId('devices-add-caption').textContent).toBe('Gerät anlernen');
+        });
+        expect(button.disabled).toBe(false);
+
+        await fireEvent.click(button);
+        await waitFor(() => {
+            expect(screen.getByTestId('add-device-dialog').hasAttribute('open')).toBe(true);
+        });
+    });
+
+    for (const [type, protocol, port] of [
+        ['VirtualDevices', 'xmlrpc', 9292],
+        ['CUxD', 'binrpc', 8701],
+    ] as const) {
+        it(`is disabled, and says why, on ${type}, which has no install mode`, async () => {
+            transport.result('interfaces.list', [
+                {name: type, type, protocol, host: 'demo.local', port, connected: true},
+            ]);
+            transport.respond('config.get', () => ({
+                version: '3.0.0-dev.0',
+                connection: {
+                    host: 'demo.local',
+                    interfaces: [type],
+                    autoDetect: true,
+                    extraInterfaces: [],
+                    tls: false,
+                    rega: true,
+                    callback: {ip: '192.168.1.20', xmlrpcPort: 0, binrpcPort: 0},
+                    language: 'de' as const,
+                    writePaceMs: 250,
+                    rpcLogFolder: '',
+                },
+                localAddresses: [],
+                discovered: [],
+            }));
+            transport.result('devices.list', []);
+            await mountApp({transport, hash: `#/${type}/devices`});
+
+            await waitFor(() => {
+                expect(screen.getByTestId<HTMLButtonElement>('devices-add').disabled).toBe(true);
+            });
+            expect(screen.getByTestId('devices-add-tooltip').getAttribute('data-tooltip')).toBe(
+                'Gerät anlernen — Diese Schnittstelle kann keine Geräte anlernen',
+            );
+        });
+    }
+});

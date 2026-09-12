@@ -61,6 +61,12 @@ export interface InterfaceDefinition {
      * once; the backend remembers a method-not-found or an unparseable answer for that session.
      */
     readonly serviceMessages?: boolean;
+    /**
+     * Has an install mode: devices can be paired to it (task 28). Omitted means yes. The CCU's
+     * group process behind **VirtualDevices** and **CUxD** create their devices themselves and
+     * have nothing to pair, so the Devices tab's "Pair device" is disabled there.
+     */
+    readonly installMode?: boolean;
     /** A fixed `init` identity string; only CUxD has one (it matches on the literal `CUxD`). */
     readonly ident?: string;
 }
@@ -119,6 +125,8 @@ export const INTERFACES = {
         ping: false,
         // ... and it has no getServiceMessages either: it answers that one with invalid XML-RPC
         serviceMessages: false,
+        // groups are made by the CCU, not paired (task 28)
+        installMode: false,
     },
     CUxD: {
         name: 'CUxD',
@@ -128,6 +136,8 @@ export const INTERFACES = {
         ping: true,
         // CUxD matches the init identity against the literal string, `hmm_CUxD` is ignored
         ident: 'CUxD',
+        // its devices are created in its own configuration, not paired (task 28)
+        installMode: false,
     },
 } as const satisfies Record<string, InterfaceDefinition>;
 
@@ -214,6 +224,15 @@ export function isKnownInterface(name: string): name is InterfaceName {
 /** The built-in definition, or `undefined` for a name the table does not know. */
 export function interfaceDefinition(name: string): InterfaceDefinition | undefined {
     return isKnownInterface(name) ? INTERFACES[name] : undefined;
+}
+
+/**
+ * Whether devices can be paired to an interface of this type (task 28). Only a built-in interface
+ * that says it has no install mode is refused; a user-defined one - Homegear, a bare rfd - and a
+ * type that is not known yet get the pairing dialog, and the process behind them has the last word.
+ */
+export function canPairDevices(type: string): boolean {
+    return interfaceDefinition(type)?.installMode !== false;
 }
 
 /**
