@@ -231,22 +231,27 @@ describe('the sockets', () => {
         await server.stop();
     });
 
-    it('rejects when the xmlrpc port is taken', async () => {
+    it('rejects when the xmlrpc port is taken, and reports it only that way', async () => {
         const handler = recordingHandler();
+        const onError = vi.fn();
         const first = new CallbackServer({protocol: 'xmlrpc', host: '127.0.0.1', port: 0, handler});
         const port = await first.start();
-        const second = new CallbackServer({protocol: 'xmlrpc', host: '127.0.0.1', port, handler});
+        const second = new CallbackServer({protocol: 'xmlrpc', host: '127.0.0.1', port, handler, onError});
         await expect(second.start()).rejects.toThrow(/xmlrpc callback server/);
+        // the manager turns `onError` into a notice of its own, and the rejection already is one
+        expect(onError).not.toHaveBeenCalled();
         await first.stop();
         await second.stop();
     });
 
-    it('rejects when the binrpc port is taken', async () => {
+    it('rejects when the binrpc port is taken, and reports it only that way', async () => {
         const handler = recordingHandler();
+        const onError = vi.fn();
         const first = new CallbackServer({protocol: 'binrpc', host: '127.0.0.1', port: 0, handler});
         const port = await first.start();
-        const second = new CallbackServer({protocol: 'binrpc', host: '127.0.0.1', port, handler});
+        const second = new CallbackServer({protocol: 'binrpc', host: '127.0.0.1', port, handler, onError});
         await expect(second.start()).rejects.toThrow(/binrpc callback server/);
+        expect(onError).not.toHaveBeenCalled();
         await first.stop();
         await second.stop();
     });
@@ -286,5 +291,79 @@ describe('CallbackServers', () => {
         expect(servers.port('xmlrpc')).toBe(0);
         await blocker.stop();
         await servers.stop();
+    });
+
+    /** Task 35 (D-43): the CCU addon's fixed pair, for the ports the configuration leaves at 0. */
+    it('takes the default port while the configured one is 0', async () => {
+        const probe = new CallbackServer({protocol: 'binrpc', host: '127.0.0.1', port: 0, handler: recordingHandler()});
+        const free = await probe.start();
+        await probe.stop();
+        const servers = new CallbackServers({
+            handler: recordingHandler(),
+            host: '127.0.0.1',
+            ports: {xmlrpc: 0, binrpc: 0},
+            defaultPorts: {xmlrpc: 0, binrpc: free},
+        });
+        expect(await servers.ensure('binrpc')).toBe(free);
+        // a default of 0 is no default: the kernel's free port, as before
+        expect(await servers.ensure('xmlrpc')).toBeGreaterThan(0);
+        await servers.stop();
+    });
+
+    it('falls back to a free port when the default one is taken, and says so once', async () => {
+        const blocker = new CallbackServer({
+            protocol: 'xmlrpc',
+            host: '127.0.0.1',
+            port: 0,
+            handler: recordingHandler(),
+        });
+        const taken = await blocker.start();
+        const onFallback = vi.fn();
+        const onError = vi.fn();
+        const servers = new CallbackServers({
+            handler: recordingHandler(),
+            host: '127.0.0.1',
+            ports: {xmlrpc: 0, binrpc: 0},
+            defaultPorts: {xmlrpc: taken, binrpc: 0},
+            onFallback,
+            onError,
+        });
+        const port = await servers.ensure('xmlrpc');
+        expect(port).toBeGreaterThan(0);
+        expect(port).not.toBe(taken);
+        expect(await servers.ensure('xmlrpc')).toBe(port);
+        expect(servers.callbackUrl('xmlrpc', '127.0.0.1')).toBe(`http://127.0.0.1:${String(port)}`);
+        expect(onFallback).toHaveBeenCalledOnce();
+        expect(onFallback.mock.calls[0]?.slice(0, 2)).toEqual(['xmlrpc', taken]);
+        expect(onError).not.toHaveBeenCalled();
+        await servers.stop();
+        await blocker.stop();
+    });
+
+    it('keeps a configured port over the default, and a taken configured port stays an error', async () => {
+        const blocker = new CallbackServer({
+            protocol: 'xmlrpc',
+            host: '127.0.0.1',
+            port: 0,
+            handler: recordingHandler(),
+        });
+        const taken = await blocker.start();
+        const probe = new CallbackServer({protocol: 'binrpc', host: '127.0.0.1', port: 0, handler: recordingHandler()});
+        const free = await probe.start();
+        await probe.stop();
+        const onFallback = vi.fn();
+        const servers = new CallbackServers({
+            handler: recordingHandler(),
+            host: '127.0.0.1',
+            ports: {xmlrpc: taken, binrpc: free},
+            // never bound: a configured port wins
+            defaultPorts: {xmlrpc: 2031, binrpc: 2032},
+            onFallback,
+        });
+        expect(await servers.ensure('binrpc')).toBe(free);
+        await expect(servers.ensure('xmlrpc')).rejects.toThrow(/xmlrpc callback server/);
+        expect(onFallback).not.toHaveBeenCalled();
+        await servers.stop();
+        await blocker.stop();
     });
 });

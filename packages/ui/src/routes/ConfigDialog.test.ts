@@ -418,4 +418,27 @@ describe('ConfigDialog', () => {
             expect(screen.getByTestId<HTMLInputElement>('config-auto-ack-unreach').checked).toBe(true);
         });
     });
+
+    /**
+     * Task 35: in the CCU addon a 0 stands for the addon's fixed callback port. The dialog says so,
+     * and saves the 0 it shows rather than the port it names.
+     */
+    it('says what a 0 callback port means where the host has default ports (task 35)', async () => {
+        transport.result('config.get', {...DEMO_CONFIG, callbackDefaultPorts: {xmlrpc: 2031, binrpc: 2032}});
+        await open(transport);
+        expect(screen.getByText('0 verwendet Port 2031 oder, wenn er belegt ist, einen freien')).toBeTruthy();
+        expect(screen.getByText('0 verwendet Port 2032 oder, wenn er belegt ist, einen freien')).toBeTruthy();
+        expect(screen.queryByText('0 wählt einen freien Port')).toBeNull();
+
+        await fireEvent.click(screen.getByTestId('config-auto-ack-unreach'));
+        await fireEvent.click(screen.getByTestId('config-save'));
+        await waitFor(() => {
+            expect(transport.lastCall('config.set')?.[0]?.callback).toMatchObject({xmlrpcPort: 0, binrpcPort: 0});
+        });
+    });
+
+    it('keeps "0 picks a free port" where the host has none', async () => {
+        await open(transport);
+        expect(screen.getAllByText('0 wählt einen freien Port')).toHaveLength(2);
+    });
 });

@@ -87,6 +87,11 @@ export interface InterfaceManagerOptions {
     readonly initBackoffMs?: number;
     /** Address to bind the callback servers to; `0.0.0.0` unless the addon says loopback. */
     readonly callbackHost?: string;
+    /**
+     * Task 35 (D-43): the callback ports taken while the connection's are `0`. The CCU addon sets a
+     * fixed pair; the desktop app, npm and Docker leave this out and keep the kernel's free port.
+     */
+    readonly defaultCallbackPorts?: {readonly xmlrpc: number; readonly binrpc: number};
     /** Injected by the tests. */
     readonly createClient?: (options: RpcClientOptions) => RpcClient;
     readonly createCallbackServers?: (handler: CallbackHandler) => CallbackServerSet;
@@ -145,8 +150,19 @@ export class InterfaceManager {
             handler,
             ...(this.#options.callbackHost === undefined ? {} : {host: this.#options.callbackHost}),
             ports: {xmlrpc: callback.xmlrpcPort, binrpc: callback.binrpcPort},
+            ...(this.#options.defaultCallbackPorts === undefined
+                ? {}
+                : {defaultPorts: this.#options.defaultCallbackPorts}),
             onError: (error) => {
                 this.#options.onNotice('error', `callback server: ${errorMessage(error)}`);
+            },
+            // a warning, not an error: the subscription works on the free port, only the fixed URL
+            // that keeps the handler lists short is gone until the next start
+            onFallback: (protocol, port, error) => {
+                this.#options.onNotice(
+                    'warn',
+                    `callback server: the default ${protocol} port ${String(port)} is taken, a free port is used until the next start (${errorMessage(error)})`,
+                );
             },
         });
     }

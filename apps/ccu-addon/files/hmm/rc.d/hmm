@@ -110,6 +110,15 @@ Start() {
     # an HMM_* environment mirror, and the command line below wins over all of them.
     HMM_PORT=8090
     HMM_LOG_LEVEL=info
+    # Task 35 (D-43): the callback ports the host takes while config.json says 0 - which it does
+    # until somebody sets ports in the settings dialog, and ports set there always win, because
+    # these two never reach config.json. Fixed instead of a new free port at every start: the
+    # process behind VirtualDevices keeps its handlers by URL and does not drop the entry of a
+    # backend that was killed (#144), while a fixed URL overwrites its own entry. A taken port is
+    # not fatal, the host logs it and takes a free one for that start. hmm.env may move them, or set
+    # 0 for a free port at every start. Why these two numbers: README, "Callback ports".
+    HMM_CALLBACK_XMLRPC_DEFAULT_PORT=2031
+    HMM_CALLBACK_BINRPC_DEFAULT_PORT=2032
     if [ -f $ENV_FILE ]; then
         set -a
         # shellcheck source=/dev/null
@@ -128,7 +137,7 @@ Start() {
     fi
     [ -n "$HMM_AUTH_MODE" ] && export HMM_AUTH_MODE
 
-    export HMM_PORT HMM_LOG_LEVEL
+    export HMM_PORT HMM_LOG_LEVEL HMM_CALLBACK_XMLRPC_DEFAULT_PORT HMM_CALLBACK_BINRPC_DEFAULT_PORT
 
     # not on the command line: an argument is world-readable in `ps`, the environment is not
     if ! HMM_TOKEN="$(Token)" || [ -z "$HMM_TOKEN" ]; then

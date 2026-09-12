@@ -106,6 +106,12 @@ export interface BackendOptions extends Omit<ConfigStoreOptions, 'version'> {
     /** Roots `data.file` may read from, keyed by the prefix the UI uses. */
     readonly fileRoots?: Readonly<Record<string, string>>;
     readonly callbackHost?: string;
+    /**
+     * Task 35 (D-43): the callback ports taken while the connection's are `0` - the CCU addon's fixed
+     * pair. A property of the host, not of the profile: it is never written to `config.json`, and
+     * `AppConfig.callbackDefaultPorts` reports it so the settings dialog can say what `0` means.
+     */
+    readonly defaultCallbackPorts?: {readonly xmlrpc: number; readonly binrpc: number};
     readonly rpcTimeoutMs?: number;
     readonly watchdogIntervalMs?: number;
     readonly serviceMessagePollMs?: number;
@@ -602,6 +608,9 @@ export class Backend {
                 this.#onCall(record);
             },
             ...(this.#options.callbackHost === undefined ? {} : {callbackHost: this.#options.callbackHost}),
+            ...(this.#options.defaultCallbackPorts === undefined
+                ? {}
+                : {defaultCallbackPorts: this.#options.defaultCallbackPorts}),
             ...(this.#options.rpcTimeoutMs === undefined ? {} : {rpcTimeoutMs: this.#options.rpcTimeoutMs}),
             ...(this.#options.watchdogIntervalMs === undefined
                 ? {}
@@ -970,7 +979,19 @@ export class Backend {
      */
 
     #configWithDetected(): AppConfig {
-        return this.#config.config;
+        return this.#withHostFacts(this.#config.config);
+    }
+
+    /**
+     * What the host adds to the stored configuration before anybody sees it: task 35's callback
+     * ports a `0` stands for. Added to every `AppConfig` that leaves the backend - `config.get`,
+     * `config.set` and both `config.changed` events - so the dialog never loses the hint on a save.
+     */
+    #withHostFacts(config: AppConfig): AppConfig {
+        const ports = this.#options.defaultCallbackPorts;
+        return ports === undefined
+            ? config
+            : {...config, callbackDefaultPorts: {xmlrpc: ports.xmlrpc, binrpc: ports.binrpc}};
     }
 
     async #setConfig(connection: unknown, options?: ConfigSetOptions): Promise<AppConfig> {
@@ -982,7 +1003,7 @@ export class Backend {
                 ? this.#stickyUnreachMessages()
                 : [];
         await this.#disconnect();
-        const config = await this.#config.setConnection(connection);
+        const config = this.#withHostFacts(await this.#config.setConnection(connection));
         this.#writeLog.setRpcLogFolder(config.connection.rpcLogFolder);
         if (config.connection.host !== previousHost) {
             await this.#caches.flush();
@@ -1060,7 +1081,7 @@ export class Backend {
         const discover = this.#options.discover ?? ((options) => discoverCcus(options));
         const found = await discover({tls: this.#config.connection.tls});
         this.#config.setDiscovered(found);
-        this.events.emit('config.changed', this.#config.config);
+        this.events.emit('config.changed', this.#withHostFacts(this.#config.config));
         return found;
     }
 

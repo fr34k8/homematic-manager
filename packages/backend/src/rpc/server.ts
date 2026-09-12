@@ -262,16 +262,23 @@ export class CallbackServer {
         return new Promise<number>((resolve, reject) => {
             const server = xmlrpc.createServer({host: this.host, port: this.#requestedPort});
             this.#xmlrpcServer = server;
+            let listening = false;
             server.on('error', (error: Error) => {
-                reject(
-                    connectionError(
-                        `xmlrpc callback server on port ${String(this.#requestedPort)}: ${error.message}`,
-                        error,
-                    ),
-                );
+                // a bind that fails is the rejection's to report, once; `onError` is for a server
+                // that is running
+                if (!listening) {
+                    reject(
+                        connectionError(
+                            `xmlrpc callback server on port ${String(this.#requestedPort)}: ${error.message}`,
+                            error,
+                        ),
+                    );
+                    return;
+                }
                 this.#onError(error);
             });
             server.on('listening', () => {
+                listening = true;
                 const address = server.httpServer.address();
                 resolve(typeof address === 'object' && address !== null ? address.port : this.#requestedPort);
             });
@@ -290,16 +297,21 @@ export class CallbackServer {
         return new Promise<number>((resolve, reject) => {
             const server = binrpc.createServer({host: this.host, port: this.#requestedPort});
             this.#binrpcServer = server;
+            let listening = false;
             server.on('error', (error: Error) => {
-                reject(
-                    connectionError(
-                        `binrpc callback server on port ${String(this.#requestedPort)}: ${error.message}`,
-                        error,
-                    ),
-                );
+                if (!listening) {
+                    reject(
+                        connectionError(
+                            `binrpc callback server on port ${String(this.#requestedPort)}: ${error.message}`,
+                            error,
+                        ),
+                    );
+                    return;
+                }
                 this.#onError(error);
             });
             server.on('listening', () => {
+                listening = true;
                 const address = server.server.address();
                 resolve(typeof address === 'object' && address !== null ? address.port : this.#requestedPort);
             });
@@ -374,18 +386,31 @@ export class CallbackServers implements CallbackServerSet {
     readonly #handler: CallbackHandler;
     readonly #host: string;
     readonly #ports: {xmlrpc: number; binrpc: number};
+    readonly #defaultPorts: {xmlrpc: number; binrpc: number};
     readonly #onError: (error: unknown) => void;
+    readonly #onFallback: (protocol: RpcProtocol, port: number, error: unknown) => void;
 
     constructor(options: {
         handler: CallbackHandler;
         host?: string;
+        /** The configured ports; `0` means none is configured. */
         ports: {xmlrpc: number; binrpc: number};
+        /**
+         * Task 35 (D-43): the port a protocol takes while its configured port is `0` - the CCU
+         * addon's fixed pair, so that a restart registers the very URL it registered before.
+         * Unlike a configured port, a default that is taken is no error: the server falls back to
+         * a free port for this start, and `onFallback` hears about it once.
+         */
+        defaultPorts?: {xmlrpc: number; binrpc: number};
         onError?: (error: unknown) => void;
+        onFallback?: (protocol: RpcProtocol, port: number, error: unknown) => void;
     }) {
         this.#handler = options.handler;
         this.#host = options.host ?? '0.0.0.0';
         this.#ports = options.ports;
+        this.#defaultPorts = options.defaultPorts ?? {xmlrpc: 0, binrpc: 0};
         this.#onError = options.onError ?? (() => undefined);
+        this.#onFallback = options.onFallback ?? (() => undefined);
     }
 
     /** Starts the server for a protocol if it is not running yet, and returns its port. */
@@ -394,10 +419,24 @@ export class CallbackServers implements CallbackServerSet {
         if (running) {
             return running.port;
         }
+        const configured = protocol === 'binrpc' ? this.#ports.binrpc : this.#ports.xmlrpc;
+        const preferred = protocol === 'binrpc' ? this.#defaultPorts.binrpc : this.#defaultPorts.xmlrpc;
+        if (configured !== 0 || preferred === 0) {
+            return this.#start(protocol, configured);
+        }
+        try {
+            return await this.#start(protocol, preferred);
+        } catch (error) {
+            this.#onFallback(protocol, preferred, error);
+            return this.#start(protocol, 0);
+        }
+    }
+
+    async #start(protocol: RpcProtocol, port: number): Promise<number> {
         const server = new CallbackServer({
             protocol,
             host: this.#host,
-            port: protocol === 'binrpc' ? this.#ports.binrpc : this.#ports.xmlrpc,
+            port,
             handler: this.#handler,
             onError: this.#onError,
         });

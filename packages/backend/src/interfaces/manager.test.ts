@@ -1,3 +1,5 @@
+import net from 'node:net';
+
 import {describe, expect, it, vi} from 'vitest';
 
 import type {ConnectionConfig, InterfaceState, RpcProtocol, RpcValue} from '@homematic-manager/core';
@@ -292,6 +294,111 @@ describe('InterfaceManager.start', () => {
             connection: {host: '127.0.0.1', local: true, callback: {ip: '10.0.0.9', xmlrpcPort: 0, binrpcPort: 0}},
         });
         expect(h.manager.callbackIp).toBe('10.0.0.9');
+    });
+});
+
+/**
+ * Task 35 (D-43): the CCU addon starts the host with a fixed callback pair for the ports the
+ * configuration leaves at 0. Real sockets on the loopback here, because the fallback is a bind that
+ * fails.
+ */
+describe('the default callback ports', () => {
+    function listening(port = 0): Promise<net.Server> {
+        return new Promise((resolve, reject) => {
+            const server = net.createServer();
+            server.once('error', reject);
+            server.listen(port, '127.0.0.1', () => {
+                resolve(server);
+            });
+        });
+    }
+
+    function portOf(server: net.Server): number {
+        const address = server.address();
+        return typeof address === 'object' && address !== null ? address.port : 0;
+    }
+
+    function closed(server: net.Server): Promise<void> {
+        return new Promise((resolve) => {
+            server.close(() => {
+                resolve();
+            });
+        });
+    }
+
+    /** Two ports that were free a moment ago, and different from each other. */
+    async function freePorts(): Promise<[number, number]> {
+        const first = await listening();
+        const second = await listening();
+        const ports: [number, number] = [portOf(first), portOf(second)];
+        await closed(first);
+        await closed(second);
+        return ports;
+    }
+
+    function subscriber(
+        callback: {xmlrpcPort: number; binrpcPort: number},
+        defaultCallbackPorts: {xmlrpc: number; binrpc: number},
+    ) {
+        const clients = fakeClients();
+        const notices: {level: string; message: string}[] = [];
+        const manager = new InterfaceManager({
+            connection: normaliseConnection({
+                host: '127.0.0.1',
+                local: true,
+                interfaces: ['BidCos-RF', 'HmIP-RF'],
+                callback: {ip: '', ...callback},
+            }),
+            handler: {} as CallbackHandler,
+            onStateChanged: () => undefined,
+            onNotice: (level, message) => notices.push({level, message}),
+            watchdogIntervalMs: 0,
+            createClient: clients.create,
+            probe: () => Promise.resolve(true),
+            callbackHost: '127.0.0.1',
+            defaultCallbackPorts,
+        });
+        const urls = (): unknown[] =>
+            clients.calls
+                .filter((call) => call.method === 'init' && call.params[1] !== '')
+                .map((call) => call.params[0])
+                .sort();
+        return {manager, notices, urls};
+    }
+
+    it('registers the default pair while the configured ports are 0', async () => {
+        const [xmlrpc, binrpc] = await freePorts();
+        const s = subscriber({xmlrpcPort: 0, binrpcPort: 0}, {xmlrpc, binrpc});
+        await s.manager.start();
+        expect(s.urls()).toEqual([`http://127.0.0.1:${String(xmlrpc)}`, `xmlrpc_bin://127.0.0.1:${String(binrpc)}`]);
+        expect(s.notices.filter((notice) => notice.level !== 'info')).toEqual([]);
+        await s.manager.stop();
+    });
+
+    it('falls back to a free port with one warning when a default port is taken', async () => {
+        const blocker = await listening();
+        const taken = portOf(blocker);
+        const [binrpc] = await freePorts();
+        const s = subscriber({xmlrpcPort: 0, binrpcPort: 0}, {xmlrpc: taken, binrpc});
+        await s.manager.start();
+        const [http, bin] = s.urls();
+        expect(http).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+        expect(http).not.toBe(`http://127.0.0.1:${String(taken)}`);
+        expect(bin).toBe(`xmlrpc_bin://127.0.0.1:${String(binrpc)}`);
+        const warnings = s.notices.filter((notice) => notice.level === 'warn');
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]?.message).toContain(`the default xmlrpc port ${String(taken)} is taken`);
+        expect(s.notices.filter((notice) => notice.level === 'error')).toEqual([]);
+        await s.manager.stop();
+        await closed(blocker);
+    });
+
+    it("keeps the user's configured ports over the default pair", async () => {
+        const [xmlrpc, binrpc] = await freePorts();
+        const s = subscriber({xmlrpcPort: xmlrpc, binrpcPort: binrpc}, {xmlrpc: 2031, binrpc: 2032});
+        await s.manager.start();
+        expect(s.urls()).toEqual([`http://127.0.0.1:${String(xmlrpc)}`, `xmlrpc_bin://127.0.0.1:${String(binrpc)}`]);
+        await s.manager.stop();
     });
 });
 

@@ -167,6 +167,18 @@ export const OPTIONS = {
         describe: 'fixed port for the binrpc callback server; must differ from the xmlrpc one',
         defaultDescription: '0, a free port',
     },
+    'callback-xmlrpc-default-port': {
+        type: 'number',
+        describe:
+            'xmlrpc callback port while the configured one is 0; a free port when it is taken (the CCU addon sets 2031)',
+        defaultDescription: 'none, a free port',
+    },
+    'callback-binrpc-default-port': {
+        type: 'number',
+        describe:
+            'binrpc callback port while the configured one is 0; a free port when it is taken (the CCU addon sets 2032)',
+        defaultDescription: 'none, a free port',
+    },
     'idle-unsubscribe': {
         type: 'string',
         describe: 'drop the event subscriptions after this long with no page open (5m, 300s, 0 to disable)',
@@ -233,6 +245,9 @@ export interface WebOptions {
     readonly callbackIp: string | undefined;
     readonly callbackXmlrpcPort: number | undefined;
     readonly callbackBinrpcPort: number | undefined;
+    /** Task 35 (D-43): the CCU addon's fixed callback ports, taken while the configured ones are `0`. */
+    readonly callbackXmlrpcDefaultPort: number | undefined;
+    readonly callbackBinrpcDefaultPort: number | undefined;
     readonly demo: boolean;
     /** D-31, in milliseconds; `0` disables the idle unsubscribe. */
     readonly idleUnsubscribeMs: number;
@@ -362,6 +377,20 @@ export function parseOptions(argv: readonly string[], env: NodeJS.ProcessEnv = p
         const value = raw[name] ?? (OPTIONS[name] as OptionDefinition).default;
         return value === undefined ? undefined : Number(value);
     };
+    const port = (name: OptionName): number | undefined => {
+        const value = number(name);
+        if (value !== undefined && !(Number.isInteger(value) && value >= 0 && value <= 65535)) {
+            throw new CliError(`--${name}: "${String(value)}" is not a port`);
+        }
+        return value;
+    };
+    const callbackXmlrpcDefaultPort = port('callback-xmlrpc-default-port');
+    const callbackBinrpcDefaultPort = port('callback-binrpc-default-port');
+    if (callbackXmlrpcDefaultPort !== undefined && callbackXmlrpcDefaultPort !== 0) {
+        if (callbackXmlrpcDefaultPort === callbackBinrpcDefaultPort) {
+            throw new CliError('--callback-xmlrpc-default-port and --callback-binrpc-default-port must differ');
+        }
+    }
     const logLevel = string('log-level');
     return {
         port: Number(raw['port'] ?? OPTIONS.port.default),
@@ -382,6 +411,8 @@ export function parseOptions(argv: readonly string[], env: NodeJS.ProcessEnv = p
         callbackIp: string('callback-ip'),
         callbackXmlrpcPort: number('callback-xmlrpc-port'),
         callbackBinrpcPort: number('callback-binrpc-port'),
+        callbackXmlrpcDefaultPort,
+        callbackBinrpcDefaultPort,
         demo: boolean('demo') as boolean,
         idleUnsubscribeMs: parseDuration(string('idle-unsubscribe') as string, '--idle-unsubscribe'),
         logLevel: isLogLevel(logLevel) ? logLevel : 'info',

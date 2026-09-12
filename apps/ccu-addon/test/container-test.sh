@@ -143,6 +143,13 @@ check "the service was started by the live install" "running" "$(dex '/usr/local
 check "the pidfile is inside the addon tree, where the CCU3 install chroot can see it" "OK" \
     "$(dex 'test -s /usr/local/addons/hmm/var/hmm.pid && echo OK')"
 absent "and nothing was written to /var/run" "hmm.pid" "$(dex 'ls /var/run 2>/dev/null')"
+# task 35: the fixed callback ports travel from rc.d's environment into the host
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    dex 'grep -q "callback: default ports" /usr/local/addons/hmm/var/hmm.log' >/dev/null && break
+    sleep 1
+done
+check "the host takes the addon's fixed callback ports while config.json says 0 (task 35)" \
+    "default ports xmlrpc=2031 binrpc=2032" "$(dex 'cat /usr/local/addons/hmm/var/hmm.log')"
 
 echo
 echo "the Zusatzsoftware page (rc.d/hmm info)"

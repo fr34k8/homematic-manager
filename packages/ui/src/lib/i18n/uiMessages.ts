@@ -178,6 +178,11 @@ export const UI_MESSAGES: MessageCatalogue = {
     Discover: {de: 'Suchen', en: 'Discover'},
     'Free port': {de: 'freier Port', en: 'Free port'},
     '0 picks a free port': {de: '0 wählt einen freien Port', en: '0 picks a free port'},
+    // Task 35: in the CCU addon a 0 means the addon's fixed port, and a free one only when it is taken
+    '0 uses port {port}, or a free one when it is taken': {
+        de: '0 verwendet Port {port} oder, wenn er belegt ist, einen freien',
+        en: '0 uses port {port}, or a free one when it is taken',
+    },
     Dismiss: {de: 'Ausblenden', en: 'Dismiss'},
     // The toast stack collapses everything past the fifth into this counter (D-34).
     '{count} more': {

@@ -65,6 +65,7 @@ hard-coding it.
 | `--local` | - | we run on the CCU itself: talk to the interface processes directly |
 | `--callback-ip` | auto | address the interfaces call back to; needed where this host cannot see it (Docker) |
 | `--callback-xmlrpc-port`, `--callback-binrpc-port` | free ports | fixed callback ports, so a container can publish them |
+| `--callback-xmlrpc-default-port`, `--callback-binrpc-default-port` | - | callback ports while the configured ones are 0, a free port when one is taken (the CCU addon: 2031, 2032; never written to the configuration) |
 | `--demo` | off | serve the UI on its demo fixture and start no backend |
 | `--log-level` | `info` | `error`, `warn`, `info`, `debug` |
 | `--install` / `--uninstall` | - | systemd service; `--purge` also deletes the state |

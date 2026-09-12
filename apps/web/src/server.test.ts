@@ -539,6 +539,65 @@ describe('the connection options', () => {
         const after = await backendOf(second).request('config.get');
         expect(after.connection).toEqual(before.connection);
     });
+
+    /**
+     * Task 35: rc.d/hmm starts the host with `--local --ccu 127.0.0.1` and the addon's default
+     * callback ports at every start, the first one after an update included. A box whose user set
+     * ports in the settings dialog keeps them, and the default pair never lands in `config.json` -
+     * not over a user's ports, and not over a 0.
+     */
+    for (const [label, configured] of [
+        ["a user's callback ports", {xmlrpcPort: 2345, binrpcPort: 2346}],
+        ['the 0 of a box nobody configured', {xmlrpcPort: 0, binrpcPort: 0}],
+    ] as const) {
+        it(`keeps ${label} when the addon starts with its default pair (task 35)`, async () => {
+            const file = path.join(dataDir, 'config.json');
+            const stored = {
+                version: '3.0.0-beta.12',
+                connection: {
+                    host: '127.0.0.1',
+                    local: true,
+                    interfaces: ['BidCos-RF'],
+                    autoDetect: false,
+                    callback: {ip: '', ...configured},
+                },
+            };
+            await fs.mkdir(dataDir, {recursive: true});
+            await fs.writeFile(file, JSON.stringify(stored));
+            // nothing binds: the defaults of a real addon must not collide with a test run
+            const servers = {
+                ensure: () => Promise.resolve(40001),
+                port: () => 40001,
+                callbackUrl: (protocol: string, ip: string) =>
+                    `${protocol === 'binrpc' ? 'xmlrpc_bin://' : 'http://'}${ip}:40001`,
+                stop: () => Promise.resolve(),
+            };
+            const host = await start({
+                ccu: '127.0.0.1',
+                local: true,
+                callbackXmlrpcDefaultPort: 2031,
+                callbackBinrpcDefaultPort: 2032,
+                backendOptions: {
+                    interfaceManagerOptions: {
+                        portOverride: () => 1,
+                        watchdogIntervalMs: 0,
+                        createCallbackServers: () => servers,
+                    },
+                },
+            });
+            const config = await backendOf(host).request('config.get');
+            expect(config.connection.callback).toEqual({ip: '', ...configured});
+            expect(config.callbackDefaultPorts).toEqual({xmlrpc: 2031, binrpc: 2032});
+            const written = await fs.readFile(file, 'utf8');
+            expect(written).not.toContain('2031');
+            expect((JSON.parse(written) as typeof stored).connection.callback).toEqual({ip: '', ...configured});
+        });
+    }
+
+    it('names no default callback ports when it is started without them', async () => {
+        const host = await start();
+        expect(await backendOf(host).request('config.get')).not.toHaveProperty('callbackDefaultPorts');
+    });
 });
 
 describe('the keepalive that a reverse proxy needs (task 13)', () => {

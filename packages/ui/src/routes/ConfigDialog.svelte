@@ -41,6 +41,8 @@
      * button that did nothing.
      */
     const stored = $derived(stores.app.config?.connection);
+    /** Task 35: the ports a `0` stands for in the CCU addon; absent everywhere else. */
+    const callbackDefaults = $derived(stores.app.config?.callbackDefaultPorts);
     const dirty = $derived(
         clearCaches ||
             draft === undefined ||
@@ -421,7 +423,13 @@
                                         min="0"
                                         bind:value={draft.callback.xmlrpcPort}
                                     />
-                                    <small class="hmm-config-help">{t('0 picks a free port')}</small>
+                                    <small class="hmm-config-help"
+                                        >{callbackDefaults && callbackDefaults.xmlrpc !== 0
+                                            ? t('0 uses port {port}, or a free one when it is taken', {
+                                                  port: String(callbackDefaults.xmlrpc),
+                                              })
+                                            : t('0 picks a free port')}</small
+                                    >
                                 </span>
                             </label>
 
@@ -434,7 +442,13 @@
                                         min="0"
                                         bind:value={draft.callback.binrpcPort}
                                     />
-                                    <small class="hmm-config-help">{t('0 picks a free port')}</small>
+                                    <small class="hmm-config-help"
+                                        >{callbackDefaults && callbackDefaults.binrpc !== 0
+                                            ? t('0 uses port {port}, or a free one when it is taken', {
+                                                  port: String(callbackDefaults.binrpc),
+                                              })
+                                            : t('0 picks a free port')}</small
+                                    >
                                 </span>
                             </label>
                         </div>

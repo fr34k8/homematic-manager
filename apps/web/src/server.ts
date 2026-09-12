@@ -151,6 +151,13 @@ export interface WebHostOptions {
     /** Fixed callback ports, so a container can publish them. `0` picks a free one. */
     readonly callbackXmlrpcPort?: number | undefined;
     readonly callbackBinrpcPort?: number | undefined;
+    /**
+     * Task 35 (D-43): the callback ports taken while the configuration says `0` - the CCU addon's
+     * fixed pair. Handed to the backend and never written to `config.json`, so a port the user set
+     * in the settings dialog always wins and no update of the addon can overwrite it.
+     */
+    readonly callbackXmlrpcDefaultPort?: number | undefined;
+    readonly callbackBinrpcDefaultPort?: number | undefined;
     /** How long `close()` waits for `backend.stop()`. */
     readonly shutdownTimeoutMs?: number;
     /** How often an idle api socket is pinged; `0` turns the heartbeat off. */
@@ -245,6 +252,12 @@ export async function createWebHost(options: WebHostOptions = {}): Promise<WebHo
     let backend: Backend | undefined;
     if (!demo) {
         await ensureDataDir(dataDir);
+        const defaultCallbackPorts = callbackDefaults(options);
+        if (defaultCallbackPorts !== undefined) {
+            log.info(
+                `callback: default ports xmlrpc=${String(defaultCallbackPorts.xmlrpc)} binrpc=${String(defaultCallbackPorts.binrpc)} while the configuration says 0`,
+            );
+        }
         backend = await Backend.open({
             dataDir,
             version: options.version ?? packageVersion(),
@@ -253,6 +266,7 @@ export async function createWebHost(options: WebHostOptions = {}): Promise<WebHo
             // reports them, and Electron's in-process transport reports none - so an Electron
             // window can never be idled out however the backend is configured.
             ...(options.idleUnsubscribeMs === undefined ? {} : {idleUnsubscribeMs: options.idleUnsubscribeMs}),
+            ...(defaultCallbackPorts === undefined ? {} : {defaultCallbackPorts}),
             ...options.backendOptions,
         });
         backend.on('notice', (notice) => {
@@ -759,6 +773,13 @@ function upstreamOf(connection: AppConfig['connection'] | undefined): ImageUpstr
         tls: connection.tls,
         ...(connection.auth ? {auth: connection.auth} : {}),
     };
+}
+
+/** Task 35: the default pair, or nothing when neither port is set to anything but `0`. */
+function callbackDefaults(options: WebHostOptions): {xmlrpc: number; binrpc: number} | undefined {
+    const xmlrpc = options.callbackXmlrpcDefaultPort ?? 0;
+    const binrpc = options.callbackBinrpcDefaultPort ?? 0;
+    return xmlrpc === 0 && binrpc === 0 ? undefined : {xmlrpc, binrpc};
 }
 
 /** `--ccu`, `--local` and the callback options win over what `config.json` holds. */

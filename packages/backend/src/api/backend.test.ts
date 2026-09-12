@@ -4,9 +4,10 @@ import path from 'node:path';
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
-import type {ApiEventName, DeviceDescription, RpcValue} from '@homematic-manager/core';
+import type {ApiEventName, AppConfig, DeviceDescription, RpcValue} from '@homematic-manager/core';
 
 import {BackendError} from '../errors.js';
+import {InterfaceManager, type InterfaceManagerOptions} from '../interfaces/manager.js';
 import {META_READ_SCRIPT} from '../rega/scripts.js';
 import type {RpcClient, RpcClientOptions, RpcOutValue} from '../rpc/client.js';
 import type {CallbackHandler, CallbackServerSet} from '../rpc/server.js';
@@ -1253,6 +1254,40 @@ describe('paramsets, values and links', () => {
     it('cancels a queued bulk write', async () => {
         const h = await harness();
         expect(await h.backend.request('write.cancel')).toBe(0);
+        await h.backend.stop();
+    });
+
+    it('hands the default callback ports to the interface manager and names them in every configuration it reports (task 35)', async () => {
+        let managerOptions: InterfaceManagerOptions | undefined;
+        const h = await harness({
+            backend: {
+                defaultCallbackPorts: {xmlrpc: 2031, binrpc: 2032},
+                createInterfaceManager: (options) => {
+                    managerOptions = options;
+                    return new InterfaceManager(options);
+                },
+            },
+        });
+        const pair = {xmlrpc: 2031, binrpc: 2032};
+        expect(managerOptions?.defaultCallbackPorts).toEqual(pair);
+        const config = await h.backend.request('config.get');
+        expect(config.callbackDefaultPorts).toEqual(pair);
+        // a fact of the host, not a setting: the connection keeps its 0, and the profile never sees the pair
+        expect(config.connection.callback).toEqual({ip: '192.168.1.5', xmlrpcPort: 0, binrpcPort: 0});
+        expect((await h.backend.request('config.set', config.connection)).callbackDefaultPorts).toEqual(pair);
+        await h.backend.request('config.discover');
+        const changed = h.events
+            .filter((event) => event.name === 'config.changed')
+            .map((event) => (event.payload as AppConfig).callbackDefaultPorts);
+        expect(changed.length).toBeGreaterThanOrEqual(3);
+        expect(changed).toEqual(changed.map(() => pair));
+        expect(await fs.readFile(path.join(dir, 'config.json'), 'utf8')).not.toContain('callbackDefaultPorts');
+        await h.backend.stop();
+    });
+
+    it('names no default callback ports where the host has none', async () => {
+        const h = await harness();
+        expect(await h.backend.request('config.get')).not.toHaveProperty('callbackDefaultPorts');
         await h.backend.stop();
     });
 

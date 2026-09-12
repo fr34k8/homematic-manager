@@ -261,6 +261,8 @@ HMM_PORT=8090        # loopback only; change hmm.conf with it, or re-run update_
 HMM_LOG_LEVEL=info   # error, warn, info, debug
 HMM_AUTH_MODE=token  # token (default) or rega - see "The optional login (D-32)"
 HMM_SESSION_TTL=24h  # with rega: how long a login lasts without being used
+HMM_CALLBACK_XMLRPC_DEFAULT_PORT=2031  # the callback ports while the settings say 0, see "Callback ports"
+HMM_CALLBACK_BINRPC_DEFAULT_PORT=2032  # (set by the rc.d script; 0 here: a free port at every start)
 ```
 
 Every option of the host has an `HMM_*` environment mirror
@@ -268,6 +270,59 @@ Every option of the host has an `HMM_*` environment mirror
 passes on the command line — `--local --ccu 127.0.0.1 --base /addons/hmm --host 127.0.0.1
 --no-issue-cookie --data-dir /usr/local/hmm` — wins over the file, because those are not settings
 but the definition of "we are the addon".
+
+## Callback ports
+
+The interface processes call the backend back on two ports, one for XML-RPC (`hmipserver`, the group
+process behind `VirtualDevices`) and one for BIN-RPC (`rfd`, `hs485d`). In the addon they are **fixed by
+default: 2031 for XML-RPC, 2032 for BIN-RPC** (D-43, #144). The desktop app, npm and Docker keep the
+free port the kernel picks.
+
+Why fixed: the group process behind `VirtualDevices` keeps its handlers by URL and does not drop the
+entry of a backend that ended without `init(url, '')` — a `kill -9` after the 15 s of `rc.d/hmm stop`,
+a power cut, the OOM killer, an interface process restarting under a running backend. With a new free
+port at every start each of those left one more entry in `/var/HMSERVER.handlers`; with a fixed port
+the next start registers the same URL and replaces its own entry.
+
+How it works:
+
+- `rc.d/hmm` sets `HMM_CALLBACK_XMLRPC_DEFAULT_PORT=2031` and `HMM_CALLBACK_BINRPC_DEFAULT_PORT=2032`
+  before it reads `etc/hmm.env`, so `hmm.env` can move them, or set `0` for a free port at every start.
+- They are used only while the settings dialog says `0` for a port, which is its default, and they are
+  never written to `config.json`. **Ports set in the settings dialog always win**, and no addon update
+  can overwrite them. The dialog says what `0` means in the addon: "0 uses port 2031, or a free one when
+  it is taken".
+- The host logs `callback: default ports xmlrpc=2031 binrpc=2032 while the configuration says 0` at
+  start.
+- **A taken default port is not fatal**: the log says `callback server: the default xmlrpc port 2031 is
+  taken, a free port is used until the next start (...)`, once, and the backend subscribes on a free
+  port. A port set in the settings dialog that is taken stays an error, as it always was.
+- The URLs registered are `http://127.0.0.1:2031` and `xmlrpc_bin://127.0.0.1:2032` (#144). No firewall
+  rule is needed on any of the firmwares: their firewalls accept everything on `lo`, and nothing outside
+  the box has to reach these ports.
+
+How the two were chosen — `netstat -lntup` on three openccu-lite boxes in the lab on 2026-09-12 (x86_64,
+Raspberry Pi 3 and Pi 4, with RedMatic, Mosquitto, hm2mqtt.js and this addon installed), their firewall
+rules, a connect check of the two candidates on a stock OpenCCU, and the lighttpd and firewall
+configuration of the OpenCCU tree. Taken, and therefore avoided:
+
+| Ports | Used by |
+| --- | --- |
+| 22, 80, 443 | sshd, lighttpd |
+| 1999, 2000, 2001, 2002, 2010, 8181, 9292; 41999, 42000, 42001, 42010, 48181, 49292 | lighttpd, the CCU's remote API ports (plain; TLS) |
+| 8183, udp 1998, udp 8182 | ReGaHSS, the authentication daemon, `hss_led` |
+| 32000, 32001, 32010, 39292, 9293, 9294, udp 43438, udp 43439, udp 1900 | `hs485d`, `rfd`, `hmipserver`, `eq3configd`, `ssdpd` |
+| 2121, 2122 | occulited on openccu-lite, CCU-Jack on a CCU |
+| 1880, 1883–1886, 8883, 8884, udp 5540 | RedMatic's Node-RED, Mosquitto, Matter |
+| 2040–2091 | node-red-contrib-ccu, which picks its callback pair at random in this range |
+| 2126, 2127 | hm2mqtt.js |
+| 8088, 9099 | firewall rules an addon left on a box converted from OpenCCU |
+| 8090 | this addon's own HTTP port (`HMM_PORT`) |
+| 32768–60999 | the kernel's ephemeral range, where every free port comes from |
+
+`HMM_PORT` is deliberately not next to them: the backend starts its callback servers before its HTTP
+listener, so a callback port right beside it would take the port from a user who moves `HMM_PORT` up by
+one — and cost the UI, not the callback.
 
 ## Idle unsubscribe
 

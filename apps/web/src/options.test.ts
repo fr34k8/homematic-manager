@@ -73,6 +73,43 @@ describe('parseOptions', () => {
         expect(none.callbackXmlrpcPort).toBeUndefined();
     });
 
+    it('reads the default callback ports the CCU addon hands over (task 35)', () => {
+        const values = parseOptions([], {
+            ...noEnv,
+            HMM_CALLBACK_XMLRPC_DEFAULT_PORT: '2031',
+            HMM_CALLBACK_BINRPC_DEFAULT_PORT: '2032',
+        });
+        expect(values.callbackXmlrpcDefaultPort).toBe(2031);
+        expect(values.callbackBinrpcDefaultPort).toBe(2032);
+        // the command line wins over the environment, as for every option, and 0 is "no default"
+        const cli = parseOptions(['--callback-xmlrpc-default-port', '0'], {
+            ...noEnv,
+            HMM_CALLBACK_XMLRPC_DEFAULT_PORT: '2031',
+        });
+        expect(cli.callbackXmlrpcDefaultPort).toBe(0);
+        const none = parseOptions([], noEnv);
+        expect(none.callbackXmlrpcDefaultPort).toBeUndefined();
+        expect(none.callbackBinrpcDefaultPort).toBeUndefined();
+    });
+
+    it('refuses a default callback port that is no port, or one port for both', () => {
+        expect(() => parseOptions(['--callback-xmlrpc-default-port', '70000'], noEnv)).toThrow(CliError);
+        expect(() => parseOptions(['--callback-binrpc-default-port=20.5'], noEnv)).toThrow('is not a port');
+        expect(() =>
+            parseOptions([], {
+                ...noEnv,
+                HMM_CALLBACK_XMLRPC_DEFAULT_PORT: '2031',
+                HMM_CALLBACK_BINRPC_DEFAULT_PORT: '2031',
+            }),
+        ).toThrow('must differ');
+        const off = parseOptions([], {
+            ...noEnv,
+            HMM_CALLBACK_XMLRPC_DEFAULT_PORT: '0',
+            HMM_CALLBACK_BINRPC_DEFAULT_PORT: '0',
+        });
+        expect(off.callbackBinrpcDefaultPort).toBe(0);
+    });
+
     it('reads long options with a space and with an equals sign', () => {
         expect(parseOptions(['--port', '9000'], noEnv).port).toBe(9000);
         expect(parseOptions(['--port=9000'], noEnv).port).toBe(9000);

@@ -67,7 +67,11 @@ export interface ConnectionConfig {
      * from `host`, `tls` and `local`", which is what every real installation wants.
      */
     metaUrl?: string;
-    /** Address and ports the interface processes call back to; `0` picks free ports. */
+    /**
+     * Address and ports the interface processes call back to. A port of `0` is "none configured":
+     * the host's default port where it has one (the CCU addon's fixed pair, task 35), a free port
+     * from the kernel everywhere else.
+     */
     callback: {ip: string; xmlrpcPort: number; binrpcPort: number};
     /**
      * The language the UI starts in, or `auto`/absent for "the browser decides" (D-36).
@@ -117,6 +121,12 @@ export interface AppConfig {
     localAddresses: string[];
     /** CCUs found by UDP discovery (host names or addresses with what answered). */
     discovered: DiscoveredCcu[];
+    /**
+     * Task 35 (D-43): the callback ports this host takes while `connection.callback` says `0`. Only
+     * the CCU addon has them; absent, a `0` is a free port. A property of the host, never written
+     * to the profile, so the settings dialog can say what `0` means without changing what it saves.
+     */
+    callbackDefaultPorts?: {xmlrpc: number; binrpc: number};
 }
 
 export interface DiscoveredCcu {
