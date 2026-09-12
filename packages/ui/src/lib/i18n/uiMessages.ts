@@ -536,6 +536,11 @@ export const UI_MESSAGES: MessageCatalogue = {
     Callback: {de: 'Rückruf', en: 'Callback'},
     Behaviour: {de: 'Verhalten', en: 'Behaviour'},
     'Configured interfaces': {de: 'Konfigurierte Schnittstellen', en: 'Configured interfaces'},
+    // B-27 (#135): an extra interface is only connected once it is ticked in the list above it
+    'An extra interface is connected once it is ticked here': {
+        de: 'Eine zusätzliche Schnittstelle wird verbunden, sobald sie hier angehakt ist',
+        en: 'An extra interface is connected once it is ticked here',
+    },
     'Host name or address of the CCU': {
         de: 'Hostname oder Adresse der CCU',
         en: 'Host name or address of the CCU',

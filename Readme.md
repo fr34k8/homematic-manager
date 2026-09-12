@@ -106,6 +106,8 @@ Dazu, quer über die Tabs:
   und selbstdefinierte Schnittstellen (Host, Port, Protokoll, Pfad). Damit lassen sich auch
   Schnittstellenprozesse einbinden, die nicht zur CCU gehören — etwa die virtuellen Geräte des
   [CCU-Jack](https://github.com/mdzio/ccu-jack): Protokoll `xmlrpc`, Port `2121`, Pfad `/RPC3`.
+  Verbunden wird eine solche Schnittstelle, wenn sie unter „Konfigurierte Schnittstellen“ angehakt
+  ist; eine neu hinzugefügte ist das von selbst.
 - **Helles und dunkles Design**, das der Systemeinstellung folgt, mit einem Schalter, der gemerkt
   wird.
 

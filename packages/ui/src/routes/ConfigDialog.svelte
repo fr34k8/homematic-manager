@@ -9,7 +9,6 @@
     import {
         callbackPinOption,
         DEFAULT_INTERFACES,
-        INTERFACE_NAMES,
         META_PROVIDERS,
         validateUserDefinedInterface,
     } from '@homematic-manager/core';
@@ -19,6 +18,7 @@
     import MultiSelect from '../lib/components/MultiSelect.svelte';
     import {getStores} from '../lib/stores/context.js';
     import {isHmipInterface} from '../lib/stores/suppression.js';
+    import {interfaceChoices, removeExtraTick, renameExtraTick} from './extraInterfaceTicks.js';
     import StickyUnreachQuestion from './StickyUnreachQuestion.svelte';
 
     interface Props {
@@ -91,15 +91,31 @@
                       rpcLogFolder: '',
                   };
             useAuth = draft.auth !== undefined;
+            // B-27: a saved row is ticked exactly when the profile says so, and nothing here changes that
+            const {extraInterfaces, interfaces} = draft;
+            heldTicks = extraInterfaces.map((extra) => interfaces.includes(extra.name));
         }
         if (!open) {
             draft = undefined;
         }
     });
 
+    /**
+     * B-27 (#135): the extra interfaces are offered as well. The list used to be the built-in names
+     * and whatever was ticked already, so an extra interface added here could never be ticked - and
+     * the backend connects only what is ticked.
+     */
     const interfaceOptions = $derived(
-        [...new Set([...INTERFACE_NAMES, ...(draft?.interfaces ?? [])])].map((name) => ({value: name, label: name})),
+        interfaceChoices(draft?.interfaces ?? [], draft?.extraInterfaces ?? []).map((name) => ({
+            value: name,
+            label: name,
+        })),
     );
+    /**
+     * Each extra-interface row's tick while its name cannot carry it - empty, or the name of a
+     * built-in interface or of another row (see `extraInterfaceTicks.ts`). Not rendered, so not state.
+     */
+    let heldTicks: boolean[] = [];
     const addressOptions = $derived(stores.app.config?.localAddresses ?? []);
     const discovered = $derived(stores.app.config?.discovered ?? []);
 
@@ -160,23 +176,47 @@
         discovering = false;
     }
 
+    /**
+     * B-27 (#135): a row added here is ticked from the start - whoever adds an interface wants it
+     * connected. A row has nothing to tick without a name, so the tick is held for it and lands in
+     * the interface list with the first character typed. A row loaded from the profile is never
+     * ticked by the dialog: its tick is what was saved.
+     */
     function addExtra(): void {
         if (!draft) {
             return;
         }
         const extra: UserDefinedInterface = {name: '', host: '', port: 2001, protocol: 'xmlrpc', path: ''};
         draft.extraInterfaces = [...draft.extraInterfaces, extra];
+        heldTicks = [...heldTicks, true];
+    }
+
+    /** B-27: the tick follows the name, in its place in the list. */
+    function renameExtra(index: number, name: string): void {
+        const extra = draft?.extraInterfaces[index];
+        if (!draft || !extra || extra.name === name) {
+            return;
+        }
+        const next = renameExtraTick(
+            draft.interfaces,
+            draft.extraInterfaces,
+            index,
+            extra.name,
+            name,
+            heldTicks[index] ?? false,
+        );
+        heldTicks[index] = next.ticked;
+        draft.extraInterfaces[index] = {...extra, name};
+        draft.interfaces = next.interfaces;
     }
 
     function removeExtra(index: number): void {
         if (!draft) {
             return;
         }
-        const removed = draft.extraInterfaces[index]?.name;
+        draft.interfaces = removeExtraTick(draft.interfaces, draft.extraInterfaces, index);
         draft.extraInterfaces = draft.extraInterfaces.filter((_entry, at) => at !== index);
-        if (removed !== undefined && removed !== '') {
-            draft.interfaces = draft.interfaces.filter((name) => name !== removed);
-        }
+        heldTicks = heldTicks.filter((_tick, at) => at !== index);
     }
 
     /**
@@ -557,6 +597,9 @@
                                         summary={(selected) => selected.join(', ')}
                                         placeholder={t('Select')}
                                     />
+                                    <small class="hmm-config-help" data-testid="config-interfaces-hint"
+                                        >{t('An extra interface is connected once it is ticked here')}</small
+                                    >
                                 </span>
                             </div>
 
@@ -708,7 +751,8 @@
             <!--
                 User-defined interfaces (#135, D-13): a CUxD on another port, a second rfd, a
                 Homegear. Anything the interface table does not know is described here, and the name
-                then appears in the interface list above. No protocol choice for the built-in ones
+                then appears in the interface list above - ticked when the row was added here, as
+                saved otherwise (B-27: it did not appear there at all). No protocol choice for the built-in ones
                 (D-28) - only an extra interface may declare `binrpc`, because only a non-CCU peer
                 can be reached that way. Full width because it is a table, not a form row.
             -->
@@ -721,7 +765,8 @@
                             class="hmm-input"
                             placeholder={t('Name')}
                             aria-label={`${t('Name')} ${String(index)}`}
-                            bind:value={extra.name}
+                            value={extra.name}
+                            oninput={(event) => renameExtra(index, event.currentTarget.value)}
                         />
                         <input
                             class="hmm-input"

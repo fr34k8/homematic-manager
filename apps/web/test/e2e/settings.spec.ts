@@ -148,6 +148,33 @@ test('the settings dialog shows the live configuration and saves it', async ({pa
     await expect(page.getByTestId('interface-select-summary')).toHaveAttribute('data-mark', 'ok');
 });
 
+/**
+ * #135: an extra interface is offered in the interface list and ticked as soon as it has a name,
+ * and it leaves the list with its row. Nothing is saved - the simulator has no CCU-Jack to connect.
+ */
+test('an extra interface is offered and ticked in the interface list once it has a name', async ({page, host}) => {
+    await page.goto(`${host.url}#/BidCos-RF/devices`);
+    await expect(page.getByTestId('devices-table')).toBeVisible();
+    await page.getByTestId('settings-button').click();
+    const dialog = page.getByTestId('config-dialog');
+    await expect(dialog).toHaveAttribute('open', '');
+
+    await page.getByTestId('config-extra-add').click();
+    const row = page.getByTestId('config-extra-0');
+    await row.getByLabel('Name 0').fill('CCU-Jack');
+
+    const picker = dialog.getByRole('button', {name: 'Interfaces', exact: true});
+    await expect(picker).toContainText('CCU-Jack');
+    await picker.click();
+    await expect(dialog.getByRole('option', {name: 'CCU-Jack'})).toHaveAttribute('aria-selected', 'true');
+    await picker.click();
+
+    await row.getByLabel('Remove 0').click();
+    await expect(picker).not.toContainText('CCU-Jack');
+    await picker.click();
+    await expect(dialog.getByRole('option', {name: 'CCU-Jack'})).toHaveCount(0);
+});
+
 test('the theme switch cycles system, light and dark and remembers the choice', async ({page, host}) => {
     await page.goto(host.url);
     await expect(page.getByTestId('app')).toBeVisible();

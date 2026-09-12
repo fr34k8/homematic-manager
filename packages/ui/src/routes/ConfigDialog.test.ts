@@ -1,3 +1,4 @@
+import {INTERFACE_NAMES} from '@homematic-manager/core';
 import {fireEvent, render, screen, waitFor, within} from '@testing-library/svelte';
 import {beforeEach, describe, expect, it} from 'vitest';
 
@@ -504,5 +505,165 @@ describe('ConfigDialog', () => {
         expect(screen.getByTestId('config-callback-ip-hint').textContent).toBe(
             'The address the interface processes call back to',
         );
+    });
+
+    /**
+     * B-27 (#135): the backend connects only the interfaces ticked in the list, and the list offered
+     * the built-in ones and whatever was ticked already - so a CCU-Jack added here could not be
+     * switched on at all.
+     */
+    describe('the extra interfaces in the interface list (B-27, #135)', () => {
+        const jack = {name: 'CCU-Jack', host: '127.0.0.1', port: 2121, protocol: 'xmlrpc' as const, path: '/RPC3'};
+
+        function withExtras(interfaces: string[], extraInterfaces: (typeof jack)[]): void {
+            transport.result('config.get', {
+                ...DEMO_CONFIG,
+                connection: {...DEMO_CONFIG.connection, interfaces, extraInterfaces},
+            });
+        }
+
+        function picker(): HTMLElement {
+            return within(screen.getByTestId('config-dialog')).getByLabelText('Schnittstellen', {selector: 'button'});
+        }
+
+        /** Opens the interface list, hands its entries to `inspect`, and closes it again. */
+        async function inList<T>(inspect: (entries: HTMLElement[]) => Promise<T> | T): Promise<T> {
+            const trigger = picker();
+            await fireEvent.click(trigger);
+            const root = trigger.closest<HTMLElement>('.hmm-multiselect')!;
+            const entries = await waitFor(() => {
+                const found = within(root).getAllByRole('option');
+                expect(found.length).toBeGreaterThan(0);
+                return found;
+            });
+            const result = await inspect(entries);
+            if (trigger.getAttribute('aria-expanded') === 'true') {
+                await fireEvent.click(trigger);
+            }
+            return result;
+        }
+
+        const nameOf = (entry: HTMLElement): string =>
+            entry.querySelector('span:not([aria-hidden])')?.textContent ?? '';
+
+        /** The interface list as `[name, ticked]` pairs. */
+        function listed(): Promise<[string, boolean][]> {
+            return inList((entries) =>
+                entries.map((entry): [string, boolean] => [
+                    nameOf(entry),
+                    entry.getAttribute('aria-selected') === 'true',
+                ]),
+            );
+        }
+
+        function toggle(name: string): Promise<void> {
+            return inList(async (entries) => {
+                await fireEvent.click(entries.find((entry) => nameOf(entry) === name)!);
+            });
+        }
+
+        async function typeName(index: number, ...values: string[]): Promise<void> {
+            const row = screen.getByTestId(`config-extra-${String(index)}`);
+            for (const value of values) {
+                await fireEvent.input(within(row).getByLabelText(`Name ${String(index)}`), {target: {value}});
+            }
+        }
+
+        const builtIn = (...ticked: string[]): [string, boolean][] =>
+            INTERFACE_NAMES.map((name): [string, boolean] => [name, ticked.includes(name)]);
+
+        it('offers a saved extra interface after the built-in ones, and leaves it unticked', async () => {
+            withExtras(['BidCos-RF', 'HmIP-RF'], [jack]);
+            await open(transport);
+
+            expect(await listed()).toEqual([...builtIn('BidCos-RF', 'HmIP-RF'), ['CCU-Jack', false]]);
+            // the profile did not tick it and the dialog did not either: there is nothing to save
+            expect(screen.getByTestId<HTMLButtonElement>('config-save').disabled).toBe(true);
+
+            // ticked once, by hand, it is saved and so connected
+            await toggle('CCU-Jack');
+            await fireEvent.click(screen.getByTestId('config-save'));
+            await waitFor(() => {
+                expect(transport.lastCall('config.set')?.[0]?.interfaces).toEqual(['BidCos-RF', 'HmIP-RF', 'CCU-Jack']);
+            });
+        });
+
+        it('ticks a newly added interface as it gets its name, and saves it', async () => {
+            withExtras(['BidCos-RF', 'HmIP-RF'], []);
+            await open(transport);
+            await fireEvent.click(screen.getByTestId('config-extra-add'));
+            const row = await waitFor(() => screen.getByTestId('config-extra-0'));
+            // a row without a name has nothing to tick yet
+            expect(await listed()).toEqual(builtIn('BidCos-RF', 'HmIP-RF'));
+
+            await typeName(0, 'C', 'CCU', 'CCU-Jack');
+            await fireEvent.input(within(row).getByLabelText('Host 0'), {target: {value: '127.0.0.1'}});
+            await fireEvent.input(within(row).getByLabelText('Port 0'), {target: {value: '2121'}});
+            await fireEvent.input(within(row).getByLabelText('Pfad 0'), {target: {value: '/RPC3'}});
+
+            // one entry for the name as it ended up, not one per keystroke
+            expect(await listed()).toEqual([...builtIn('BidCos-RF', 'HmIP-RF'), ['CCU-Jack', true]]);
+            await fireEvent.click(screen.getByTestId('config-save'));
+            await waitFor(() => {
+                expect(transport.lastCall('config.set')?.[0]?.interfaces).toEqual(['BidCos-RF', 'HmIP-RF', 'CCU-Jack']);
+            });
+            expect(transport.lastCall('config.set')?.[0]?.extraInterfaces).toEqual([jack]);
+        });
+
+        it('keeps a tick in its place when the interface is renamed', async () => {
+            withExtras(['BidCos-RF', 'Jack', 'HmIP-RF'], [{...jack, name: 'Jack'}]);
+            await open(transport);
+
+            await typeName(0, 'Jack-', 'CCU-Jack');
+            expect(await listed()).toEqual([...builtIn('BidCos-RF', 'HmIP-RF'), ['CCU-Jack', true]]);
+            await fireEvent.click(screen.getByTestId('config-save'));
+            await waitFor(() => {
+                expect(transport.lastCall('config.set')?.[0]?.interfaces).toEqual(['BidCos-RF', 'CCU-Jack', 'HmIP-RF']);
+            });
+        });
+
+        it('keeps a tick while the name is cleared and typed again, and no tick where there was none', async () => {
+            withExtras(
+                ['BidCos-RF', 'Jack'],
+                [
+                    {...jack, name: 'Jack'},
+                    {...jack, name: 'Other', port: 2122},
+                ],
+            );
+            await open(transport);
+
+            await typeName(0, '', 'CCU-Jack');
+            await typeName(1, '', 'Other-2');
+            expect(await listed()).toEqual([...builtIn('BidCos-RF'), ['CCU-Jack', true], ['Other-2', false]]);
+        });
+
+        it('takes the tick away with the row, and leaves a built-in tick the name passed through', async () => {
+            withExtras(['HmIP-RF'], []);
+            await open(transport);
+            await fireEvent.click(screen.getByTestId('config-extra-add'));
+            await waitFor(() => screen.getByTestId('config-extra-0'));
+
+            // on its way to "BidCos-RF-2" the name is a built-in one for a moment
+            await typeName(0, 'BidCos-RF', 'BidCos-RF-2');
+            expect(await listed()).toEqual([...builtIn('HmIP-RF'), ['BidCos-RF-2', true]]);
+
+            await fireEvent.click(within(screen.getByTestId('config-extra-0')).getByLabelText('Entfernen 0'));
+            expect(await listed()).toEqual(builtIn('HmIP-RF'));
+            // added and removed again: the dialog is back where it started
+            expect(screen.getByTestId<HTMLButtonElement>('config-save').disabled).toBe(true);
+        });
+
+        it('says under the list that an extra interface has to be ticked, in German and in English', async () => {
+            const stores = await open(transport);
+            const dialog = screen.getByTestId('config-dialog');
+            expect(dialog.textContent).toContain(
+                'Eine zusätzliche Schnittstelle wird verbunden, sobald sie hier angehakt ist',
+            );
+
+            stores.i18n.language = 'en';
+            await waitFor(() => {
+                expect(dialog.textContent).toContain('An extra interface is connected once it is ticked here');
+            });
+        });
     });
 });

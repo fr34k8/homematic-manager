@@ -208,6 +208,9 @@ export interface ResolvedInterface {
  * | `protocol` | `xmlrpc` |
  * | `path` | `/RPC3` |
  *
+ * and its name has to be in `ConnectionConfig.interfaces` as well, like any interface that is to be
+ * connected - the settings dialog ticks a newly added one there by itself.
+ *
  * No code is needed for it, which is why there is none: the only thing #135 wanted that was missing
  * is a `path`, and a user-defined interface has had one since task 4.
  */
