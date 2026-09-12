@@ -6,7 +6,10 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
-## [Unreleased]
+## [3.0.0-beta.14] — 2026-09-12
+
+Herbert-Testmann's two requests on beta.13 (#157, #147), the addon's start that said OK when nothing
+started, and the callback settings of the Docker image that the settings dialog could quietly undo.
 
 ### New
 
@@ -848,6 +851,7 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
+[3.0.0-beta.14]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.14
 [3.0.0-beta.13]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.13
 [3.0.0-beta.12]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.12
 [3.0.0-beta.11]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.11
