@@ -8,7 +8,23 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+### Changed
+
+- **Callback address and ports set at start win over the settings dialog.** In the Docker image
+  (`HMM_CALLBACK_XMLRPC_PORT`, `HMM_CALLBACK_BINRPC_PORT`, `HMM_CALLBACK_IP`) or with `--callback-*`
+  on the command line, the dialog now shows them read-only with the option that set them. Until now
+  a port changed there moved the listener away from the port the container publishes at once, and
+  was silently overwritten again at the next start. `config.json` keeps the value you saved.
+- **The interface popup shows the callback URL each interface was given**, and in the Docker image
+  adds "Publish this port unchanged" beside it. The image's ports are unchanged (2126/2127).
+
 ### Fixed
+
+- **A fixed callback port that is already in use is a clear error.** The log names the port and the
+  option that set it, and the interface popup says "Callback port N is in use". The interfaces of the
+  other protocol keep working, and a reconnect tries again. Before, a bare `EADDRINUSE` left every
+  interface disconnected. There is still no fallback to a free port for a fixed port — in a container
+  that is the port nobody published; the CCU addon's default ports keep theirs.
 
 - **The CCU addon says so when its backend did not start.** `rc.d/hmm start` answered "OK" as soon
   as the process was forked, so a backend that could not run looked started: on openccu-lite, where
