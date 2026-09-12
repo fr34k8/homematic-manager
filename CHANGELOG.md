@@ -8,6 +8,17 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
 
 ## [Unreleased]
 
+### New
+
+- **The columns only a sub-grid has can be resized too.** These are DIRECTION (and AES_ACTIVE on BidCos-RF) in the
+  channel rows of the devices table, and ← dBm / → dBm in the peer rows of the Funk tab. The handle works as in the
+  header: drag, double click to fit, arrow keys and Enter, and the right-click menu. One width applies to every
+  expanded sub-grid, so the rows stay aligned, and "Reset column widths" there resets only the sub-grid's columns.
+- **A cut-off column label, or a button in a cut-off cell, shows its full text on keyboard focus too**, not only
+  on hover (#157). Escape hides it.
+- **The column resize handle is easier to hit on a touch screen**: a finger-sized area around the thin line, which
+  stays as it is for a mouse.
+
 ### Changed
 
 - **On openccu-lite the CCU addon logs to the journal instead of a file.** This follows openccu-lite's rule that
