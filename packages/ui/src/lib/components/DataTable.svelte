@@ -1286,6 +1286,24 @@
         background: transparent;
     }
 
+    /*
+     * Task 42: 7 px is a mouse's target, not a finger's - the addon is opened on tablets. Under a
+     * coarse pointer the handle keeps its box and its line, and an invisible extension of it reaches
+     * 24 px into the label, where a press still lands on the handle. Towards the left only: the cell
+     * clips at its right edge, so anything past it could not be hit anyway. `touch-action: none`
+     * above keeps the page from scrolling while a finger drags.
+     */
+    @media (pointer: coarse) {
+        .hmm-th-resize::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            right: 0;
+            width: 24px;
+        }
+    }
+
     /* Task 42: a sub-grid's label row carries the handles of the columns only the sub-grid has. */
     .hmm-tr-subhead .hmm-td {
         position: relative;

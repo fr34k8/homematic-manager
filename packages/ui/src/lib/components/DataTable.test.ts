@@ -1,7 +1,7 @@
 import {fireEvent, render, screen, waitFor, within} from '@testing-library/svelte';
 import {createRawSnippet, type Component} from 'svelte';
 import {describe, expect, it, vi} from 'vitest';
-import {userEvent} from 'vitest/browser';
+import {cdp, userEvent} from 'vitest/browser';
 
 import {ColumnWidthsStore} from '../stores/ColumnWidthsStore.svelte.js';
 import type {StorageLike} from '../stores/AppStore.svelte.js';
@@ -1094,4 +1094,51 @@ describe('the full text of a cut-off cell on keyboard focus (task 42)', () => {
             observer.disconnect();
         }
     });
+});
+
+describe('the resize handle under a finger (task 42)', () => {
+    /** What a press `inset` pixels left of the handle's right edge lands on. */
+    function hit(handle: HTMLElement, inset: number): Element | null {
+        const rect = handle.getBoundingClientRect();
+        return document.elementFromPoint(rect.right - inset, rect.top + rect.height / 2);
+    }
+
+    it.skipIf(!hasLayout)(
+        'gives the handle a finger-sized hit area on a coarse pointer and keeps its look',
+        async () => {
+            renderSubGrid();
+            const handles = [screen.getByTestId('grid-resize-name'), subHandle()];
+            for (const handle of handles) {
+                // the page does not scroll under a finger that drags
+                expect(getComputedStyle(handle).touchAction).toBe('none');
+                expect(pixelWidth(handle)).toBe(7);
+                expect(hit(handle, 2)).toBe(handle);
+                // a mouse has the 7 px: further in is the label
+                expect(hit(handle, 20)).not.toBe(handle);
+            }
+
+            // Chromium's touch emulation is what makes `(pointer: coarse)` match, as on a tablet
+            const session = cdp();
+            await session.send('Emulation.setTouchEmulationEnabled', {enabled: true, maxTouchPoints: 1});
+            try {
+                await new Promise((resolve) => requestAnimationFrame(resolve));
+                expect(matchMedia('(pointer: coarse)').matches).toBe(true);
+                for (const handle of handles) {
+                    // the handle as drawn is the same; what a finger can hit is 24 px of it
+                    expect(pixelWidth(handle)).toBe(7);
+                    expect(hit(handle, 2)).toBe(handle);
+                    expect(hit(handle, 20)).toBe(handle);
+                    expect(hit(handle, 23)).toBe(handle);
+                    expect(hit(handle, 27)).not.toBe(handle);
+                }
+
+                // and a finger drags it the way the mouse does
+                const before = pixelWidth(subLabels('direction')[0]!);
+                await dragBy(subHandle(), 60, 'touch');
+                expect(Math.abs(pixelWidth(subLabels('direction')[0]!) - (before + 60))).toBeLessThanOrEqual(2);
+            } finally {
+                await session.send('Emulation.setTouchEmulationEnabled', {enabled: false});
+            }
+        },
+    );
 });
