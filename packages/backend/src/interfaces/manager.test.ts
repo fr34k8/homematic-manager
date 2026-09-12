@@ -1,4 +1,5 @@
 import net from 'node:net';
+import os from 'node:os';
 
 import {describe, expect, it, vi} from 'vitest';
 
@@ -8,7 +9,7 @@ import {BackendError} from '../errors.js';
 import {normaliseConnection} from '../config/defaults.js';
 import {RpcClient, type RpcClientOptions} from '../rpc/client.js';
 import type {CallbackHandler, CallbackServerSet} from '../rpc/server.js';
-import {InterfaceManager, firstBidcosInterfaceAddress} from './manager.js';
+import {InterfaceManager, callbackBindHost, firstBidcosInterfaceAddress} from './manager.js';
 
 /** A callback server set that binds nothing. */
 function fakeServers(): CallbackServerSet & {stopped: boolean; started: RpcProtocol[]} {
@@ -399,6 +400,91 @@ describe('the default callback ports', () => {
         await s.manager.start();
         expect(s.urls()).toEqual([`http://127.0.0.1:${String(xmlrpc)}`, `xmlrpc_bin://127.0.0.1:${String(binrpc)}`]);
         await s.manager.stop();
+    });
+});
+
+/**
+ * Task 35: with a fixed port, a listener on every interface would be a known port on the LAN of a
+ * CCU whose firewall is open. On the CCU itself the interface processes call back on the loopback
+ * (#144), so the servers listen there and nowhere else; for a CCU elsewhere nothing changes.
+ */
+describe('where the callback servers listen', () => {
+    const callback = (ip: string): ConnectionConfig['callback'] => ({ip, xmlrpcPort: 0, binrpcPort: 0});
+
+    it('picks the loopback where the callback address is the loopback', () => {
+        const onTheCcu = {host: '127.0.0.1', local: true};
+        expect(callbackBindHost(normaliseConnection({...onTheCcu, callback: callback('')}))).toBe('127.0.0.1');
+        expect(callbackBindHost(normaliseConnection({...onTheCcu, callback: callback('127.0.0.1')}))).toBe('127.0.0.1');
+        expect(callbackBindHost(normaliseConnection({host: 'ccu.lan', callback: callback('127.0.0.1')}))).toBe(
+            '127.0.0.1',
+        );
+        // a LAN address, even on the CCU, and a CCU somewhere else: every interface, as before
+        expect(callbackBindHost(normaliseConnection({...onTheCcu, callback: callback('10.0.0.9')}))).toBeUndefined();
+        expect(callbackBindHost(normaliseConnection({host: 'ccu.lan', callback: callback('')}))).toBeUndefined();
+    });
+
+    function connects(host: string, port: number): Promise<boolean> {
+        return new Promise((resolve) => {
+            const socket = net.connect({host, port});
+            socket.once('connect', () => {
+                socket.destroy();
+                resolve(true);
+            });
+            socket.once('error', () => {
+                resolve(false);
+            });
+        });
+    }
+
+    async function listeningPorts(
+        connection: Partial<ConnectionConfig>,
+    ): Promise<{ports: number[]; stop: () => Promise<void>}> {
+        const clients = fakeClients();
+        const manager = new InterfaceManager({
+            connection: normaliseConnection(connection),
+            handler: {} as CallbackHandler,
+            onStateChanged: () => undefined,
+            onNotice: () => undefined,
+            watchdogIntervalMs: 0,
+            createClient: clients.create,
+            probe: () => Promise.resolve(true),
+        });
+        await manager.start();
+        const ports = clients.calls
+            .filter((call) => call.method === 'init')
+            .map((call) => (typeof call.params[0] === 'string' ? call.params[0] : ''))
+            .map((url) => Number(/:(\d+)$/.exec(url)?.[1]));
+        return {ports, stop: () => manager.stop()};
+    }
+
+    /** A LAN address of this machine; the socket checks need one, and a CI runner has it. */
+    const lan = Object.values(os.networkInterfaces())
+        .flat()
+        .find((entry) => entry?.family === 'IPv4' && !entry.internal)?.address;
+
+    it.runIf(lan !== undefined)('cannot be reached on a LAN address of the box when it runs on the CCU', async () => {
+        const {ports, stop} = await listeningPorts({
+            host: '127.0.0.1',
+            local: true,
+            interfaces: ['BidCos-RF', 'HmIP-RF'],
+        });
+        expect(ports).toHaveLength(2);
+        for (const port of ports) {
+            expect(await connects('127.0.0.1', port)).toBe(true);
+            expect(await connects(lan ?? '', port)).toBe(false);
+        }
+        await stop();
+    });
+
+    it.runIf(lan !== undefined)('still listens on every interface for a CCU elsewhere', async () => {
+        const {ports, stop} = await listeningPorts({
+            host: 'ccu.lan',
+            interfaces: ['HmIP-RF'],
+            callback: callback(lan ?? ''),
+        });
+        expect(ports).toHaveLength(1);
+        expect(await connects(lan ?? '', ports[0] ?? 0)).toBe(true);
+        await stop();
     });
 });
 

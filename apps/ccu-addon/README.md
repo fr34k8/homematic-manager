@@ -297,7 +297,8 @@ How it works:
 - **A taken default port is not fatal**: the log says `callback server: the default xmlrpc port 2031 is
   taken, a free port is used until the next start (...)`, once, and the backend subscribes on a free
   port. A port set in the settings dialog that is taken stays an error, as it always was.
-- The URLs registered are `http://127.0.0.1:2031` and `xmlrpc_bin://127.0.0.1:2032` (#144). No firewall
+- The URLs registered are `http://127.0.0.1:2031` and `xmlrpc_bin://127.0.0.1:2032` (#144), and the two
+  servers listen on `127.0.0.1` only — before, they listened on every interface of the box. No firewall
   rule is needed on any of the firmwares: their firewalls accept everything on `lo`, and nothing outside
   the box has to reach these ports.
 

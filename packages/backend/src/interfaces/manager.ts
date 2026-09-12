@@ -85,7 +85,7 @@ export interface InterfaceManagerOptions {
      * interface that fails once and then works.
      */
     readonly initBackoffMs?: number;
-    /** Address to bind the callback servers to; `0.0.0.0` unless the addon says loopback. */
+    /** Address to bind the callback servers to; left out, {@link callbackBindHost} decides. */
     readonly callbackHost?: string;
     /**
      * Task 35 (D-43): the callback ports taken while the connection's are `0`. The CCU addon sets a
@@ -124,6 +124,21 @@ export function firstBidcosInterfaceAddress(result: unknown): string | undefined
     return typeof address === 'string' && address !== '' ? address : undefined;
 }
 
+/**
+ * Where the callback servers listen when the host names no address of its own (task 35).
+ *
+ * Where the interface processes are told to call back on the loopback - the CCU itself (`local`)
+ * with no address configured (#144), or the loopback configured by hand - nothing has to reach the
+ * servers from anywhere else, and they listen on `127.0.0.1` only. It matters more with the addon's
+ * fixed ports: a listener on every interface would be a known port on the LAN of every CCU whose
+ * firewall is open, and anything on that LAN could send it events. Everywhere else the CCU is
+ * across a network and `undefined` keeps `0.0.0.0`.
+ */
+export function callbackBindHost(connection: ConnectionConfig): string | undefined {
+    const {ip} = connection.callback;
+    return ip === LOOPBACK_IP || (ip === '' && connection.local === true) ? LOOPBACK_IP : undefined;
+}
+
 /** Connects, watches and disconnects every configured interface. */
 export class InterfaceManager {
     readonly #options: InterfaceManagerOptions;
@@ -146,9 +161,10 @@ export class InterfaceManager {
 
     #defaultServers(handler: CallbackHandler): CallbackServerSet {
         const callback = this.#options.connection.callback;
+        const host = this.#options.callbackHost ?? callbackBindHost(this.#options.connection);
         return new CallbackServers({
             handler,
-            ...(this.#options.callbackHost === undefined ? {} : {host: this.#options.callbackHost}),
+            ...(host === undefined ? {} : {host}),
             ports: {xmlrpc: callback.xmlrpcPort, binrpc: callback.binrpcPort},
             ...(this.#options.defaultCallbackPorts === undefined
                 ? {}
