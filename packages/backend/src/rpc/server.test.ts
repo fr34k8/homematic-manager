@@ -348,19 +348,39 @@ describe('CallbackServers', () => {
             handler: recordingHandler(),
         });
         const taken = await blocker.start();
-        const probe = new CallbackServer({protocol: 'binrpc', host: '127.0.0.1', port: 0, handler: recordingHandler()});
-        const free = await probe.start();
-        await probe.stop();
         const onFallback = vi.fn();
-        const servers = new CallbackServers({
-            handler: recordingHandler(),
-            host: '127.0.0.1',
-            ports: {xmlrpc: taken, binrpc: free},
-            // never bound: a configured port wins
-            defaultPorts: {xmlrpc: 2031, binrpc: 2032},
-            onFallback,
-        });
-        expect(await servers.ensure('binrpc')).toBe(free);
+        // A free port for the configured binrpc server comes from a probe that is closed again, and
+        // between that close and the bind another test file running in parallel may take the number
+        // (seen once in a full run). A lost race is not what this test is about, so it picks another
+        // port; a configured port that is taken still has to be an error, which the xmlrpc half checks.
+        let servers: CallbackServers | undefined;
+        for (let attempt = 1; servers === undefined; attempt += 1) {
+            const probe = new CallbackServer({
+                protocol: 'binrpc',
+                host: '127.0.0.1',
+                port: 0,
+                handler: recordingHandler(),
+            });
+            const free = await probe.start();
+            await probe.stop();
+            const candidate = new CallbackServers({
+                handler: recordingHandler(),
+                host: '127.0.0.1',
+                ports: {xmlrpc: taken, binrpc: free},
+                // never bound: a configured port wins
+                defaultPorts: {xmlrpc: 2031, binrpc: 2032},
+                onFallback,
+            });
+            try {
+                expect(await candidate.ensure('binrpc')).toBe(free);
+                servers = candidate;
+            } catch (error) {
+                await candidate.stop();
+                if (attempt >= 5) {
+                    throw error;
+                }
+            }
+        }
         await expect(servers.ensure('xmlrpc')).rejects.toThrow(/xmlrpc callback server/);
         expect(onFallback).not.toHaveBeenCalled();
         await servers.stop();
