@@ -71,11 +71,17 @@ LABEL org.opencontainers.image.title="Homematic Manager" \
 #
 # The callback ports are pinned because a port the backend picks freely is a port no one can
 # publish. hm2mqtt.js uses the same pair, so change one of them when both run with host networking.
+# Since task 38 a pinned port wins over the settings dialog, which shows it read-only, and a pinned
+# port that is taken is an error rather than a free port nobody published.
+#
+# `HMM_IN_CONTAINER` makes the interface popup say, beside each callback URL, that its port has to
+# be published unchanged.
 ENV NODE_ENV=production \
     HMM_HOST=0.0.0.0 \
     HMM_PORT=8090 \
     HMM_DATA_DIR=/data \
     HMM_ISSUE_COOKIE=true \
+    HMM_IN_CONTAINER=true \
     HMM_CALLBACK_XMLRPC_PORT=2126 \
     HMM_CALLBACK_BINRPC_PORT=2127
 

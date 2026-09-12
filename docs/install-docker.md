@@ -72,6 +72,13 @@ docker run -d --name homematic-manager \
 change them with `HMM_CALLBACK_XMLRPC_PORT` and `HMM_CALLBACK_BINRPC_PORT` and publish whatever you
 set — hm2mqtt.js uses the same pair, so one of the two has to move when both run on the same host.
 
+What is set this way wins over the settings dialog: `HMM_CALLBACK_IP` and the two ports are shown
+there read-only with "Set at start (`HMM_CALLBACK_XMLRPC_PORT` / `--callback-xmlrpc-port`)", and a
+value saved in the dialog before stays in `/data/config.json` without effect for as long as the
+variable is set (the log says so once at start). The interface popup in the header shows, under each
+interface, the callback URL the CCU was told — `http://192.168.1.10:2126` — with "Publish this port
+unchanged" beside it.
+
 `compose.yml` in the repository root has both variants written out.
 
 ## The CCU's own firewall
@@ -107,6 +114,7 @@ The image sets these by default:
 | `HMM_ISSUE_COOKIE` | `true` | see below |
 | `HMM_CALLBACK_XMLRPC_PORT` | `2126` | a freely picked port cannot be published |
 | `HMM_CALLBACK_BINRPC_PORT` | `2127` | likewise |
+| `HMM_IN_CONTAINER` | `true` | the interface popup reminds you to publish the callback ports unchanged |
 
 ## Authentication, and what the default means
 
@@ -179,10 +187,10 @@ The `latest` tag is not moved by a pre-release, so an alpha or beta never become
 | Symptom | Look at |
 | --- | --- |
 | The UI loads and stays disconnected | The socket was refused. With `HMM_ISSUE_COOKIE=false` and no `?token=` that is expected; otherwise check a reverse proxy in front passes the upgrade through. |
-| Interfaces green, no state ever changes | The callback. On a bridge network `HMM_CALLBACK_IP` must be the **Docker host's** address, and 2126/2127 must be published unchanged. `--network host` avoids the whole question. |
+| Interfaces green, no state ever changes | The callback. On a bridge network `HMM_CALLBACK_IP` must be the **Docker host's** address, and 2126/2127 must be published unchanged. The interface popup shows the callback URL each interface was given; that address and port are what the CCU connects to. `--network host` avoids the whole question. |
 | Interfaces stay red | The CCU's XML-RPC API firewall setting, or the wrong `HMM_CCU`. |
 | Everything is gone after a recreate | `/data` was not on a volume. |
-| Port 2126 or 2127 already in use | hm2mqtt.js defaults to the same pair. Move one with `HMM_CALLBACK_XMLRPC_PORT` / `HMM_CALLBACK_BINRPC_PORT` and publish what you set. |
+| Port 2126 or 2127 already in use | The log says `callback server: the xmlrpc port 2126 set by HMM_CALLBACK_XMLRPC_PORT / --callback-xmlrpc-port is in use`, and the interface popup shows "Callback port 2126 is in use" under every interface of that protocol. They stay unsubscribed: a fixed port never falls back to a free one, because a free port is one nobody published. hm2mqtt.js defaults to the same pair. Move one with `HMM_CALLBACK_XMLRPC_PORT` / `HMM_CALLBACK_BINRPC_PORT`, publish what you set, and restart. |
 | Device pictures are missing | They are fetched from the CCU and cached in `/data/images`. With TLS the CCU's certificate is self-signed and cannot be accepted, so the small bundled set answers instead. |
 | The QR scanner says the camera needs https | Browsers hand out a camera in a secure context only: https, or `localhost`. Reach the UI over https (a reverse proxy with a certificate, see above) or open it on the machine itself; otherwise type the SGTIN and the key in by hand. |
 | `--network host` does nothing useful | Docker Desktop on macOS/Windows and rootless Podman have no real host network. Use variant 2, or run in an LXC or a VM. |
