@@ -649,6 +649,7 @@
             onrowcontextmenu={openMenu}
             toolbarLabel={t('Devices')}
             countText={t('{count} devices', {}, devices.length)}
+            tableId="devices"
             testId="devices-table"
         >
             {#snippet toolbar()}

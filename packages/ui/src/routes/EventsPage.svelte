@@ -76,6 +76,7 @@
             emptyText={t('No data')}
             toolbarLabel={t('Events')}
             countText={t('{count} events', {}, events.length)}
+            tableId="events"
             testId="events-table"
         >
             {#snippet toolbar()}

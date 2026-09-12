@@ -1,6 +1,12 @@
 <script lang="ts" generics="T">
+    import type {MessageParams} from '@homematic-manager/core';
     import {untrack, type Snippet} from 'svelte';
 
+    import {fullText, isTruncated, measureNaturalWidths} from './columnMeasure.js';
+    import {clampColumnWidth, fitColumnWidth, isResizable, RESIZE_KEY_STEP, type ColumnWidths} from './columnWidths.js';
+    import ContextMenu from './ContextMenu.svelte';
+    import type {ContextMenuItem} from './contextMenu.js';
+    import {getDataTableEnvironment, untranslated} from './dataTableContext.js';
     import {ROW_HEIGHT} from './metrics.js';
     import {
         buildRows,
@@ -10,6 +16,7 @@
         isFilterable,
         isSortable,
         nextSelection,
+        sizedTemplate,
         tableLayout,
         visibleWindow,
         type DataTableColumn,
@@ -17,6 +24,8 @@
         type FlatRow,
         type SortState,
     } from './tableModel.js';
+    import {TOOLTIP_DELAY_MS, type TooltipAnchor} from './tooltip.js';
+    import TooltipBubble from './TooltipBubble.svelte';
 
     interface Props {
         rows: T[];
@@ -89,6 +98,12 @@
         onrowcontextmenu?: ((row: T, event: MouseEvent) => void) | undefined;
         /** Draws one cell; without it the cell is the column's text value. */
         cell?: Snippet<[T, DataTableColumn<T>, FlatRow<T>]> | undefined;
+        /**
+         * Task 40 (#157): the name the column widths of this table are kept under, per profile.
+         * A storage key rather than a test id, so it stays the same when a test id is renamed.
+         * Without one - or outside the app - the widths last as long as the table does.
+         */
+        tableId?: string | undefined;
         testId?: string | undefined;
     }
 
@@ -121,8 +136,16 @@
         onactivate = undefined,
         onrowcontextmenu = undefined,
         cell = undefined,
+        tableId = undefined,
         testId = undefined,
     }: Props = $props();
+
+    /** The app's column-width store and translation (task 40); absent in a bare component test. */
+    const environment = getDataTableEnvironment();
+
+    function t(key: string, params: MessageParams = {}): string {
+        return environment?.t === undefined ? untranslated(key, params) : environment.t(key, params);
+    }
 
     let columnFilters = $state<Record<string, string>>({});
     let scrollTop = $state(0);
@@ -136,6 +159,10 @@
     let gutter = $state(0);
     let anchorId = $state<string | undefined>(undefined);
     let viewport = $state<HTMLDivElement | undefined>(undefined);
+    let root = $state<HTMLDivElement | undefined>(undefined);
+    let groupStrip = $state<HTMLDivElement | undefined>(undefined);
+    let headStrip = $state<HTMLDivElement | undefined>(undefined);
+    let filterStrip = $state<HTMLDivElement | undefined>(undefined);
 
     const visibleColumns = $derived(columns.filter((column) => column.hidden !== true));
     const visibleSubColumns = $derived((subColumns ?? columns).filter((column) => column.hidden !== true));
@@ -144,9 +171,29 @@
      * One template for the whole table (D-34). The head, the filter row, the device rows and the
      * channel sub-grid all sit on the same tracks, so a column never moves when a device is
      * expanded and the sub-grid stands under the columns it belongs to.
+     *
+     * The layout - which column sits on which track - does not depend on the widths, so a drag
+     * never re-runs anything in a cell; only the template below changes.
      */
     const layout = $derived(tableLayout(columns, subColumns, hasExpander));
-    const template = $derived(layout.template);
+
+    /** The widths the user gave this table and kept (task 40). */
+    let localWidths = $state.raw<ColumnWidths>({});
+    /** The width of the column under the pointer while it is dragged; stored when it is let go. */
+    let draft = $state.raw<{key: string; width: number} | undefined>(undefined);
+    const storedWidths = $derived.by((): ColumnWidths => {
+        const store = environment?.columnWidths;
+        return tableId === undefined || store === undefined ? localWidths : store.widths(tableId);
+    });
+    const hasUserWidths = $derived(Object.keys(storedWidths).length > 0);
+    /**
+     * The template with the user's widths in it. It is set once, as a custom property on the grid,
+     * and every row reads it from CSS: a pointer move during a drag changes one style attribute,
+     * not one per rendered row.
+     */
+    const sized = $derived(
+        sizedTemplate(layout, draft === undefined ? storedWidths : {...storedWidths, [draft.key]: draft.width}),
+    );
     const spans = $derived(groupSpans(columnGroups ?? [], columns, layout));
     const expandedSet = $derived(new Set(expanded));
     /**
@@ -224,6 +271,23 @@
             observer.disconnect();
         };
     });
+
+    /**
+     * The body is the only part that scrolls. When the widths add up to more than the window it
+     * scrolls sideways too, and the group row, the labels and the filter fields have to follow it
+     * or they would stand over the wrong columns - moved by a transform on those three elements
+     * alone, and only while there is something to move.
+     */
+    function onBodyScroll(element: HTMLDivElement): void {
+        scrollTop = element.scrollTop;
+        const shift = element.scrollLeft === 0 ? '' : `translateX(${String(-element.scrollLeft)}px)`;
+        for (const strip of [groupStrip, headStrip, filterStrip]) {
+            if (strip && strip.style.transform !== shift) {
+                strip.style.transform = shift;
+            }
+        }
+        forgetTooltip();
+    }
 
     function toggleSort(column: DataTableColumn<T>): void {
         if (!isSortable(column)) {
@@ -342,9 +406,257 @@
                 break;
         }
     }
+
+    // ------------------------------------------------------------------ column widths (task 40)
+
+    /** A pointer that moved less than this between down and up clicked - half a double click. */
+    const DRAG_THRESHOLD_PX = 2;
+    /** Room for the ▲ of a sorted label, so fitting a column and then sorting it cuts nothing off. */
+    const SORT_MARK_PX = 14;
+
+    function saveWidth(key: string, width: number): void {
+        const store = environment?.columnWidths;
+        if (tableId !== undefined && store !== undefined) {
+            store.set(tableId, key, width);
+        } else {
+            localWidths = {...localWidths, [key]: clampColumnWidth(width)};
+        }
+    }
+
+    function resetWidths(): void {
+        const store = environment?.columnWidths;
+        if (tableId !== undefined && store !== undefined) {
+            store.reset(tableId);
+        } else {
+            localWidths = {};
+        }
+    }
+
+    function headerCell(key: string): HTMLElement | undefined {
+        return headStrip?.querySelector<HTMLElement>(`[data-column-key="${CSS.escape(key)}"]`) ?? undefined;
+    }
+
+    /**
+     * Double click on the handle: as wide as the label and the widest of the cells that are
+     * rendered - the window of rows, never every row of a list of a thousand devices - up to
+     * `FIT_MAX_WIDTH`.
+     */
+    function fitColumn(key: string): void {
+        const column = visibleColumns.find((candidate) => candidate.key === key);
+        const header = headerCell(key);
+        if (!root || !column || !header || !isResizable(column)) {
+            return;
+        }
+        const cells = viewport
+            ? [...viewport.querySelectorAll<HTMLElement>(`.hmm-td[data-column-key="${CSS.escape(key)}"]`)]
+            : [];
+        const [label = 0, ...values] = measureNaturalWidths(root, [header, ...cells]);
+        const labelWidth = isSortable(column) && sort?.key !== key ? label + SORT_MARK_PX : label;
+        const width = fitColumnWidth([labelWidth, ...values]);
+        if (width !== undefined) {
+            saveWidth(key, width);
+        }
+    }
+
+    interface Resize {
+        readonly key: string;
+        readonly pointerId: number;
+        readonly startX: number;
+        /** The column's width when the handle was pressed, as drawn - a proportional one included. */
+        readonly startWidth: number;
+        moved: boolean;
+    }
+
+    /** Plain state: nothing is drawn from it but the one class below. */
+    let resize: Resize | undefined;
+    let resizingKey = $state<string | undefined>(undefined);
+
+    function onResizeStart(event: PointerEvent, key: string): void {
+        const cell = headerCell(key);
+        if (event.button !== 0 || !cell) {
+            return;
+        }
+        event.preventDefault();
+        try {
+            // the moves keep arriving here when the pointer leaves the 7 px of the handle
+            (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        } catch {
+            // a pointer that is already gone, or a DOM without capture: the drag works while over the handle
+        }
+        resize = {
+            key,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startWidth: cell.getBoundingClientRect().width,
+            moved: false,
+        };
+        hideTooltip();
+    }
+
+    /**
+     * The column is as much wider as the pointer moved. The columns nobody sized share what is left,
+     * those in front of it too, so the handle of a column further right trails the pointer a little;
+     * a width that kept the edge under the pointer would have to grow by more than the pointer
+     * moved - without bound for the last column, whose right edge is the window's.
+     *
+     * A move changes the draft and with it the one template on the grid; the browser lays the
+     * rendered rows out once per frame, however many pointer events arrive in it.
+     */
+    function onResizeMove(event: PointerEvent): void {
+        const current = resize;
+        if (current?.pointerId !== event.pointerId) {
+            return;
+        }
+        const dx = event.clientX - current.startX;
+        if (!current.moved && Math.abs(dx) < DRAG_THRESHOLD_PX) {
+            return;
+        }
+        if (!current.moved) {
+            current.moved = true;
+            resizingKey = current.key;
+        }
+        const width = clampColumnWidth(current.startWidth + dx);
+        if (draft?.key !== current.key || draft.width !== width) {
+            draft = {key: current.key, width};
+        }
+    }
+
+    /** Stores what is drawn: the last move's width, not whatever position the release reports. */
+    function onResizeEnd(event: PointerEvent): void {
+        const current = resize;
+        if (current?.pointerId !== event.pointerId) {
+            return;
+        }
+        resize = undefined;
+        resizingKey = undefined;
+        if (current.moved && draft?.key === current.key) {
+            saveWidth(current.key, draft.width);
+        }
+        draft = undefined;
+    }
+
+    function onResizeKey(event: KeyboardEvent, key: string): void {
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            const cell = headerCell(key);
+            if (cell) {
+                const step = event.key === 'ArrowRight' ? RESIZE_KEY_STEP : -RESIZE_KEY_STEP;
+                saveWidth(key, cell.getBoundingClientRect().width + step);
+            }
+        } else if (event.key === 'Enter') {
+            fitColumn(key);
+        } else if (event.key !== 'Tab') {
+            return;
+        }
+        if (event.key !== 'Tab') {
+            // the grid around the head moves the row selection on the same keys
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    }
+
+    let headMenuOpen = $state(false);
+    let headMenuX = $state(0);
+    let headMenuY = $state(0);
+    let headMenuKey = $state<string | undefined>(undefined);
+    const headMenuItems = $derived.by((): ContextMenuItem[] => {
+        const column = visibleColumns.find((candidate) => candidate.key === headMenuKey);
+        return [
+            {id: 'fit', label: t('Fit column to content'), disabled: column === undefined || !isResizable(column)},
+            {id: 'reset', label: t('Reset column widths'), disabled: !hasUserWidths},
+        ];
+    });
+
+    /**
+     * Right click on the column labels: fit the column under the pointer, or reset them all. One
+     * listener on the grid; a right click on a row is the row's own menu and is left alone.
+     */
+    function onGridContextMenu(event: MouseEvent): void {
+        const target = event.target instanceof Node ? event.target : null;
+        if (!target || !(headStrip?.contains(target) === true || groupStrip?.contains(target) === true)) {
+            return;
+        }
+        event.preventDefault();
+        const cell = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-column-key]') : null;
+        headMenuKey = cell?.dataset['columnKey'];
+        headMenuX = event.clientX;
+        headMenuY = event.clientY;
+        headMenuOpen = true;
+        hideTooltip();
+    }
+
+    function onHeadMenuSelect(id: string): void {
+        if (id === 'fit' && headMenuKey !== undefined) {
+            fitColumn(headMenuKey);
+        } else if (id === 'reset') {
+            resetWidths();
+        }
+    }
+
+    // ------------------------------------------------------- the full text of a cut-off cell (#157)
+
+    let tooltip = $state.raw<{text: string; anchor: TooltipAnchor} | undefined>(undefined);
+    /** The cell under the pointer; plain, because only the handlers read it. */
+    let hovered: HTMLElement | undefined;
+    let tooltipTimer: ReturnType<typeof setTimeout> | undefined;
+
+    /**
+     * The pointer entered a cell (delegated: one listener for the whole grid, not one per cell).
+     * Whether the cell is cut off is asked here, for this cell only - two numbers the browser has
+     * at hand - and the tooltip follows after the app's tooltip delay.
+     */
+    function onGridPointerOver(event: PointerEvent): void {
+        const target = event.target instanceof Element ? event.target.closest<HTMLElement>('.hmm-td, .hmm-th') : null;
+        const cell = target ?? undefined;
+        if (cell === hovered) {
+            return;
+        }
+        hideTooltip();
+        hovered = cell;
+        if (!cell || resize !== undefined || cell.classList.contains('hmm-td-fixed') || !isTruncated(cell)) {
+            return;
+        }
+        tooltipTimer = setTimeout(() => {
+            tooltipTimer = undefined;
+            showTooltip(cell);
+        }, TOOLTIP_DELAY_MS);
+    }
+
+    function showTooltip(cell: HTMLElement): void {
+        if (hovered !== cell || !cell.isConnected) {
+            return;
+        }
+        const text = fullText(cell.querySelector<HTMLElement>('.hmm-th-label') ?? cell);
+        if (text === '') {
+            return;
+        }
+        const {left, top, bottom} = cell.getBoundingClientRect();
+        tooltip = {text, anchor: {left, top, bottom}};
+    }
+
+    function hideTooltip(): void {
+        if (tooltipTimer !== undefined) {
+            clearTimeout(tooltipTimer);
+            tooltipTimer = undefined;
+        }
+        if (tooltip !== undefined) {
+            tooltip = undefined;
+        }
+    }
+
+    /** Hidden, and the next cell the pointer is over counts as entered again. */
+    function forgetTooltip(): void {
+        hideTooltip();
+        hovered = undefined;
+    }
+
+    $effect(() => () => {
+        if (tooltipTimer !== undefined) {
+            clearTimeout(tooltipTimer);
+        }
+    });
 </script>
 
-<div class="hmm-table" data-testid={testId}>
+<div class="hmm-table" data-testid={testId} bind:this={root}>
     {#if hasBand}
         <div class="hmm-table-band">
             {#if caption !== undefined}<span class="hmm-table-caption">{caption}</span>{/if}
@@ -370,20 +682,23 @@
 
     <div
         class="hmm-table-grid"
+        class:hmm-table-resizing={resizingKey !== undefined}
         role="grid"
         aria-rowcount={flat.length}
         aria-colcount={visibleColumns.length}
         tabindex="0"
+        style:--hmm-table-columns={sized.template}
+        style:--hmm-table-min-width={`${String(sized.minWidth)}px`}
+        style:--hmm-table-gutter={`${String(gutter)}px`}
         onkeydown={onKeyDown}
+        oncontextmenu={onGridContextMenu}
+        onpointerover={onGridPointerOver}
+        onpointerleave={forgetTooltip}
+        onpointerdown={hideTooltip}
     >
         {#if spans.length > 0}
             <!-- The 2.x Funk grid's second header row: one cell per interface over its columns. -->
-            <div
-                class="hmm-table-groups"
-                role="row"
-                style:grid-template-columns={template}
-                style:padding-right={`${gutter}px`}
-            >
+            <div class="hmm-table-groups" role="row" bind:this={groupStrip}>
                 {#each spans as span (span.key)}
                     <div
                         class="hmm-th hmm-th-group"
@@ -401,17 +716,18 @@
             </div>
         {/if}
 
-        <div
-            class="hmm-table-head"
-            role="row"
-            style:grid-template-columns={template}
-            style:padding-right={`${gutter}px`}
-        >
+        <div class="hmm-table-head" role="row" bind:this={headStrip}>
             {#if hasExpander}<div class="hmm-th hmm-th-expander" role="columnheader"></div>{/if}
             {#each visibleColumns as column (column.key)}
+                <!--
+                    Task 40: the label is the header's name - without it the resize handle's own
+                    label would be read as part of every column header.
+                -->
                 <div
                     class="hmm-th"
                     role="columnheader"
+                    aria-label={column.label === '' ? undefined : column.label}
+                    data-column-key={column.key}
                     style:grid-column={layout.track[column.key]}
                     aria-sort={sort?.key === column.key
                         ? sort.direction === 'asc'
@@ -437,7 +753,7 @@
                                   : 'flex-start'}
                             onclick={() => toggleSort(column)}
                         >
-                            <span>{column.label}</span>
+                            <span class="hmm-th-label">{column.label}</span>
                             {#if sort?.key === column.key}
                                 <span class="hmm-th-sort" aria-hidden="true"
                                     >{sort.direction === 'asc' ? '▲' : '▼'}</span
@@ -445,14 +761,43 @@
                             {/if}
                         </button>
                     {:else}
-                        <span>{column.label}</span>
+                        <span class="hmm-th-label">{column.label}</span>
+                    {/if}
+                    {#if isResizable(column)}
+                        <!--
+                            Task 40 (#157): drag to resize, double click to fit, arrow keys and Enter
+                            from the keyboard. `data-measure-skip` keeps it out of the fit. A focusable
+                            separator is a widget in WAI-ARIA (the window splitter pattern); Svelte's
+                            role table counts every separator as static.
+                        -->
+                        <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+                        <div
+                            class="hmm-th-resize"
+                            class:hmm-th-resize-active={resizingKey === column.key}
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label={t('Resize column {column}', {column: column.label})}
+                            tabindex="0"
+                            data-measure-skip
+                            data-testid={testId === undefined ? undefined : `${testId}-resize-${column.key}`}
+                            onpointerdown={(event) => onResizeStart(event, column.key)}
+                            onpointermove={onResizeMove}
+                            onpointerup={onResizeEnd}
+                            onpointercancel={onResizeEnd}
+                            onlostpointercapture={onResizeEnd}
+                            ondblclick={(event) => {
+                                event.preventDefault();
+                                fitColumn(column.key);
+                            }}
+                            onkeydown={(event) => onResizeKey(event, column.key)}
+                        ></div>
                     {/if}
                 </div>
             {/each}
         </div>
 
         {#if columnFilterRow}
-            <div class="hmm-table-filters" style:grid-template-columns={template} style:padding-right={`${gutter}px`}>
+            <div class="hmm-table-filters" bind:this={filterStrip}>
                 {#if hasExpander}<div class="hmm-tf-spacer"></div>{/if}
                 {#each visibleColumns as column (column.key)}
                     <div class="hmm-tf" style:grid-column={layout.track[column.key]}>
@@ -478,7 +823,7 @@
         <div
             class="hmm-table-body"
             bind:this={viewport}
-            onscroll={(event) => (scrollTop = event.currentTarget.scrollTop)}
+            onscroll={(event) => onBodyScroll(event.currentTarget)}
             style:height={height === undefined ? undefined : `${height}px`}
         >
             {#if flat.length === 0}
@@ -513,7 +858,6 @@
                                 aria-selected={flatRow.kind === 'header' ? undefined : selectedSet.has(flatRow.id)}
                                 data-row-id={flatRow.id}
                                 data-row-kind={flatRow.kind}
-                                style:grid-template-columns={template}
                                 style:height={`${rowHeight}px`}
                                 onclick={(event) => onRowClick(flatRow, event)}
                                 ondblclick={() => {
@@ -545,6 +889,7 @@
                                         class:hmm-td-fixed={column.fixed === true}
                                         class:hmm-mono={column.mono === true && flatRow.kind === 'row'}
                                         role="gridcell"
+                                        data-column-key={column.key}
                                         style:grid-column={layout.track[column.key]}
                                         style:text-align={column.align ?? 'left'}
                                     >
@@ -564,6 +909,29 @@
             {/if}
         </div>
     </div>
+
+    <!--
+        Outside the grid on purpose: the row window has a transform, and a `position: fixed` bubble
+        inside it would be placed against the rows instead of the window.
+    -->
+    {#if tooltip !== undefined}
+        <TooltipBubble
+            text={tooltip.text}
+            anchor={tooltip.anchor}
+            testId={testId === undefined ? undefined : `${testId}-tooltip`}
+        />
+    {/if}
+    {#if headMenuOpen}
+        <ContextMenu
+            bind:open={headMenuOpen}
+            items={headMenuItems}
+            x={headMenuX}
+            y={headMenuY}
+            label={t('Column widths')}
+            testId={testId === undefined ? undefined : `${testId}-columns-menu`}
+            onselect={onHeadMenuSelect}
+        />
+    {/if}
 </div>
 
 <style>
@@ -628,16 +996,36 @@
         outline-offset: -2px;
     }
 
+    /* A drag keeps its cursor and selects no text, wherever the pointer strays to. */
+    .hmm-table-resizing {
+        cursor: col-resize;
+        user-select: none;
+    }
+
+    /*
+     * Every strip of the grid is drawn on the one template (D-34) that the grid element carries as
+     * `--hmm-table-columns`, and is at least as wide as the columns need (task 40): a row whose box
+     * stopped at the window would leave its background behind when the body scrolls sideways. The
+     * head strips carry the body's scrollbar gutter as padding, hence the sum.
+     */
+    .hmm-table-head,
+    .hmm-table-filters,
+    .hmm-table-groups {
+        display: grid;
+        grid-template-columns: var(--hmm-table-columns);
+        /* not left to app.css: the padding has to be inside the minimum wherever the table is drawn */
+        box-sizing: border-box;
+        min-width: calc(var(--hmm-table-min-width) + var(--hmm-table-gutter));
+        padding-right: var(--hmm-table-gutter);
+        background: var(--hmm-header-bg);
+    }
+
     .hmm-table-head,
     .hmm-table-filters {
-        display: grid;
-        background: var(--hmm-header-bg);
         border-bottom: 1px solid var(--hmm-border);
     }
 
     .hmm-table-groups {
-        display: grid;
-        background: var(--hmm-header-bg);
         border-bottom: 1px solid var(--hmm-border-muted);
     }
 
@@ -661,6 +1049,7 @@
     /* D-34: a column label the way the she UI writes one - small, semibold, muted, and with no vertical
        rule between the columns. The 2.x grid drew a full lattice; the header line alone is enough. */
     .hmm-th {
+        position: relative;
         padding: 6px 6px;
         font-size: var(--hmm-font-size-small);
         font-weight: 600;
@@ -693,6 +1082,45 @@
         font-size: var(--hmm-font-size-small);
     }
 
+    /*
+     * Task 40: the handle is the label's right padding. D-34 has no rule between the columns, so
+     * the edge only shows while the pointer is over the labels - a faint line where a column can be
+     * dragged - and turns into the accent under the pointer, on focus and during a drag.
+     */
+    .hmm-th-resize {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 7px;
+        cursor: col-resize;
+        touch-action: none;
+        outline: none;
+    }
+
+    .hmm-th-resize::after {
+        content: '';
+        position: absolute;
+        top: 5px;
+        bottom: 5px;
+        right: 0;
+        width: 1px;
+        background: transparent;
+    }
+
+    .hmm-table-head:hover .hmm-th-resize::after {
+        background: var(--hmm-border);
+    }
+
+    .hmm-table-head .hmm-th-resize:hover::after,
+    .hmm-th-resize:focus-visible::after,
+    .hmm-table-head .hmm-th-resize-active::after {
+        top: 2px;
+        bottom: 2px;
+        width: 3px;
+        background: var(--hmm-accent);
+    }
+
     .hmm-tf {
         padding: 3px 4px;
         min-width: 0;
@@ -722,11 +1150,13 @@
         top: 0;
         left: 0;
         right: 0;
+        min-width: var(--hmm-table-min-width);
         will-change: transform;
     }
 
     .hmm-tr {
         display: grid;
+        grid-template-columns: var(--hmm-table-columns);
         align-items: center;
         border-bottom: 1px solid var(--hmm-border-muted);
         background: var(--hmm-row-odd);

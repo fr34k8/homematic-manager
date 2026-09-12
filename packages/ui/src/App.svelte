@@ -3,6 +3,7 @@
 
     import './app.css';
 
+    import {setDataTableEnvironment} from './lib/components/dataTableContext.js';
     import GithubLink from './lib/components/GithubLink.svelte';
     import InterfacePopup from './lib/components/InterfacePopup.svelte';
     import type {StoreEntry} from './lib/components/interfacePopup.js';
@@ -39,6 +40,11 @@
     // The stores are created once by the host and handed in; they are not a changing prop, which
     // is exactly what `untrack` says here.
     setStores(untrack(() => stores));
+    // Task 40: every grid's column widths and the words of its header menu, set once for all of them.
+    setDataTableEnvironment({
+        columnWidths: untrack(() => stores.app.columnWidths),
+        t: (key, params) => stores.i18n.t(key, params),
+    });
 
     let changeSetOpen = $state(false);
 

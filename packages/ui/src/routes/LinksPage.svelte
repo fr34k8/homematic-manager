@@ -201,6 +201,7 @@
             onrowcontextmenu={openMenu}
             toolbarLabel={t('Links')}
             countText={t('{count} links', {}, links.length)}
+            tableId="links"
             testId="links-table"
         >
             {#snippet toolbar()}

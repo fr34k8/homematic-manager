@@ -60,6 +60,8 @@
         emptyText?: string | undefined;
         /** "4 rooms", "3 taxonomies" - the caller knows what the rows are called. */
         countText?: ((count: number) => string) | undefined;
+        /** Task 40: what the grid's column widths are kept under - one per store page. */
+        tableId?: string | undefined;
         testId?: string;
     }
 
@@ -76,6 +78,7 @@
         labelOf = undefined,
         emptyText = undefined,
         countText = undefined,
+        tableId = undefined,
         testId = 'meta-table',
     }: Props = $props();
 
@@ -319,6 +322,7 @@
             showingText={(shown, total) => t('Showing {shown} of {total}', {shown, total})}
             countText={countText === undefined ? undefined : countText(rows.length)}
             onactivate={activate}
+            {tableId}
             {testId}
         >
             {#snippet toolbar()}

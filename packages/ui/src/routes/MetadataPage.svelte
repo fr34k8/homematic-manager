@@ -70,5 +70,6 @@
     {labelOf}
     {emptyText}
     {countText}
+    tableId={enumId === undefined ? 'meta' : `meta-${enumId}`}
     testId={enumId === undefined ? 'meta-table' : `meta-table-${enumId}`}
 />

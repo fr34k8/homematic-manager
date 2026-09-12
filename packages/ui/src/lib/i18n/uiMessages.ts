@@ -227,6 +227,11 @@ export const UI_MESSAGES: MessageCatalogue = {
     // BUGS.md B-1: a filter that leaves nothing has to say so; the old text blamed the interface.
     'No row matches the filter': {de: 'Keine Zeile passt zum Filter', en: 'No row matches the filter'},
     'Clear filter': {de: 'Filter löschen', en: 'Clear filter'},
+    // Task 40 (#157): the drag handle on a column label, and the menu of the column labels
+    'Resize column {column}': {de: 'Breite der Spalte {column} ändern', en: 'Resize column {column}'},
+    'Fit column to content': {de: 'Spaltenbreite an den Inhalt anpassen', en: 'Fit column to content'},
+    'Reset column widths': {de: 'Spaltenbreiten zurücksetzen', en: 'Reset column widths'},
+    'Column widths': {de: 'Spaltenbreiten', en: 'Column widths'},
     // BUGS.md B-2: the receiver a BidCos-RF device is configured for, in the Funk dialog.
     Configured: {de: 'Konfiguriert', en: 'Configured'},
     'Use {interface} as receiver': {

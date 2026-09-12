@@ -173,6 +173,7 @@
             emptyText={t('No data')}
             toolbarLabel={t('Service messages')}
             countText={total.next === undefined ? t('{count} service messages', {}, messages.length) : undefined}
+            tableId="messages"
             testId="messages-table"
         >
             {#snippet status()}

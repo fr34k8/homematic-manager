@@ -247,6 +247,7 @@
             caption={t('Interfaces')}
             filterLabel={t('Filter')}
             emptyText={t('No data')}
+            tableId="radio-interfaces"
             testId="radio-gateways"
         />
     </div>
@@ -271,6 +272,7 @@
             onactivate={(device) => openSetInterface(device.ADDRESS)}
             toolbarLabel={t('RSSI')}
             countText={t('{count} devices', {}, devices.length)}
+            tableId="radio"
             testId="radio-table"
         >
             {#snippet toolbar()}
