@@ -25,7 +25,14 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
   everything logs to the journal. The backend's output goes there under `addon-hmm`: the box's Log page shows it
   with that unit chosen, and `journalctl -t addon-hmm` on the box. The old `var/hmm.log` on the SD card is removed
   at the first start. There, `service.cgi?…&cmd=log` and the addon's settings page lead to the Log page. On a CCU
-  and OpenCCU nothing changes: `var/hmm.log`, rotated at 1 MB.
+  and OpenCCU the log stays a file, see the next entry.
+- **On a CCU and OpenCCU the addon's log is now `/var/log/hmm.log`** (#159). That is where a CCU keeps its logs,
+  in memory, so the addon no longer writes its log to the SD card; the log is empty after a reboot. To keep it
+  across reboots, the new _Log_ section on the addon's settings page moves it back to the addon directory
+  (`/usr/local/addons/hmm/var/hmm.log`, or `HMM_ADDON_LOG=addon` in `etc/hmm.env`). Both are rotated at 1 MB. The
+  file at the other location is removed at the next start. The settings page shows the last lines of the log, and
+  `service.cgi?…&cmd=log` follows the setting. When `/var/log` cannot be written, the log goes to the addon
+  directory. On openccu-lite the log stays in the journal, and the settings page only says so.
 
 ### Fixed
 
