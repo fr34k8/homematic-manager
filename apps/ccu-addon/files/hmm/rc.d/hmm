@@ -26,9 +26,16 @@ TOKEN_FILE=$STATE_DIR/token
 # chroot binds /usr/local, /dev, /proc and /sys - not /var/run. `update_script`'s stop therefore
 # found no pidfile there, reported "not running" and left the old backend on the replaced tree
 # (measured in the lab on 2026-09-05). $ADDON_DIR/var is on /usr/local, so it exists in the chroot
-# and in the running system alike, and it is where the log already lives.
+# and in the running system alike.
 PIDFILE=$ADDON_DIR/var/$ADDON.pid
-LOG=$ADDON_DIR/var/hmm.log
+# Task 43 (#159): on a CCU and OpenCCU the backend's output goes to one of two files, chosen with
+# HMM_ADDON_LOG in etc/hmm.env. `varlog`, the default: /var/log/hmm.log, the CCU convention, on a tmpfs,
+# so nothing is written to the SD card and the log is gone after a reboot. `addon`: the addon
+# directory, which survives a reboot at the cost of SD-card writes. Both rotate at LOG_MAX.
+VARLOG_DIR=/var/log
+VARLOG_LOG=$VARLOG_DIR/hmm.log
+ADDON_LOG=$ADDON_DIR/var/hmm.log
+LOG=$VARLOG_LOG
 LOG_MAX=1048576
 # Task 41 (openccu-lite D-59): on openccu-lite everything logs to the journal, and nothing of ours
 # writes a log file onto the SD card. The backend's output goes to journald under the unit's own
@@ -93,17 +100,21 @@ LighttpdReload() {
     fi
 }
 
-# Task 41: where the backend's output goes - "journal" on openccu-lite, "file" everywhere else.
+# Task 41: where the backend's output goes - "journal" on openccu-lite, a file everywhere else.
 # Decided at every start from `/VERSION`, like the auth mode below and for the same reason: the same
 # /usr/local may move between the firmwares. The output cannot simply be left to the unit: `-b` points
 # the backend's stdio at /dev/null, and a restart from a CGI would hand it the CGI's pipe. systemd-cat
 # connects stdout and stderr to journald and execs the backend, so the recorded pid stays node's own.
-# Without systemd-cat the file stays, rather than no log at all.
+# Without systemd-cat a file stays, rather than no log at all.
+# Task 43: the file is "varlog" (/var/log/hmm.log) unless etc/hmm.env says HMM_ADDON_LOG=addon; any
+# other value is the default. Called after hmm.env was sourced.
 LogTarget() {
     if grep -q '^VARIANT=lite$' /VERSION 2>/dev/null && command -v systemd-cat >/dev/null 2>&1; then
         echo journal
+    elif [ "$HMM_ADDON_LOG" = addon ]; then
+        echo addon
     else
-        echo file
+        echo varlog
     fi
 }
 
@@ -145,6 +156,8 @@ Start() {
     # 0 for a free port at every start. Why these two numbers: README, "Callback ports".
     HMM_CALLBACK_XMLRPC_DEFAULT_PORT=2031
     HMM_CALLBACK_BINRPC_DEFAULT_PORT=2032
+    # task 43: unset means /var/log/hmm.log
+    HMM_ADDON_LOG=varlog
     if [ -f $ENV_FILE ]; then
         set -a
         # shellcheck source=/dev/null
@@ -175,9 +188,29 @@ Start() {
 
     mkdir -p $ADDON_DIR/var $ADDON_DIR/var/cache $STATE_DIR 2>/dev/null
     LOG_TARGET="$(LogTarget)"
+    # Task 43, B-25 for /var/log: a /var/log that cannot be created or written (a firmware without one,
+    # a user that may not write it) must not start the backend without a log, nor stop it from
+    # starting. The addon directory takes the log instead, and syslog says why.
+    if [ "$LOG_TARGET" = varlog ]; then
+        mkdir -p $VARLOG_DIR 2>/dev/null
+        if [ ! -w $VARLOG_DIR ] || { [ -e $VARLOG_LOG ] && { [ ! -f $VARLOG_LOG ] || [ ! -w $VARLOG_LOG ]; }; }; then
+            logger -t $ADDON -p daemon.warn "cannot write $VARLOG_LOG as $(id -un): logging to $ADDON_LOG instead"
+            LOG_TARGET=addon
+        fi
+    fi
+    case "$LOG_TARGET" in
+        varlog)
+            LOG=$VARLOG_LOG
+            OTHER_LOG=$ADDON_LOG
+            ;;
+        *)
+            LOG=$ADDON_LOG
+            OTHER_LOG=$VARLOG_LOG
+            ;;
+    esac
     # B-25: the backend's output goes to $LOG and start-stop-daemon writes $PIDFILE; when var/ is
     # not this user's, both fail inside the background start where nobody sees it
-    if [ ! -w $ADDON_DIR/var ] || { [ "$LOG_TARGET" = file ] && [ -e $LOG ] && [ ! -w $LOG ]; }; then
+    if [ ! -w $ADDON_DIR/var ] || { [ "$LOG_TARGET" = addon ] && [ -e $LOG ] && [ ! -w $LOG ]; }; then
         echo "Starting $ADDON: FAILED ($ADDON_DIR/var cannot be written by $(id -un); is it owned by $(id -un)?)" >&2
         logger -t $ADDON -p daemon.err "cannot write $ADDON_DIR/var as $(id -un): not starting"
         return 1
@@ -185,13 +218,21 @@ Start() {
     if [ "$LOG_TARGET" = journal ]; then
         # the file an earlier version wrote, or this /usr/local on a CCU: nothing writes it any more,
         # so it goes - once, since there is nothing left to remove at the next start
-        if [ -e $LOG ] || [ -e $LOG.1 ]; then
-            rm -f $LOG $LOG.1 2>/dev/null
-            logger -t $ADDON -p daemon.info "openccu-lite: the log is the journal now (journalctl -t $JOURNAL_TAG); removed $LOG"
+        if [ -e $ADDON_LOG ] || [ -e $ADDON_LOG.1 ]; then
+            rm -f $ADDON_LOG $ADDON_LOG.1 2>/dev/null
+            logger -t $ADDON -p daemon.info "openccu-lite: the log is the journal now (journalctl -t $JOURNAL_TAG); removed $ADDON_LOG"
         fi
         RUN="exec systemd-cat -t $JOURNAL_TAG $NODE"
         OUTPUT=""
     else
+        # Task 43: the file of the location not chosen goes, once, so the log views never show a stale
+        # log and nothing old stays on the SD card. Nothing writes it any more; a start after a switch
+        # is the only time there is anything to remove.
+        if [ -e $OTHER_LOG ] || [ -e $OTHER_LOG.1 ]; then
+            if rm -f $OTHER_LOG $OTHER_LOG.1 2>/dev/null; then
+                logger -t $ADDON -p daemon.info "the log is $LOG now; removed $OTHER_LOG"
+            fi
+        fi
         if [ -f $LOG ] && [ "$(wc -c < $LOG)" -gt $LOG_MAX ]; then
             mv $LOG $LOG.1
         fi
@@ -336,6 +377,8 @@ case "$1" in
         rm -f $CONF_DIR/rc.d/$ADDON
         rm -rf $WWW_DIR
         rm -rf $ADDON_DIR
+        # task 43: the log outside the addon tree goes with it
+        rm -f $VARLOG_LOG $VARLOG_LOG.1 2>/dev/null
         if [ "$2" = purge ]; then
             rm -rf $STATE_DIR
             logger -t $ADDON -p daemon.info "uninstalled homematic-manager, profile purged"

@@ -24,7 +24,15 @@ if {[info exists env(HMM_STATE_DIR)]} {
 
 set BASE_PATH /addons/hmm
 set TOKEN_FILE $STATE_DIR/token
-set LOG_FILE $ADDON_DIR/var/hmm.log
+# Task 43 (#159): the two places rc.d/hmm writes the backend's output to on a CCU and OpenCCU, chosen
+# with HMM_ADDON_LOG in etc/hmm.env - see log_file. HMM_SYSTEM_LOG_DIR lets the tests stand in for
+# /var/log.
+set SYSTEM_LOG_DIR /var/log
+if {[info exists env(HMM_SYSTEM_LOG_DIR)]} {
+    set SYSTEM_LOG_DIR $env(HMM_SYSTEM_LOG_DIR)
+}
+set VARLOG_LOG_FILE $SYSTEM_LOG_DIR/hmm.log
+set ADDON_LOG_FILE $ADDON_DIR/var/hmm.log
 # task 41: on openccu-lite the log is the journal, which the box's own Log page shows by unit
 set LITE_LOG_PAGE /log?unit=addon-hmm
 # in the addon tree, not /var/run - the CCU3 install chroot has no /var/run, see rc.d/hmm
@@ -134,6 +142,33 @@ proc write_env {name value} {
     set fd [open $file w]
     puts -nonewline $fd [join $lines "\n"]
     close $fd
+}
+
+# Task 43: the log location etc/hmm.env chooses - `addon` or `varlog`. Unset, and any other value, is
+# `varlog`, exactly as rc.d/hmm reads it.
+proc log_choice {} {
+    if {[string equal [read_env HMM_ADDON_LOG varlog] "addon"]} {
+        return addon
+    }
+    return varlog
+}
+
+# Task 43: the log file the log views show - the chosen one. When that does not exist and the other
+# location's does, the other one: rc.d/hmm falls back to the addon directory when it cannot write
+# /var/log, and a switch takes effect only with the restart that removes the old file.
+proc log_file {} {
+    global VARLOG_LOG_FILE ADDON_LOG_FILE
+    if {[string equal [log_choice] "addon"]} {
+        set chosen $ADDON_LOG_FILE
+        set other $VARLOG_LOG_FILE
+    } else {
+        set chosen $VARLOG_LOG_FILE
+        set other $ADDON_LOG_FILE
+    }
+    if {![file isfile $chosen] && [file isfile $other]} {
+        return $other
+    }
+    return $chosen
 }
 
 # The token the backend expects on its API socket. Written by update_script (and by the rc.d script

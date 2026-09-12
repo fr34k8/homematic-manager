@@ -40,8 +40,13 @@ export HMM_ADDON_DIR="$TREE"
 export HMM_STATE_DIR="$STATE"
 export HMM_PID_FILE="$TMP/hmm.pid"
 export HMM_RC_SCRIPT="$TMP/rc.d-hmm"
-printf '#!/bin/sh\necho "rc.d called with $1"\n' > "$HMM_RC_SCRIPT"
+# the calls are also recorded, for the settings page, which does not show the script's output
+RC_CALLS="$TMP/rc.d-calls"
+printf '#!/bin/sh\necho "rc.d called with $1"\necho "$1" >> "%s"\n' "$RC_CALLS" > "$HMM_RC_SCRIPT"
 chmod +x "$HMM_RC_SCRIPT"
+# task 43: /var/log, where the log goes by default, stands in as a directory of its own
+export HMM_SYSTEM_LOG_DIR="$TMP/varlog"
+mkdir -p "$HMM_SYSTEM_LOG_DIR"
 
 failed=0
 pass() { echo "  ok   - $1"; }
@@ -237,6 +242,30 @@ case "$out" in
     *'line two'*) pass "a lite box that still has the file (no systemd-cat) shows the file" ;;
     *) fail "a lite box that still has the file (no systemd-cat) shows the file" "$out" ;;
 esac
+# task 43: the log view reads the file HMM_ADDON_LOG chooses - /var/log/hmm.log when it is unset or
+# varlog, the addon directory's with addon - and whichever one exists when the chosen one does not
+printf 'varlog one\nvarlog two\n' > "$HMM_SYSTEM_LOG_DIR/hmm.log"
+log_view() {
+    # log_view <description> <expected> <not expected>
+    out="$(cgi service.cgi 'sid=@1234567890@&cmd=log')"
+    case "$out" in
+        *"$3"*) fail "$1" "$out" ;;
+        *"$2"*) pass "$1" ;;
+        *) fail "$1" "$out" ;;
+    esac
+}
+log_view "unset: the log view reads /var/log/hmm.log (task 43)" 'varlog two' 'line two'
+printf 'HMM_ADDON_LOG=varlog\n' >> "$TREE/etc/hmm.env"
+log_view "HMM_ADDON_LOG=varlog: the log view reads /var/log/hmm.log" 'varlog two' 'line two'
+printf 'HMM_ADDON_LOG=addon\n' >> "$TREE/etc/hmm.env"
+log_view "HMM_ADDON_LOG=addon: the log view reads the addon directory's var/hmm.log" 'line two' 'varlog two'
+mv "$TREE/var/hmm.log" "$TMP/hmm.log.aside"
+log_view "addon chosen but only /var/log/hmm.log there: that one is shown" 'varlog two' 'no log yet'
+mv "$TMP/hmm.log.aside" "$TREE/var/hmm.log"
+cp -a "$ADDON_SRC/files/hmm/etc/default.env" "$TREE/etc/hmm.env"
+mv "$HMM_SYSTEM_LOG_DIR/hmm.log" "$TMP/varlog.aside"
+log_view "varlog chosen but only var/hmm.log there (the fallback of rc.d/hmm): that one is shown" 'line two' 'no log yet'
+mv "$TMP/varlog.aside" "$HMM_SYSTEM_LOG_DIR/hmm.log"
 out="$(cgi service.cgi 'sid=@1234567890@&cmd=havoc')"
 case "$out" in
     *'unknown command'*) pass "refuses an unknown command" ;;
@@ -316,6 +345,93 @@ case "$(grep '^HMM_AUTH_MODE' "$TREE/etc/hmm.env")" in
     *) fail "and nothing was written for it" "$(grep 'HMM_AUTH_MODE' "$TREE/etc/hmm.env")" ;;
 esac
 
+echo "the log location on the addon settings page (task 43)"
+cp -a "$ADDON_SRC/files/hmm/etc/default.env" "$TREE/etc/hmm.env"
+printf 'varlog one\n<script>alert("x")</script> & more\n' > "$HMM_SYSTEM_LOG_DIR/hmm.log"
+: > "$RC_CALLS"
+out="$(cgi settings.cgi 'sid=@1234567890@&cmd=config')"
+case "$out" in
+    *'<h2>Log</h2>'*'<b>varlog</b>'*'<b>addon</b>'*) pass "a CCU gets the Log section with both locations" ;;
+    *) fail "a CCU gets the Log section with both locations" "$out" ;;
+esac
+case "$out" in
+    *'current: <b>varlog</b>'*) pass "unset means varlog, /var/log/hmm.log" ;;
+    *) fail "unset means varlog, /var/log/hmm.log" "$out" ;;
+esac
+case "$out" in
+    *'settings.cgi?cmd=config&amp;log=addon&amp;sid=@1234567890@'*) pass "and the link switches to the addon directory" ;;
+    *) fail "and the link switches to the addon directory" "$out" ;;
+esac
+case "$out" in
+    *'keine Schreibzugriffe auf die SD-Karte'*'no writes to the SD card'*'schreibt dafür auf die SD-Karte'*'writes to the SD card'*) pass "each with its trade-off, in German and English" ;;
+    *) fail "each with its trade-off, in German and English" "$out" ;;
+esac
+case "$out" in
+    *'<pre>varlog one'*'&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; more'*'</pre>'*) pass "the last lines of /var/log/hmm.log are shown, HTML-escaped" ;;
+    *) fail "the last lines of /var/log/hmm.log are shown, HTML-escaped" "$out" ;;
+esac
+case "$out" in
+    *'<script>alert'*) fail "and no log line reaches the page as markup" "$out" ;;
+    *) pass "and no log line reaches the page as markup" ;;
+esac
+case "$out" in
+    *'occulited'*) fail "and no journal line on a CCU" "$out" ;;
+    *) pass "and no journal line on a CCU" ;;
+esac
+out="$(cgi settings.cgi 'sid=@1234567890@&cmd=config&log=addon')"
+case "$out" in
+    *'current: <b>addon</b>'*) pass "switching to the addon directory is saved" ;;
+    *) fail "switching to the addon directory is saved" "$out" ;;
+esac
+case "$(grep -E '^ *#? *HMM_ADDON_LOG=' "$TREE/etc/hmm.env")" in
+    'HMM_ADDON_LOG=addon') pass "as the one HMM_ADDON_LOG line of etc/hmm.env, replacing the commented-out one" ;;
+    *) fail "as the one HMM_ADDON_LOG line of etc/hmm.env, replacing the commented-out one" "$(grep -n 'HMM_ADDON_LOG' "$TREE/etc/hmm.env")" ;;
+esac
+case "$(cat "$RC_CALLS")" in
+    restart) pass "and the service is restarted through rc.d" ;;
+    *) fail "and the service is restarted through rc.d" "$(cat "$RC_CALLS")" ;;
+esac
+case "$out" in
+    *'Saved, the service was restarted.'*) pass "and the page says so" ;;
+    *) fail "and the page says so" "$out" ;;
+esac
+case "$out" in
+    *'&amp;log=varlog'*) pass "the link now switches back to /var/log" ;;
+    *) fail "the link now switches back to /var/log" "$out" ;;
+esac
+case "$out" in
+    *'<pre>line one'*'line two'*'</pre>'*) pass "and the log shown follows the setting" ;;
+    *) fail "and the log shown follows the setting" "$out" ;;
+esac
+: > "$RC_CALLS"
+cgi settings.cgi 'sid=@1234567890@&cmd=config&log=addon' >/dev/null
+if [ -s "$RC_CALLS" ]; then
+    fail "choosing the location that is already set restarts nothing" "$(cat "$RC_CALLS")"
+else
+    pass "choosing the location that is already set restarts nothing"
+fi
+out="$(cgi settings.cgi 'sid=@1234567890@&cmd=config&log=syslog')"
+case "$out" in
+    *'Unbekannter Wert'*) pass "a location that does not exist is refused" ;;
+    *) fail "a location that does not exist is refused" "$out" ;;
+esac
+if [ "$(grep '^HMM_ADDON_LOG' "$TREE/etc/hmm.env")" = 'HMM_ADDON_LOG=addon' ] && [ ! -s "$RC_CALLS" ]; then
+    pass "and nothing was written or restarted for it"
+else
+    fail "and nothing was written or restarted for it" "$(grep 'HMM_ADDON_LOG' "$TREE/etc/hmm.env"; cat "$RC_CALLS")"
+fi
+out="$(cgi settings.cgi 'sid=@1234567890@&cmd=config&log=varlog')"
+if [ "$(grep '^HMM_ADDON_LOG' "$TREE/etc/hmm.env")" = 'HMM_ADDON_LOG=varlog' ] && [ "$(cat "$RC_CALLS")" = restart ]; then
+    pass "switching back to /var/log writes varlog and restarts"
+else
+    fail "switching back to /var/log writes varlog and restarts" "$(grep 'HMM_ADDON_LOG' "$TREE/etc/hmm.env"; cat "$RC_CALLS")"
+fi
+case "$out" in
+    *'current: <b>varlog</b>'*'<pre>varlog one'*) pass "and the page shows /var/log/hmm.log again" ;;
+    *) fail "and the page shows /var/log/hmm.log again" "$out" ;;
+esac
+rm -f "$HMM_SYSTEM_LOG_DIR/hmm.log"
+
 echo "the addon settings page on openccu-lite (D-40)"
 # The firmware's own file, with the extra line openccu-lite identifies itself by (their D-17). The
 # CGI reads it at every request, so the same package shows the mode that fits the box it is on.
@@ -343,6 +459,25 @@ case "$out" in
     *'href="/log?unit=addon-hmm"'*) pass "and it links the box's Log page for the addon's log (task 41)" ;;
     *) fail "and it links the box's Log page for the addon's log (task 41)" "$out" ;;
 esac
+case "$out" in
+    *"Auf openccu-lite steht das Log im Journal der Box; wo es gespeichert wird, stellt man"*"On openccu-lite the log is in the box's journal; its storage is configured in"*) pass "with the journal line, in German and English (task 43)" ;;
+    *) fail "with the journal line, in German and English (task 43)" "$out" ;;
+esac
+case "$out" in
+    *'log=addon'* | *'log=varlog'* | *'<b>varlog</b>'* | *'<pre>'*) fail "and no location to choose, no log file shown" "$out" ;;
+    *) pass "and no location to choose, no log file shown" ;;
+esac
+: > "$RC_CALLS"
+out="$(cd "$TREE/www" && QUERY_STRING='sid=@1234567890@&cmd=config&log=addon' HMM_VERSION_FILE="$LITE_VERSION" tclsh "$STUB" settings.cgi 2>&1)"
+case "$out" in
+    *'nichts umzustellen'*) pass "a switch of the log location is refused on a lite box" ;;
+    *) fail "a switch of the log location is refused on a lite box" "$out" ;;
+esac
+if grep -q '^HMM_ADDON_LOG' "$TREE/etc/hmm.env" || [ -s "$RC_CALLS" ]; then
+    fail "and nothing was written or restarted for it" "$(grep 'HMM_ADDON_LOG' "$TREE/etc/hmm.env"; cat "$RC_CALLS")"
+else
+    pass "and nothing was written or restarted for it"
+fi
 out="$(cd "$TREE/www" && QUERY_STRING='sid=@1234567890@&cmd=config' HMM_VERSION_FILE="$CCU_VERSION" tclsh "$STUB" settings.cgi 2>&1)"
 case "$out" in
     *'current: <b>token</b>'*) pass "unset means token on a CCU, exactly as before" ;;

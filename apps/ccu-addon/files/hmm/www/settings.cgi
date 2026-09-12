@@ -90,6 +90,26 @@ if {[string equal $cmd "config"]} {
         }
     }
 
+    # Task 43 (#159): where the backend's output goes on a CCU and OpenCCU, the same way as the mode
+    # above: written into hmm.env, which rc.d/hmm reads at the start the restart does. On openccu-lite
+    # the log is the journal and there is nothing to choose.
+    set logchoice [log_choice]
+    if {[info exists params(log)]} {
+        set wanted $params(log)
+        if {$lite} {
+            set message "Auf openccu-lite steht das Log im Journal, es gibt nichts umzustellen. / On openccu-lite the log is the journal, there is nothing to switch."
+        } elseif {[string equal $wanted "varlog"] || [string equal $wanted "addon"]} {
+            if {![string equal $wanted $logchoice]} {
+                write_env HMM_ADDON_LOG $wanted
+                set logchoice $wanted
+                catch {exec $RC_SCRIPT restart} output
+                set message "Gespeichert, der Dienst wurde neu gestartet. / Saved, the service was restarted."
+            }
+        } else {
+            set message "Unbekannter Wert. / Unknown value."
+        }
+    }
+
     set query ""
     if {![string equal $sid ""]} {
         set query "&sid=$sid"
@@ -102,6 +122,7 @@ if {[string equal $cmd "config"]} {
     puts "h1{font-size:1.3em}h2{font-size:1.05em;margin-top:1.6em}"
     puts "p.note{color:#666}p.msg{padding:.5em .7em;border:1px solid #2779aa;background:#eef4fb}"
     puts "table{border-collapse:collapse}td{padding:.2em .8em .2em 0;vertical-align:top}"
+    puts "pre{background:#f4f4f4;padding:.5em .7em;overflow:auto;max-height:30em;font-size:.85em}"
     puts "</style></head><body>"
     puts "<h1>Homematic Manager</h1>"
     if {![string equal $message ""]} {
@@ -142,14 +163,46 @@ if {[string equal $cmd "config"]} {
     puts "<p class=\"note\">This writes HMM_AUTH_MODE to /usr/local/addons/hmm/etc/hmm.env and"
     puts "restarts the service. The same file takes every other option of the host, e.g."
     puts "HMM_SESSION_TTL.</p>"
+    puts "<h2>Log</h2>"
     if {$lite} {
-        # task 41: there is no log file on openccu-lite; the box's Log page shows the journal
-        puts "<h2>Log</h2>"
-        puts "<p>Auf openccu-lite schreibt das Addon ins Journal der Box, nicht in eine Datei:"
-        puts "<a href=\"[html_escape $LITE_LOG_PAGE]\">Log-Seite (Unit addon-hmm)</a>, oder auf der"
-        puts "Box <code>journalctl -t addon-hmm</code>."
-        puts "<br>On openccu-lite the addon logs to the box's journal, not to a file: the Log page"
-        puts "(unit addon-hmm), or <code>journalctl -t addon-hmm</code> on the box.</p>"
+        # tasks 41 and 43: there is no log file on openccu-lite; the box's Log page shows the journal,
+        # and occulited is where its storage is set
+        puts "<p>Auf openccu-lite steht das Log im Journal der Box; wo es gespeichert wird, stellt man"
+        puts "in occulited ein (<a href=\"[html_escape $LITE_LOG_PAGE]\">Seite Log</a>)."
+        puts "<br>On openccu-lite the log is in the box's journal; its storage is configured in"
+        puts "occulited (<a href=\"[html_escape $LITE_LOG_PAGE]\">Log page</a>).</p>"
+    } else {
+        puts "<table><tr><td><b>varlog</b></td><td><code>[html_escape $VARLOG_LOG_FILE]</code><br>"
+        puts "Im Arbeitsspeicher (tmpfs): keine Schreibzugriffe auf die SD-Karte, nach einem Neustart"
+        puts "der CCU leer. Das ist die Voreinstellung."
+        puts "<br>In memory (tmpfs): no writes to the SD card, empty after a reboot of the CCU. This is"
+        puts "the default."
+        puts "</td></tr><tr><td><b>addon</b></td><td><code>[html_escape $ADDON_LOG_FILE]</code><br>"
+        puts "Im Addon-Verzeichnis: bleibt über einen Neustart erhalten, schreibt dafür auf die SD-Karte."
+        puts "<br>In the addon directory: survives a reboot, at the cost of writes to the SD card."
+        puts "</td></tr></table>"
+        puts "<p>Aktuell / current: <b>[html_escape $logchoice]</b></p>"
+        if {[string equal $logchoice "addon"]} {
+            set switchto "varlog"
+        } else {
+            set switchto "addon"
+        }
+        puts "<p><a href=\"settings.cgi?cmd=config&amp;log=$switchto[html_escape $query]\">Auf"
+        puts "<b>$switchto</b> umstellen / switch to <b>$switchto</b></a></p>"
+        puts "<p class=\"note\">Das schreibt HMM_ADDON_LOG nach /usr/local/addons/hmm/etc/hmm.env und"
+        puts "startet den Dienst neu; die Datei am anderen Ort wird dabei gelöscht. Beide Dateien werden"
+        puts "bei 1 MB rotiert (hmm.log.1).</p>"
+        puts "<p class=\"note\">This writes HMM_ADDON_LOG to /usr/local/addons/hmm/etc/hmm.env and"
+        puts "restarts the service, which removes the file at the other location. Both files are"
+        puts "rotated at 1 MB (hmm.log.1).</p>"
+        set shown [log_file]
+        puts "<p>Die letzten Zeilen / the last lines: <code>[html_escape $shown]</code></p>"
+        if {[file isfile $shown]} {
+            catch {exec tail -n 50 $shown} lines
+            puts "<pre>[html_escape $lines]</pre>"
+        } else {
+            puts "<p class=\"note\">(kein Log vorhanden - der Dienst lief noch nicht / no log yet)</p>"
+        }
     }
     if {![string equal $sid ""]} {
         puts "<p><a href=\"settings.cgi?sid=[html_escape $sid]\">Homematic Manager öffnen / open</a></p>"

@@ -143,13 +143,18 @@ check "the service was started by the live install" "running" "$(dex '/usr/local
 check "the pidfile is inside the addon tree, where the CCU3 install chroot can see it" "OK" \
     "$(dex 'test -s /usr/local/addons/hmm/var/hmm.pid && echo OK')"
 absent "and nothing was written to /var/run" "hmm.pid" "$(dex 'ls /var/run 2>/dev/null')"
-# task 35: the fixed callback ports travel from rc.d's environment into the host
+# task 43: the backend's output goes to /var/log/hmm.log by default - the CCU's tmpfs, not the SD card
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-    dex 'grep -q "callback: default ports" /usr/local/addons/hmm/var/hmm.log' >/dev/null && break
+    dex 'grep -q "callback: default ports" /var/log/hmm.log' >/dev/null && break
     sleep 1
 done
+check "the backend's start line is in /var/log/hmm.log, the default (task 43)" "homematic-manager-web" \
+    "$(dex 'cat /var/log/hmm.log')"
+check "and there is no var/hmm.log in the addon directory" "gone" \
+    "$(dex 'test -e /usr/local/addons/hmm/var/hmm.log || echo gone')"
+# task 35: the fixed callback ports travel from rc.d's environment into the host
 check "the host takes the addon's fixed callback ports while config.json says 0 (task 35)" \
-    "default ports xmlrpc=2031 binrpc=2032" "$(dex 'cat /usr/local/addons/hmm/var/hmm.log')"
+    "default ports xmlrpc=2031 binrpc=2032" "$(dex 'cat /var/log/hmm.log')"
 
 echo
 echo "a start that starts nothing says so (B-25)"
@@ -181,7 +186,8 @@ dex 'cp /usr/local/addons/hmm/etc/hmm.env /tmp/hmm.env.t41 \
     && cp /opt/systemd-cat-stub /usr/bin/systemd-cat && chmod 755 /usr/bin/systemd-cat \
     && printf "VERSION=3.89.8.20260719\nPRODUCT=ova\nPLATFORM=ova\nVARIANT=lite\n" > /VERSION \
     && echo old > /usr/local/addons/hmm/var/hmm.log.1' >/dev/null
-dex '/usr/local/etc/config/rc.d/hmm stop' >/dev/null
+# task 43: and the CCU's /var/log/hmm.log out of the way, to see that nothing writes it here either
+dex '/usr/local/etc/config/rc.d/hmm stop; rm -f /var/log/hmm.log /var/log/hmm.log.1' >/dev/null
 out="$(dex '/usr/local/etc/config/rc.d/hmm start; echo "exit $?"')"
 check "a start on openccu-lite says OK" "Starting hmm: OK" "$out"
 check "with exit 0" "exit 0" "$out"
@@ -204,18 +210,85 @@ done
 check "and the restarted backend logs to the journal too" "twice" \
     "$(dex 'n=$(grep -c "homematic-manager-web" /tmp/journal-addon-hmm.log); [ "$n" -ge 2 ] && echo twice || echo "$n"')"
 check "still without a log file" "gone" "$(dex 'test -e /usr/local/addons/hmm/var/hmm.log || echo gone')"
+check "and nothing in /var/log either (task 43)" "gone" "$(dex 'test -e /var/log/hmm.log || echo gone')"
 out="$(dex "curl -si 'http://127.0.0.1/addons/hmm/service.cgi?sid=%40${SID}%40&cmd=log'")"
 check "service.cgi's log view sends the browser to the box's Log page with the addon's unit" \
     "Location: /log?unit=addon-hmm" "$out"
-# back to a CCU for everything below, which reads var/hmm.log
+# back to a CCU for everything below, which reads the log file
 dex 'rm -f /VERSION /usr/bin/systemd-cat && cp /tmp/hmm.env.t41 /usr/local/addons/hmm/etc/hmm.env \
     && /usr/local/etc/config/rc.d/hmm restart' >/dev/null
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-    dex 'grep -q "homematic-manager-web" /usr/local/addons/hmm/var/hmm.log' >/dev/null && break
+    dex 'grep -q "homematic-manager-web" /var/log/hmm.log' >/dev/null && break
     sleep 1
 done
-check "back on a CCU the backend writes var/hmm.log again" "homematic-manager-web" \
+check "back on a CCU the backend writes /var/log/hmm.log again" "homematic-manager-web" \
+    "$(dex 'cat /var/log/hmm.log')"
+
+echo
+echo "the log location on a CCU and OpenCCU: /var/log or the addon directory (task 43)"
+SETTINGS="http://127.0.0.1/addons/hmm/settings.cgi?cmd=config&sid=%40${SID}%40"
+LOG_VIEW="http://127.0.0.1/addons/hmm/service.cgi?sid=%40${SID}%40&cmd=log"
+# wait_for_log <file>: until the (re)started backend has written its start line there
+wait_for_log() {
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        dex "grep -q 'homematic-manager-web' $1" >/dev/null && break
+        sleep 1
+    done
+}
+out="$(dex "curl -s '$SETTINGS'")"
+check "the settings page names the current location" "current: <b>varlog</b>" "$out"
+check "and shows the last lines of /var/log/hmm.log" "homematic-manager-web" "$out"
+dex 'echo t43-marker-varlog >> /var/log/hmm.log' >/dev/null
+check "service.cgi's log view reads /var/log/hmm.log" "t43-marker-varlog" "$(dex "curl -s '$LOG_VIEW'")"
+out="$(dex "curl -s --max-time 90 '$SETTINGS&log=addon'")"
+check "settings.cgi?cmd=config&log=addon saves and restarts the service" "Saved, the service was restarted." "$out"
+check "HMM_ADDON_LOG=addon is in etc/hmm.env" "HMM_ADDON_LOG=addon" \
+    "$(dex 'grep ^HMM_ADDON_LOG= /usr/local/addons/hmm/etc/hmm.env')"
+check "and the service runs" "running" "$(dex '/usr/local/etc/config/rc.d/hmm status')"
+wait_for_log /usr/local/addons/hmm/var/hmm.log
+check "the restarted backend writes var/hmm.log in the addon directory" "homematic-manager-web" \
     "$(dex 'cat /usr/local/addons/hmm/var/hmm.log')"
+check "and /var/log/hmm.log is gone" "gone" "$(dex 'test -e /var/log/hmm.log || echo gone')"
+dex 'echo t43-marker-addon >> /usr/local/addons/hmm/var/hmm.log' >/dev/null
+out="$(dex "curl -s '$LOG_VIEW'")"
+check "service.cgi's log view follows it" "t43-marker-addon" "$out"
+absent "and shows nothing of the old /var/log/hmm.log" "t43-marker-varlog" "$out"
+dex 'dd if=/dev/zero bs=1024 count=1100 2>/dev/null >> /usr/local/addons/hmm/var/hmm.log \
+    && /usr/local/etc/config/rc.d/hmm restart' >/dev/null
+check "a var/hmm.log over 1 MB is rotated at the start" "rotated" \
+    "$(dex 'test -s /usr/local/addons/hmm/var/hmm.log.1 && echo rotated')"
+wait_for_log /usr/local/addons/hmm/var/hmm.log
+out="$(dex "curl -s --max-time 90 '$SETTINGS&log=varlog'")"
+check "log=varlog switches back and restarts" "Saved, the service was restarted." "$out"
+check "HMM_ADDON_LOG=varlog is in etc/hmm.env" "HMM_ADDON_LOG=varlog" \
+    "$(dex 'grep ^HMM_ADDON_LOG= /usr/local/addons/hmm/etc/hmm.env')"
+wait_for_log /var/log/hmm.log
+check "the restarted backend writes /var/log/hmm.log again" "homematic-manager-web" "$(dex 'cat /var/log/hmm.log')"
+check "and var/hmm.log and its rotation are gone" "gone" \
+    "$(dex 'test -e /usr/local/addons/hmm/var/hmm.log || test -e /usr/local/addons/hmm/var/hmm.log.1 || echo gone')"
+dex 'echo t43-marker-back >> /var/log/hmm.log' >/dev/null
+out="$(dex "curl -s '$LOG_VIEW'")"
+check "service.cgi's log view follows back" "t43-marker-back" "$out"
+absent "and shows nothing of the addon directory's log" "t43-marker-addon" "$out"
+dex 'dd if=/dev/zero bs=1024 count=1100 2>/dev/null >> /var/log/hmm.log \
+    && /usr/local/etc/config/rc.d/hmm restart' >/dev/null
+check "a /var/log/hmm.log over 1 MB is rotated at the start too" "rotated" \
+    "$(dex 'test -s /var/log/hmm.log.1 && echo rotated')"
+wait_for_log /var/log/hmm.log
+# The fallback. As root in this container a directory stands in for a /var/log/hmm.log the start
+# cannot write.
+dex '/usr/local/etc/config/rc.d/hmm stop; rm -f /var/log/hmm.log /var/log/hmm.log.1; mkdir /var/log/hmm.log' >/dev/null
+out="$(dex '/usr/local/etc/config/rc.d/hmm start; echo "exit $?"')"
+check "a /var/log/hmm.log that cannot be written does not keep the backend from starting" "Starting hmm: OK" "$out"
+check "with exit 0" "exit 0" "$out"
+wait_for_log /usr/local/addons/hmm/var/hmm.log
+check "it logs to var/hmm.log in the addon directory instead" "homematic-manager-web" \
+    "$(dex 'cat /usr/local/addons/hmm/var/hmm.log')"
+check "and service.cgi's log view shows that file" "homematic-manager-web" "$(dex "curl -s '$LOG_VIEW'")"
+dex '/usr/local/etc/config/rc.d/hmm stop; rmdir /var/log/hmm.log; /usr/local/etc/config/rc.d/hmm start' >/dev/null
+wait_for_log /var/log/hmm.log
+check "once /var/log/hmm.log can be written, the log is back there" "homematic-manager-web" "$(dex 'cat /var/log/hmm.log')"
+check "and the fallback's var/hmm.log is gone" "gone" "$(dex 'test -e /usr/local/addons/hmm/var/hmm.log || echo gone')"
 
 echo
 echo "the Zusatzsoftware page (rc.d/hmm info)"
@@ -306,7 +379,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
     sleep 1
 done
 check "the host started in rega mode and says so in the log" "CCU credentials required" \
-    "$(dex 'tail -40 /usr/local/addons/hmm/var/hmm.log')"
+    "$(dex 'tail -40 /var/log/hmm.log')"
 
 out="$(dex "curl -s http://127.0.0.1/addons/hmm/")"
 check "a browser without a session gets the login page instead of the UI" 'name="password"' "$out"
@@ -442,6 +515,7 @@ lighttpd_actions >/dev/null
 out="$(webui uninstall)"
 check "the WebUI's request is answered (#141)" "uninstalled rc=0 curl=0" "$out"
 check "the addon directory is gone" "gone" "$(dex 'test -d /usr/local/addons/hmm || echo gone')"
+check "and so is its log in /var/log (task 43)" "gone" "$(dex 'test -e /var/log/hmm.log || test -e /var/log/hmm.log.1 || echo gone')"
 check "the lighttpd rule is gone" "gone" "$(dex 'test -f /usr/local/etc/config/lighttpd/hmm.conf || echo gone')"
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
     case "$(dex 'cat /tmp/S50lighttpd.log')" in

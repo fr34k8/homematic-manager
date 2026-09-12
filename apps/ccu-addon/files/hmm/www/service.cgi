@@ -120,7 +120,9 @@ switch -- $cmd {
         # Task 41: on openccu-lite the backend logs to the journal and there is no file to show. The
         # addon's user may not read the journal itself, so the browser goes to the box's own Log page
         # with the addon's unit chosen. A lite box without systemd-cat still has the file.
-        if {[is_openccu_lite] && ![file exists $LOG_FILE]} {
+        # Task 43: on a CCU and OpenCCU the file is the one HMM_ADDON_LOG chooses (lib/common.tcl).
+        set log [log_file]
+        if {[is_openccu_lite] && ![file isfile $log]} {
             puts "Status: 302 Found"
             puts "Location: $LITE_LOG_PAGE"
             puts "Content-Type: text/plain; charset=utf-8\r\n"
@@ -135,8 +137,8 @@ switch -- $cmd {
             }
         }
         puts "Content-Type: text/plain; charset=utf-8\r\n"
-        if {[file exists $LOG_FILE]} {
-            catch {exec tail -n $lines $LOG_FILE} output
+        if {[file isfile $log]} {
+            catch {exec tail -n $lines $log} output
             puts $output
         } else {
             puts "(kein Log vorhanden - der Dienst lief noch nicht / no log yet)"
