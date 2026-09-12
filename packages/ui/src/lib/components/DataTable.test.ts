@@ -1,5 +1,5 @@
 import {fireEvent, render, screen, waitFor, within} from '@testing-library/svelte';
-import type {Component} from 'svelte';
+import {createRawSnippet, type Component} from 'svelte';
 import {describe, expect, it, vi} from 'vitest';
 import {userEvent} from 'vitest/browser';
 
@@ -8,7 +8,7 @@ import type {StorageLike} from '../stores/AppStore.svelte.js';
 import {FIT_MAX_WIDTH, MIN_COLUMN_WIDTH} from './columnWidths.js';
 import DataTableComponent from './DataTable.svelte';
 import {DATA_TABLE_KEY, type DataTableEnvironment} from './dataTableContext.js';
-import type {DataTableColumn} from './tableModel.js';
+import {cellText, type DataTableColumn} from './tableModel.js';
 import {TOOLTIP_DELAY_MS} from './tooltip.js';
 
 /**
@@ -964,5 +964,134 @@ describe('the columns only a sub-grid has (task 42)', () => {
             within(screen.getByTestId('grid-columns-menu')).getByRole('menuitem', {name: 'Reset column widths'}),
         );
         expect(pixelWidth(subLabels('direction')[0]!)).toBe(designed);
+    });
+});
+
+describe('the full text of a cut-off cell on keyboard focus (task 42)', () => {
+    const LONG_NAME = 'Wohnzimmer Stehlampe neben dem Sofa am Fenster';
+
+    function pause(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    it.skipIf(!hasLayout)(
+        'shows the full text of a cut-off label on keyboard focus, and hides it on Escape and on blur',
+        async () => {
+            const store = new ColumnWidthsStore(new WidthStorage(), () => 'ccu');
+            store.set('devices', 'address', 40);
+            renderSubGrid({expanded: []}, {columnWidths: store});
+            const label = within(columnHeader('ADDRESS')).getByRole('button');
+            expect(truncated(columnHeader('ADDRESS'))).toBe(true);
+            // wherever the mouse of an earlier test rests, it is not what shows a tooltip here
+            await pause(TOOLTIP_DELAY_MS + 150);
+            expect(screen.queryByRole('tooltip')).toBeNull();
+
+            screen.getByTestId('grid-resize-name').focus();
+            await userEvent.tab();
+            expect(document.activeElement).toBe(label);
+            expect((await screen.findByRole('tooltip')).textContent).toBe('ADDRESS');
+
+            await userEvent.keyboard('{Escape}');
+            await waitFor(() => {
+                expect(screen.queryByRole('tooltip')).toBeNull();
+            });
+
+            // back and forth, then on to the column's handle: a blur of the label, and the handle
+            // names itself
+            await userEvent.tab({shift: true});
+            await userEvent.tab();
+            expect(document.activeElement).toBe(label);
+            await screen.findByRole('tooltip');
+            await userEvent.tab();
+            expect(document.activeElement).toBe(screen.getByTestId('grid-resize-address'));
+            await waitFor(() => {
+                expect(screen.queryByRole('tooltip')).toBeNull();
+            });
+            await pause(TOOLTIP_DELAY_MS + 150);
+            expect(screen.queryByRole('tooltip')).toBeNull();
+        },
+    );
+
+    it.skipIf(!hasLayout)(
+        'shows it for the focusable element in a cut-off cell, and nothing for one in a cell that fits',
+        async () => {
+            const store = new ColumnWidthsStore(new WidthStorage(), () => 'ccu');
+            store.set('devices', 'name', 120);
+            const cell = createRawSnippet((row: () => Row, column: () => DataTableColumn<Row>) => ({
+                render: () =>
+                    column().key === 'name'
+                        ? `<button type="button" class="probe">${row().name}</button>`
+                        : `<span>${cellText(row(), column())}</span>`,
+            }));
+            const rows = makeRows(6).map((row, index) => (index === 2 ? {...row, name: LONG_NAME} : row));
+            renderSubGrid({rows, cell, subRows: undefined, subColumns: undefined, expanded: []}, {columnWidths: store});
+            const buttons = [...document.querySelectorAll<HTMLButtonElement>('button.probe')];
+            expect(truncated(buttons[0]!.closest<HTMLElement>('.hmm-td')!)).toBe(false);
+            expect(truncated(buttons[2]!.closest<HTMLElement>('.hmm-td')!)).toBe(true);
+
+            screen.getByLabelText('Filter: TYPE').focus();
+            await userEvent.tab();
+            expect(document.activeElement).toBe(buttons[0]);
+            await pause(TOOLTIP_DELAY_MS + 150);
+            expect(screen.queryByRole('tooltip')).toBeNull();
+
+            await userEvent.tab();
+            await userEvent.tab();
+            expect(document.activeElement).toBe(buttons[2]);
+            const tip = await screen.findByRole('tooltip');
+            expect(tip.textContent).toBe(LONG_NAME);
+            expect(tip.dataset['testid']).toBe('grid-tooltip');
+
+            await userEvent.tab();
+            await waitFor(() => {
+                expect(screen.queryByRole('tooltip')).toBeNull();
+            });
+        },
+    );
+
+    it.skipIf(!hasLayout)('shows one tooltip, not two, when the pointer and the focus meet on a cell', async () => {
+        const store = new ColumnWidthsStore(new WidthStorage(), () => 'ccu');
+        store.set('devices', 'address', 40);
+        store.set('devices', 'type', 40);
+        renderSubGrid(
+            {expanded: [], columns: [...deviceColumns42.slice(0, 3), {key: 'type', label: 'DEVICE TYPE'}]},
+            {columnWidths: store},
+        );
+        expect(truncated(columnHeader('DEVICE TYPE'))).toBe(true);
+        const shown: Element[] = [];
+        const observer = new MutationObserver((records) => {
+            for (const record of records) {
+                for (const node of record.addedNodes) {
+                    if (node instanceof HTMLElement && node.getAttribute('role') === 'tooltip') {
+                        shown.push(node);
+                    }
+                }
+            }
+        });
+        observer.observe(document.body, {childList: true, subtree: true});
+        try {
+            // the keyboard first, then the pointer onto the same label: the bubble stays as it is
+            screen.getByTestId('grid-resize-name').focus();
+            await userEvent.tab();
+            await screen.findByRole('tooltip');
+            await userEvent.hover(columnHeader('ADDRESS'));
+            await pause(TOOLTIP_DELAY_MS + 150);
+            expect(screen.getAllByRole('tooltip')).toHaveLength(1);
+            expect(shown).toHaveLength(1);
+
+            // the pointer first, then a click focuses the label: the press hides the tooltip, as any
+            // press does, and a focus that came with the pointer does not bring it back
+            await userEvent.hover(columnHeader('DEVICE TYPE'));
+            expect((await screen.findByRole('tooltip')).textContent).toBe('DEVICE TYPE');
+            expect(shown).toHaveLength(2);
+            const label = within(columnHeader('DEVICE TYPE')).getByRole('button');
+            await userEvent.click(label);
+            expect(document.activeElement).toBe(label);
+            await pause(TOOLTIP_DELAY_MS + 150);
+            expect(screen.queryByRole('tooltip')).toBeNull();
+            expect(shown).toHaveLength(2);
+        } finally {
+            observer.disconnect();
+        }
     });
 });

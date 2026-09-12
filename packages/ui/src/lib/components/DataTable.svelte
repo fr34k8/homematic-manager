@@ -424,6 +424,10 @@
                     selectRow(row, {ctrl: true});
                 }
                 break;
+            case 'Escape':
+                // Task 42: the tooltip of a cut-off cell goes; the key itself is left to whoever else wants it
+                hideTooltip();
+                break;
             default:
                 break;
         }
@@ -679,32 +683,97 @@
     let tooltip = $state.raw<{text: string; anchor: TooltipAnchor} | undefined>(undefined);
     /** The cell under the pointer; plain, because only the handlers read it. */
     let hovered: HTMLElement | undefined;
+    /**
+     * Task 42: the cell the tooltip that is shown - or on its way - belongs to, and what brought it
+     * there. The pointer and the keyboard share the one bubble, so a cell they meet on shows it once.
+     */
+    let tipCell: HTMLElement | undefined;
+    let tipSource: 'pointer' | 'focus' | undefined;
     let tooltipTimer: ReturnType<typeof setTimeout> | undefined;
 
     /**
-     * The pointer entered a cell (delegated: one listener for the whole grid, not one per cell).
-     * Whether the cell is cut off is asked here, for this cell only - two numbers the browser has
-     * at hand - and the tooltip follows after the app's tooltip delay.
+     * Whether a cell gets a tooltip: its text is cut off. Asked when the cell is reached, for this
+     * cell only - two numbers the browser has at hand - never for every cell up front. Fixed columns
+     * clip on purpose.
      */
-    function onGridPointerOver(event: PointerEvent): void {
-        const target = event.target instanceof Element ? event.target.closest<HTMLElement>('.hmm-td, .hmm-th') : null;
-        const cell = target ?? undefined;
-        if (cell === hovered) {
-            return;
-        }
+    function wantsTooltip(cell: HTMLElement): boolean {
+        return resize === undefined && !cell.classList.contains('hmm-td-fixed') && isTruncated(cell);
+    }
+
+    /** The bubble after the app's tooltip delay, unless the cell is left before. */
+    function scheduleTooltip(cell: HTMLElement, source: 'pointer' | 'focus'): void {
         hideTooltip();
-        hovered = cell;
-        if (!cell || resize !== undefined || cell.classList.contains('hmm-td-fixed') || !isTruncated(cell)) {
-            return;
-        }
+        tipCell = cell;
+        tipSource = source;
         tooltipTimer = setTimeout(() => {
             tooltipTimer = undefined;
             showTooltip(cell);
         }, TOOLTIP_DELAY_MS);
     }
 
+    /** The pointer entered a cell (delegated: one listener for the whole grid, not one per cell). */
+    function onGridPointerOver(event: PointerEvent): void {
+        const target = event.target instanceof Element ? event.target.closest<HTMLElement>('.hmm-td, .hmm-th') : null;
+        const cell = target ?? undefined;
+        if (cell === hovered) {
+            return;
+        }
+        hovered = cell;
+        if (cell !== undefined && cell === tipCell) {
+            // the keyboard has brought this cell's tooltip already, or is about to
+            return;
+        }
+        if (cell !== undefined && wantsTooltip(cell)) {
+            scheduleTooltip(cell, 'pointer');
+        } else if (tipSource === 'pointer') {
+            hideTooltip();
+        }
+    }
+
+    /**
+     * `:focus-visible` is the browser's own answer to "did this focus come from the keyboard". A
+     * focus that came with a click belongs to the pointer: that press has just hidden the tooltip,
+     * and the focus must not bring it back a second time.
+     */
+    function isKeyboardFocus(element: HTMLElement): boolean {
+        try {
+            return element.matches(':focus-visible');
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Task 42: keyboard focus arrived in a cell - the sort button of a cut-off column label, a
+     * button in a row. The same bubble after the same delay as on hover. A resize handle names
+     * itself and gets none.
+     */
+    function onGridFocusIn(event: FocusEvent): void {
+        const target = event.target instanceof HTMLElement ? event.target : undefined;
+        const cell = target?.closest<HTMLElement>('.hmm-td, .hmm-th') ?? undefined;
+        if (
+            target === undefined ||
+            cell === undefined ||
+            cell === tipCell ||
+            target.classList.contains('hmm-th-resize') ||
+            !isKeyboardFocus(target)
+        ) {
+            return;
+        }
+        if (wantsTooltip(cell)) {
+            scheduleTooltip(cell, 'focus');
+        }
+    }
+
+    /** The focus moved on, or left the grid: a tooltip it brought goes with it. */
+    function onGridFocusOut(): void {
+        if (tipSource === 'focus') {
+            hideTooltip();
+        }
+    }
+
     function showTooltip(cell: HTMLElement): void {
-        if (hovered !== cell || !cell.isConnected) {
+        if (tipCell !== cell || !cell.isConnected) {
             return;
         }
         const text = fullText(cell.querySelector<HTMLElement>('.hmm-th-label') ?? cell);
@@ -720,6 +789,8 @@
             clearTimeout(tooltipTimer);
             tooltipTimer = undefined;
         }
+        tipCell = undefined;
+        tipSource = undefined;
         if (tooltip !== undefined) {
             tooltip = undefined;
         }
@@ -728,6 +799,14 @@
     /** Hidden, and the next cell the pointer is over counts as entered again. */
     function forgetTooltip(): void {
         hideTooltip();
+        hovered = undefined;
+    }
+
+    /** The pointer left the grid: its own tooltip goes; one the keyboard brought stays with the focus. */
+    function onGridPointerLeave(): void {
+        if (tipSource === 'pointer') {
+            hideTooltip();
+        }
         hovered = undefined;
     }
 
@@ -805,8 +884,10 @@
         onkeydown={onKeyDown}
         oncontextmenu={onGridContextMenu}
         onpointerover={onGridPointerOver}
-        onpointerleave={forgetTooltip}
+        onpointerleave={onGridPointerLeave}
         onpointerdown={hideTooltip}
+        onfocusin={onGridFocusIn}
+        onfocusout={onGridFocusOut}
     >
         {#if spans.length > 0}
             <!-- The 2.x Funk grid's second header row: one cell per interface over its columns. -->
