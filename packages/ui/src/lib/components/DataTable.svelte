@@ -15,6 +15,7 @@
         hasActiveFilter,
         isFilterable,
         isSortable,
+        layoutWidths,
         nextSelection,
         sizedTemplate,
         tableLayout,
@@ -104,6 +105,13 @@
          * Without one - or outside the app - the widths last as long as the table does.
          */
         tableId?: string | undefined;
+        /**
+         * Task 42: the name the widths of the columns only the sub-grid has are kept under -
+         * `devices-channels`, `radio-peers`. Every expanded sub-grid of the table is drawn on the
+         * one template, so one width applies to all of them. Without one they last as long as the
+         * table does.
+         */
+        subTableId?: string | undefined;
         testId?: string | undefined;
     }
 
@@ -137,6 +145,7 @@
         onrowcontextmenu = undefined,
         cell = undefined,
         tableId = undefined,
+        subTableId = undefined,
         testId = undefined,
     }: Props = $props();
 
@@ -179,21 +188,34 @@
 
     /** The widths the user gave this table and kept (task 40). */
     let localWidths = $state.raw<ColumnWidths>({});
+    /** Task 42: the same for the columns only the sub-grid has, when there is no store for them. */
+    let localSubWidths = $state.raw<ColumnWidths>({});
     /** The width of the column under the pointer while it is dragged; stored when it is let go. */
     let draft = $state.raw<{key: string; width: number} | undefined>(undefined);
     const storedWidths = $derived.by((): ColumnWidths => {
         const store = environment?.columnWidths;
         return tableId === undefined || store === undefined ? localWidths : store.widths(tableId);
     });
+    const storedSubWidths = $derived.by((): ColumnWidths => {
+        const store = environment?.columnWidths;
+        return subTableId === undefined || store === undefined ? localSubWidths : store.widths(subTableId);
+    });
     const hasUserWidths = $derived(Object.keys(storedWidths).length > 0);
+    const hasSubWidths = $derived(Object.keys(storedSubWidths).length > 0);
+    /**
+     * Task 42: the tracks only the sub-grid has. Their handles are in the sub-grid's label rows and
+     * their widths are kept under `subTableId`; every other column is sized from the head.
+     */
+    const subKeys = $derived(new Set(layout.subKeys));
     /**
      * The template with the user's widths in it. It is set once, as a custom property on the grid,
      * and every row reads it from CSS: a pointer move during a drag changes one style attribute,
-     * not one per rendered row.
+     * not one per rendered row - a sub-grid's label row included.
      */
-    const sized = $derived(
-        sizedTemplate(layout, draft === undefined ? storedWidths : {...storedWidths, [draft.key]: draft.width}),
-    );
+    const sized = $derived.by(() => {
+        const widths = layoutWidths(layout, storedWidths, storedSubWidths);
+        return sizedTemplate(layout, draft === undefined ? widths : {...widths, [draft.key]: draft.width});
+    });
     const spans = $derived(groupSpans(columnGroups ?? [], columns, layout));
     const expandedSet = $derived(new Set(expanded));
     /**
@@ -414,26 +436,65 @@
     /** Room for the ▲ of a sorted label, so fitting a column and then sorting it cuts nothing off. */
     const SORT_MARK_PX = 14;
 
+    /**
+     * Task 42: where a width is sized and kept - the table's columns from the head under `tableId`,
+     * the columns only the sub-grid has from its label rows under `subTableId`.
+     */
+    type WidthScope = 'table' | 'sub';
+
+    function scopeOf(key: string): WidthScope {
+        return subKeys.has(key) ? 'sub' : 'table';
+    }
+
     function saveWidth(key: string, width: number): void {
         const store = environment?.columnWidths;
-        if (tableId !== undefined && store !== undefined) {
-            store.set(tableId, key, width);
+        const scope = scopeOf(key);
+        const id = scope === 'sub' ? subTableId : tableId;
+        if (id !== undefined && store !== undefined) {
+            store.set(id, key, width);
+        } else if (scope === 'sub') {
+            localSubWidths = {...localSubWidths, [key]: clampColumnWidth(width)};
         } else {
             localWidths = {...localWidths, [key]: clampColumnWidth(width)};
         }
     }
 
-    function resetWidths(): void {
+    /** Back to the designed widths: the table's columns, or the sub-grid's own alone. */
+    function resetWidths(scope: WidthScope): void {
         const store = environment?.columnWidths;
-        if (tableId !== undefined && store !== undefined) {
-            store.reset(tableId);
+        const id = scope === 'sub' ? subTableId : tableId;
+        if (id !== undefined && store !== undefined) {
+            store.reset(id);
+        } else if (scope === 'sub') {
+            localSubWidths = {};
         } else {
             localWidths = {};
         }
     }
 
-    function headerCell(key: string): HTMLElement | undefined {
-        return headStrip?.querySelector<HTMLElement>(`[data-column-key="${CSS.escape(key)}"]`) ?? undefined;
+    /**
+     * A column that can be sized from where the user is: a column of the head from the head, a
+     * column only the sub-grid has from the sub-grid's label row. A column both depths share is the
+     * table's; its sub-grid label has no handle.
+     */
+    function resizableColumn(key: string | undefined, scope: WidthScope): DataTableColumn<T> | undefined {
+        if (key === undefined || scopeOf(key) !== scope) {
+            return undefined;
+        }
+        const column = (scope === 'sub' ? visibleSubColumns : visibleColumns).find(
+            (candidate) => candidate.key === key,
+        );
+        return column !== undefined && isResizable(column) ? column : undefined;
+    }
+
+    /** The label of a column: its cell in the head, or in the first rendered label row of a sub-grid. */
+    function labelCell(key: string): HTMLElement | undefined {
+        const selector = `[data-column-key="${CSS.escape(key)}"]`;
+        const cell =
+            scopeOf(key) === 'sub'
+                ? viewport?.querySelector<HTMLElement>(`.hmm-tr-subhead ${selector}`)
+                : headStrip?.querySelector<HTMLElement>(selector);
+        return cell ?? undefined;
     }
 
     /**
@@ -442,16 +503,18 @@
      * `FIT_MAX_WIDTH`.
      */
     function fitColumn(key: string): void {
-        const column = visibleColumns.find((candidate) => candidate.key === key);
-        const header = headerCell(key);
-        if (!root || !column || !header || !isResizable(column)) {
+        const scope = scopeOf(key);
+        const column = resizableColumn(key, scope);
+        const header = labelCell(key);
+        if (!root || !column || !header) {
             return;
         }
         const cells = viewport
             ? [...viewport.querySelectorAll<HTMLElement>(`.hmm-td[data-column-key="${CSS.escape(key)}"]`)]
             : [];
         const [label = 0, ...values] = measureNaturalWidths(root, [header, ...cells]);
-        const labelWidth = isSortable(column) && sort?.key !== key ? label + SORT_MARK_PX : label;
+        // a label of the head can get the sort mark; a label row of a sub-grid is not sorted
+        const labelWidth = scope === 'table' && isSortable(column) && sort?.key !== key ? label + SORT_MARK_PX : label;
         const width = fitColumnWidth([labelWidth, ...values]);
         if (width !== undefined) {
             saveWidth(key, width);
@@ -471,8 +534,13 @@
     let resize: Resize | undefined;
     let resizingKey = $state<string | undefined>(undefined);
 
+    /** The cell a handle sits in: a label of the head, or of the sub-grid row whose handle was used. */
+    function cellOfHandle(event: Event): HTMLElement | null {
+        return (event.currentTarget as HTMLElement).closest<HTMLElement>('[data-column-key]');
+    }
+
     function onResizeStart(event: PointerEvent, key: string): void {
-        const cell = headerCell(key);
+        const cell = cellOfHandle(event);
         if (event.button !== 0 || !cell) {
             return;
         }
@@ -537,7 +605,7 @@
 
     function onResizeKey(event: KeyboardEvent, key: string): void {
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-            const cell = headerCell(key);
+            const cell = cellOfHandle(event);
             if (cell) {
                 const step = event.key === 'ArrowRight' ? RESIZE_KEY_STEP : -RESIZE_KEY_STEP;
                 saveWidth(key, cell.getBoundingClientRect().width + step);
@@ -558,26 +626,40 @@
     let headMenuX = $state(0);
     let headMenuY = $state(0);
     let headMenuKey = $state<string | undefined>(undefined);
-    const headMenuItems = $derived.by((): ContextMenuItem[] => {
-        const column = visibleColumns.find((candidate) => candidate.key === headMenuKey);
-        return [
-            {id: 'fit', label: t('Fit column to content'), disabled: column === undefined || !isResizable(column)},
-            {id: 'reset', label: t('Reset column widths'), disabled: !hasUserWidths},
-        ];
-    });
+    /** Task 42: the menu of a sub-grid's label row fits and resets the sub-grid's own columns. */
+    let headMenuScope = $state<WidthScope>('table');
+    const headMenuItems = $derived.by((): ContextMenuItem[] => [
+        {
+            id: 'fit',
+            label: t('Fit column to content'),
+            disabled: resizableColumn(headMenuKey, headMenuScope) === undefined,
+        },
+        {
+            id: 'reset',
+            label: t('Reset column widths'),
+            disabled: headMenuScope === 'sub' ? !hasSubWidths : !hasUserWidths,
+        },
+    ]);
 
     /**
      * Right click on the column labels: fit the column under the pointer, or reset them all. One
-     * listener on the grid; a right click on a row is the row's own menu and is left alone.
+     * listener on the grid; a right click on a row is the row's own menu and is left alone. The
+     * label row of an expanded sub-grid is not a row anybody selects, and has the same menu for
+     * the sub-grid's columns (task 42).
      */
     function onGridContextMenu(event: MouseEvent): void {
-        const target = event.target instanceof Node ? event.target : null;
-        if (!target || !(headStrip?.contains(target) === true || groupStrip?.contains(target) === true)) {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target) {
+            return;
+        }
+        const inHead = headStrip?.contains(target) === true || groupStrip?.contains(target) === true;
+        if (!inHead && target.closest('.hmm-tr-subhead') === null) {
             return;
         }
         event.preventDefault();
-        const cell = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-column-key]') : null;
+        const cell = target.closest<HTMLElement>('[data-column-key]');
         headMenuKey = cell?.dataset['columnKey'];
+        headMenuScope = inHead ? 'table' : 'sub';
         headMenuX = event.clientX;
         headMenuY = event.clientY;
         headMenuOpen = true;
@@ -588,7 +670,7 @@
         if (id === 'fit' && headMenuKey !== undefined) {
             fitColumn(headMenuKey);
         } else if (id === 'reset') {
-            resetWidths();
+            resetWidths(headMenuScope);
         }
     }
 
@@ -655,6 +737,36 @@
         }
     });
 </script>
+
+<!--
+    Task 40 (#157): drag to resize, double click to fit, arrow keys and Enter from the keyboard.
+    `data-measure-skip` keeps it out of the fit. A focusable separator is a widget in WAI-ARIA (the
+    window splitter pattern); Svelte's role table counts every separator as static. Task 42: the same
+    handle sits in the label row of an expanded sub-grid, on the columns only the sub-grid has.
+-->
+{#snippet resizeHandle(column: DataTableColumn<T>, handleTestId: string | undefined)}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+    <div
+        class="hmm-th-resize"
+        class:hmm-th-resize-active={resizingKey === column.key}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t('Resize column {column}', {column: column.label})}
+        tabindex="0"
+        data-measure-skip
+        data-testid={handleTestId}
+        onpointerdown={(event) => onResizeStart(event, column.key)}
+        onpointermove={onResizeMove}
+        onpointerup={onResizeEnd}
+        onpointercancel={onResizeEnd}
+        onlostpointercapture={onResizeEnd}
+        ondblclick={(event) => {
+            event.preventDefault();
+            fitColumn(column.key);
+        }}
+        onkeydown={(event) => onResizeKey(event, column.key)}
+    ></div>
+{/snippet}
 
 <div class="hmm-table" data-testid={testId} bind:this={root}>
     {#if hasBand}
@@ -764,33 +876,10 @@
                         <span class="hmm-th-label">{column.label}</span>
                     {/if}
                     {#if isResizable(column)}
-                        <!--
-                            Task 40 (#157): drag to resize, double click to fit, arrow keys and Enter
-                            from the keyboard. `data-measure-skip` keeps it out of the fit. A focusable
-                            separator is a widget in WAI-ARIA (the window splitter pattern); Svelte's
-                            role table counts every separator as static.
-                        -->
-                        <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-                        <div
-                            class="hmm-th-resize"
-                            class:hmm-th-resize-active={resizingKey === column.key}
-                            role="separator"
-                            aria-orientation="vertical"
-                            aria-label={t('Resize column {column}', {column: column.label})}
-                            tabindex="0"
-                            data-measure-skip
-                            data-testid={testId === undefined ? undefined : `${testId}-resize-${column.key}`}
-                            onpointerdown={(event) => onResizeStart(event, column.key)}
-                            onpointermove={onResizeMove}
-                            onpointerup={onResizeEnd}
-                            onpointercancel={onResizeEnd}
-                            onlostpointercapture={onResizeEnd}
-                            ondblclick={(event) => {
-                                event.preventDefault();
-                                fitColumn(column.key);
-                            }}
-                            onkeydown={(event) => onResizeKey(event, column.key)}
-                        ></div>
+                        {@render resizeHandle(
+                            column,
+                            testId === undefined ? undefined : `${testId}-resize-${column.key}`,
+                        )}
                     {/if}
                 </div>
             {/each}
@@ -895,6 +984,14 @@
                                     >
                                         {#if flatRow.kind === 'header'}
                                             {column.label}
+                                            {#if subKeys.has(column.key) && isResizable(column)}
+                                                {@render resizeHandle(
+                                                    column,
+                                                    testId === undefined
+                                                        ? undefined
+                                                        : `${testId}-sub-resize-${column.key}`,
+                                                )}
+                                            {/if}
                                         {:else if cell}
                                             {@render cell(flatRow.row, column, flatRow)}
                                         {:else}
@@ -1108,13 +1205,21 @@
         background: transparent;
     }
 
-    .hmm-table-head:hover .hmm-th-resize::after {
+    /* Task 42: a sub-grid's label row carries the handles of the columns only the sub-grid has. */
+    .hmm-tr-subhead .hmm-td {
+        position: relative;
+    }
+
+    .hmm-table-head:hover .hmm-th-resize::after,
+    .hmm-tr-subhead:hover .hmm-th-resize::after {
         background: var(--hmm-border);
     }
 
     .hmm-table-head .hmm-th-resize:hover::after,
+    .hmm-tr-subhead .hmm-th-resize:hover::after,
     .hmm-th-resize:focus-visible::after,
-    .hmm-table-head .hmm-th-resize-active::after {
+    .hmm-table-head .hmm-th-resize-active::after,
+    .hmm-tr-subhead .hmm-th-resize-active::after {
         top: 2px;
         bottom: 2px;
         width: 3px;

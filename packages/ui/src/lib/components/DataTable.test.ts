@@ -760,3 +760,209 @@ describe('column widths and the full text of a cut-off cell (#157)', () => {
         );
     });
 });
+
+/*
+ * Task 42: what task 40 left out - the columns only a sub-grid has get the same handle, a cut-off
+ * cell shows its text on keyboard focus as well as on hover, and a finger can hit the handle.
+ */
+
+class WidthStorage implements StorageLike {
+    readonly map = new Map<string, string>();
+    getItem(key: string): string | null {
+        return this.map.get(key) ?? null;
+    }
+    setItem(key: string, value: string): void {
+        this.map.set(key, value);
+    }
+}
+
+const deviceColumns42: DataTableColumn<Row>[] = [
+    {key: 'icon', label: '', width: 32, fixed: true, sortable: false, filterable: false, value: () => '◉'},
+    ...columns,
+];
+
+/** The shape of the Devices tab's channel sub-grid: shared columns, one of its own, a fixed one. */
+const channelColumns42: DataTableColumn<Row>[] = [
+    {key: 'name', label: 'Name', width: 140},
+    {key: 'direction', label: 'DIRECTION', width: 100, value: () => 'RECEIVER'},
+    {key: 'aes', label: 'AES', width: 30, fixed: true, value: () => '🔑'},
+    {key: 'type', label: 'TYPE'},
+];
+
+/** Two devices expanded, at the width the maintainer looks at the app in. */
+function renderSubGrid(props: Record<string, unknown> = {}, environment?: DataTableEnvironment): {unmount: () => void} {
+    const result = render(DataTable, {
+        props: {
+            ...base,
+            columns: deviceColumns42,
+            subColumns: channelColumns42,
+            subRows: (row: Row) => row.channels ?? [],
+            rows: makeRows(6),
+            expanded: ['ADDR00000', 'ADDR00001'],
+            tableId: 'devices',
+            subTableId: 'devices-channels',
+            testId: 'grid',
+            ...props,
+        },
+        ...(environment === undefined ? {} : {context: new Map([[DATA_TABLE_KEY, environment]])}),
+    });
+    document.querySelector<HTMLElement>('.hmm-table')!.style.width = '1280px';
+    return result;
+}
+
+function columnHeader(name: string): HTMLElement {
+    return screen.getByRole('columnheader', {name});
+}
+
+/** The label cells of a column in the label rows of the expanded sub-grids. */
+function subLabels(key: string): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>(`.hmm-tr-subhead .hmm-td[data-column-key="${key}"]`)];
+}
+
+function channelCells(key: string): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>(`.hmm-tr-child .hmm-td[data-column-key="${key}"]`)];
+}
+
+function subHandle(key = 'direction'): HTMLElement {
+    return screen.getAllByTestId(`grid-sub-resize-${key}`)[0]!;
+}
+
+function pixelWidth(element: HTMLElement): number {
+    return Math.round(element.getBoundingClientRect().width);
+}
+
+function truncated(element: HTMLElement): boolean {
+    return element.scrollWidth > element.clientWidth;
+}
+
+/** Presses a handle, moves by `dx` and lets go - a drag in pointer events, of a mouse or a finger. */
+async function dragBy(handle: HTMLElement, dx: number, pointerType = 'mouse'): Promise<void> {
+    const x = handle.getBoundingClientRect().right - 2;
+    const pointer = {pointerId: 5, pointerType};
+    await fireEvent.pointerDown(handle, {...pointer, button: 0, clientX: x});
+    await fireEvent.pointerMove(handle, {...pointer, clientX: x + dx / 2});
+    await fireEvent.pointerMove(handle, {...pointer, clientX: x + dx});
+    await fireEvent.pointerUp(handle, {...pointer, clientX: x + dx});
+}
+
+describe('the columns only a sub-grid has (task 42)', () => {
+    it('draws a handle on the columns only the sub-grid has, in every expanded sub-grid', () => {
+        renderSubGrid();
+        expect(screen.getAllByTestId('grid-sub-resize-direction')).toHaveLength(2);
+        expect(subHandle().getAttribute('role')).toBe('separator');
+        expect(subHandle().getAttribute('aria-label')).toBe('Resize column DIRECTION');
+        // a column both depths share is the table's and is sized from the head; a fixed one not at all
+        expect(screen.queryByTestId('grid-sub-resize-name')).toBeNull();
+        expect(screen.queryByTestId('grid-sub-resize-type')).toBeNull();
+        expect(screen.queryByTestId('grid-sub-resize-aes')).toBeNull();
+        expect(screen.getByTestId('grid-resize-name')).toBeTruthy();
+    });
+
+    it.skipIf(!hasLayout)(
+        'resizes a sub-grid column in every expanded sub-grid and keeps it under its own id',
+        async () => {
+            const storage = new WidthStorage();
+            const store = new ColumnWidthsStore(storage, () => 'ccu');
+            const first = renderSubGrid({}, {columnWidths: store});
+            const before = pixelWidth(subLabels('direction')[0]!);
+
+            await dragBy(subHandle(), 80);
+
+            // both expanded devices, their label rows and their channels, stay on the one track
+            expect(subLabels('direction')).toHaveLength(2);
+            expect(channelCells('direction')).toHaveLength(2);
+            for (const cell of [...subLabels('direction'), ...channelCells('direction')]) {
+                expect(Math.abs(pixelWidth(cell) - (before + 80))).toBeLessThanOrEqual(2);
+            }
+            const dragged = pixelWidth(subLabels('direction')[0]!);
+            expect(store.widths('devices-channels')).toEqual({direction: dragged});
+            expect(store.widths('devices')).toEqual({});
+            first.unmount();
+
+            // a reload: a new store on the same storage
+            renderSubGrid({}, {columnWidths: new ColumnWidthsStore(storage, () => 'ccu')});
+            expect(pixelWidth(subLabels('direction')[0]!)).toBe(dragged);
+        },
+    );
+
+    it.skipIf(!hasLayout)('steps, drags and fits a sub-grid column like a column of the head', async () => {
+        renderSubGrid();
+        const before = pixelWidth(subLabels('direction')[0]!);
+
+        await fireEvent.keyDown(subHandle(), {key: 'ArrowRight'});
+        await fireEvent.keyDown(subHandle(), {key: 'ArrowRight'});
+        expect(Math.abs(pixelWidth(subLabels('direction')[0]!) - (before + 20))).toBeLessThanOrEqual(2);
+        // the keys stayed with the handle: the grid did not move a row selection on them
+        expect(rowsInDom().some((row) => row.getAttribute('aria-selected') === 'true')).toBe(false);
+
+        await dragBy(subHandle(), -2000);
+        expect(pixelWidth(subLabels('direction')[0]!)).toBe(MIN_COLUMN_WIDTH);
+        expect(channelCells('direction').every((cell) => truncated(cell))).toBe(true);
+
+        await fireEvent.dblClick(subHandle());
+        const fitted = pixelWidth(subLabels('direction')[0]!);
+        expect(fitted).toBeGreaterThan(MIN_COLUMN_WIDTH);
+        // the bold label of the sub-grid's label row included
+        expect([...subLabels('direction'), ...channelCells('direction')].filter((cell) => truncated(cell))).toEqual([]);
+
+        await fireEvent.keyDown(subHandle(), {key: 'ArrowLeft'});
+        expect(pixelWidth(subLabels('direction')[0]!)).toBe(fitted - 10);
+        await fireEvent.keyDown(subHandle(), {key: 'Enter'});
+        expect(pixelWidth(subLabels('direction')[0]!)).toBe(fitted);
+    });
+
+    it.skipIf(!hasLayout)(
+        'resets the sub-grid alone from its label row, and the table alone from the head',
+        async () => {
+            const store = new ColumnWidthsStore(new WidthStorage(), () => 'ccu');
+            store.set('devices', 'name', 300);
+            renderSubGrid({}, {columnWidths: store});
+            const designed = pixelWidth(subLabels('direction')[0]!);
+            const item = (name: string): HTMLElement =>
+                within(screen.getByTestId('grid-columns-menu')).getByRole('menuitem', {name});
+
+            await dragBy(subHandle(), 70);
+            expect(store.widths('devices-channels')['direction']).toBeGreaterThan(designed);
+
+            // a column the sub-grid shares with the table is not the sub-grid's to fit
+            await fireEvent.contextMenu(subLabels('name')[0]!);
+            expect(item('Fit column to content').hasAttribute('disabled')).toBe(true);
+            expect(item('Reset column widths').hasAttribute('disabled')).toBe(false);
+            await fireEvent.keyDown(window, {key: 'Escape'});
+
+            await fireEvent.contextMenu(subLabels('direction')[1]!);
+            expect(item('Fit column to content').hasAttribute('disabled')).toBe(false);
+            await fireEvent.click(item('Reset column widths'));
+            expect(store.widths('devices-channels')).toEqual({});
+            expect(store.widths('devices')).toEqual({name: 300});
+            expect(pixelWidth(subLabels('direction')[0]!)).toBe(designed);
+            expect(Math.abs(pixelWidth(columnHeader('Name')) - 300)).toBeLessThanOrEqual(1);
+
+            await dragBy(subHandle(), 70);
+            const kept = store.widths('devices-channels')['direction']!;
+            await fireEvent.contextMenu(columnHeader('TYPE'));
+            await fireEvent.click(item('Reset column widths'));
+            expect(store.widths('devices')).toEqual({});
+            expect(store.widths('devices-channels')).toEqual({direction: kept});
+            expect(pixelWidth(subLabels('direction')[0]!)).toBe(kept);
+
+            // what is left belongs to the sub-grid, which the head's menu does not reset
+            await fireEvent.contextMenu(columnHeader('TYPE'));
+            expect(item('Reset column widths').hasAttribute('disabled')).toBe(true);
+        },
+    );
+
+    it.skipIf(!hasLayout)('keeps the sub-grid widths for as long as the table lives without a store', async () => {
+        renderSubGrid({tableId: undefined, subTableId: undefined});
+        const designed = pixelWidth(subLabels('direction')[0]!);
+
+        await dragBy(subHandle(), 50);
+        expect(Math.abs(pixelWidth(subLabels('direction')[0]!) - (designed + 50))).toBeLessThanOrEqual(2);
+
+        await fireEvent.contextMenu(subLabels('direction')[0]!);
+        await fireEvent.click(
+            within(screen.getByTestId('grid-columns-menu')).getByRole('menuitem', {name: 'Reset column widths'}),
+        );
+        expect(pixelWidth(subLabels('direction')[0]!)).toBe(designed);
+    });
+});

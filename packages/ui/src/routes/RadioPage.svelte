@@ -273,6 +273,7 @@
             toolbarLabel={t('RSSI')}
             countText={t('{count} devices', {}, devices.length)}
             tableId="radio"
+            subTableId="radio-peers"
             testId="radio-table"
         >
             {#snippet toolbar()}

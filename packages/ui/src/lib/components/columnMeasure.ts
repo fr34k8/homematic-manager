@@ -46,6 +46,8 @@ export function measureNaturalWidths(host: HTMLElement, elements: readonly HTMLE
         pointerEvents: 'none',
     });
     const clones = elements.map((element) => {
+        // Read before any clone is in the document, so the styles are resolved once for all of them.
+        const style = getComputedStyle(element);
         const clone = element.cloneNode(true) as HTMLElement;
         for (const skipped of clone.querySelectorAll(`[${MEASURE_SKIP_ATTRIBUTE}]`)) {
             skipped.remove();
@@ -63,6 +65,13 @@ export function measureNaturalWidths(host: HTMLElement, elements: readonly HTMLE
             maxWidth: 'none',
             height: 'auto',
             overflow: 'visible',
+            // Task 42: the clone is measured outside the row it came from, so what it inherited
+            // there - the bold of a sub-grid's label row - is given to it directly.
+            fontFamily: style.fontFamily,
+            fontSize: style.fontSize,
+            fontStyle: style.fontStyle,
+            fontWeight: style.fontWeight,
+            letterSpacing: style.letterSpacing,
         });
         box.append(clone);
         return clone;

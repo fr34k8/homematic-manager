@@ -650,6 +650,7 @@
             toolbarLabel={t('Devices')}
             countText={t('{count} devices', {}, devices.length)}
             tableId="devices"
+            subTableId="devices-channels"
             testId="devices-table"
         >
             {#snippet toolbar()}
