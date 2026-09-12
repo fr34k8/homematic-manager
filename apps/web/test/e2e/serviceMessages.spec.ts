@@ -98,10 +98,13 @@ test('switching the auto-acknowledge on clears a message already listed after "a
 
     const question = page.getByTestId('auto-ack-question');
     await expect(question).toHaveAttribute('open', '');
+    // #147: the maintainer's wording - what is there, what happens from now on, which messages each button means
     await expect(page.getByTestId('auto-ack-question-text')).toHaveText(
-        'One STICKY_UNREACH message is in the list now. Acknowledge it too?',
+        '1 STICKY_UNREACH message is already listed. New ones are acknowledged automatically from now on.',
     );
     await expect(question).toContainText('the unreach counter in the RSSI tab keeps that');
+    await expect(page.getByTestId('auto-ack-only-new')).toHaveText('Only new ones');
+    await expect(page.getByTestId('auto-ack-existing')).toHaveText('Acknowledge existing');
     await page.getByTestId('auto-ack-existing').click();
     await expect(question).not.toHaveAttribute('open');
     await expect(page.getByTestId('config-auto-ack-unreach')).toBeChecked();

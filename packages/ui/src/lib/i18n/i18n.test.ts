@@ -51,6 +51,27 @@ describe('I18n', () => {
         expect(createI18n('en').t('Publish this port unchanged')).toBe('Publish this port unchanged');
     });
 
+    it('words the one-time question of the automatic acknowledgement the way the maintainer chose (#147)', () => {
+        const key =
+            '{count} STICKY_UNREACH messages are already listed. New ones are acknowledged automatically from now on.';
+        expect(createI18n('de').t(key, {}, 1)).toBe(
+            'In der Liste steht schon 1 STICKY_UNREACH-Meldung. Neue werden ab jetzt automatisch bestätigt.',
+        );
+        expect(createI18n('de').t(key, {}, 3)).toBe(
+            'In der Liste stehen schon 3 STICKY_UNREACH-Meldungen. Neue werden ab jetzt automatisch bestätigt.',
+        );
+        expect(createI18n('en').t(key, {}, 1)).toBe(
+            '1 STICKY_UNREACH message is already listed. New ones are acknowledged automatically from now on.',
+        );
+        expect(createI18n('en').t(key, {}, 3)).toBe(
+            '3 STICKY_UNREACH messages are already listed. New ones are acknowledged automatically from now on.',
+        );
+        expect(createI18n('de').t('Acknowledge existing')).toBe('Vorhandene bestätigen');
+        expect(createI18n('en').t('Acknowledge existing')).toBe('Acknowledge existing');
+        expect(createI18n('de').t('Only new ones')).toBe('Nur neue');
+        expect(createI18n('en').t('Only new ones')).toBe('Only new ones');
+    });
+
     it('re-translates when the language changes', () => {
         const i18n = createI18n('de');
         expect(i18n.t('Devices')).toBe('Geräte');

@@ -6,7 +6,7 @@
         open?: boolean;
         /** How many `STICKY_UNREACH` messages the question is about; never 0 - then nobody asks. */
         count: number;
-        /** "Acknowledge them": the messages are acknowledged when the settings are saved. */
+        /** "Acknowledge existing": the listed messages are acknowledged when the settings are saved. */
         onacknowledge: () => void;
         /** "Only new ones": what the option always did - nothing is written for these. */
         onlynew: () => void;
@@ -41,7 +41,11 @@
     testId="auto-ack-question"
 >
     <p class="hmm-autoack-question" data-testid="auto-ack-question-text">
-        {t('{count} STICKY_UNREACH messages are in the list now. Acknowledge them too?', {}, count)}
+        {t(
+            '{count} STICKY_UNREACH messages are already listed. New ones are acknowledged automatically from now on.',
+            {},
+            count,
+        )}
     </p>
     <p class="hmm-autoack-help">
         {t(
@@ -54,7 +58,7 @@
             >{t('Only new ones')}</button
         >
         <button type="button" class="hmm-button" data-testid="auto-ack-existing" onclick={() => answer(onacknowledge)}
-            >{t('Acknowledge them')}</button
+            >{t('Acknowledge existing')}</button
         >
     {/snippet}
 </Dialog>

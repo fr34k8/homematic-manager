@@ -78,14 +78,16 @@ export const UI_MESSAGES: MessageCatalogue = {
         de: 'Die Meldungen in der Liste auch bestätigen?',
         en: 'Acknowledge the messages already in the list?',
     },
-    '{count} STICKY_UNREACH messages are in the list now. Acknowledge them too?': {
+    // #147 (Herbert-Testmann, 2026-09-12): the first wording had to be read twice; the maintainer chose
+    // this one - what is there, what happens from now on, and two buttons that say which messages
+    '{count} STICKY_UNREACH messages are already listed. New ones are acknowledged automatically from now on.': {
         de: {
-            one: 'In der Liste steht jetzt eine STICKY_UNREACH-Meldung. Soll sie auch bestätigt werden?',
-            other: 'In der Liste stehen jetzt {count} STICKY_UNREACH-Meldungen. Sollen sie auch bestätigt werden?',
+            one: 'In der Liste steht schon 1 STICKY_UNREACH-Meldung. Neue werden ab jetzt automatisch bestätigt.',
+            other: 'In der Liste stehen schon {count} STICKY_UNREACH-Meldungen. Neue werden ab jetzt automatisch bestätigt.',
         },
         en: {
-            one: 'One STICKY_UNREACH message is in the list now. Acknowledge it too?',
-            other: '{count} STICKY_UNREACH messages are in the list now. Acknowledge them too?',
+            one: '1 STICKY_UNREACH message is already listed. New ones are acknowledged automatically from now on.',
+            other: '{count} STICKY_UNREACH messages are already listed. New ones are acknowledged automatically from now on.',
         },
     },
     'Each acknowledgement is a write to the device. Afterwards the list no longer shows which devices were away; the unreach counter in the RSSI tab keeps that.':
@@ -93,7 +95,7 @@ export const UI_MESSAGES: MessageCatalogue = {
             de: 'Jede Bestätigung schreibt in das Gerät. Danach zeigt die Liste nicht mehr, welche Geräte nicht erreichbar waren; der Ausfallzähler im Reiter Funk behält das.',
             en: 'Each acknowledgement is a write to the device. Afterwards the list no longer shows which devices were away; the unreach counter in the RSSI tab keeps that.',
         },
-    'Acknowledge them': {de: 'Auch bestätigen', en: 'Acknowledge them'},
+    'Acknowledge existing': {de: 'Vorhandene bestätigen', en: 'Acknowledge existing'},
     'Only new ones': {de: 'Nur neue', en: 'Only new ones'},
     '{count} messages in the list are acknowledged when this is saved': {
         de: {

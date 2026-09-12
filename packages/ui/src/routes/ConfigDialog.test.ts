@@ -335,12 +335,15 @@ describe('ConfigDialog', () => {
             await tick();
             // the demo list holds a LOWBAT and one STICKY_UNREACH: the question is about one message
             expect(screen.getByTestId('auto-ack-question-text').textContent).toContain(
-                'In der Liste steht jetzt eine STICKY_UNREACH-Meldung',
+                'In der Liste steht schon 1 STICKY_UNREACH-Meldung. Neue werden ab jetzt automatisch bestätigt.',
             );
             expect(screen.getByTestId('auto-ack-question').textContent).toContain('Ausfallzähler im Reiter Funk');
+            // #147: the buttons say which messages they mean
+            expect(screen.getByTestId('auto-ack-existing').textContent).toBe('Vorhandene bestätigen');
+            expect(screen.getByTestId('auto-ack-only-new').textContent).toBe('Nur neue');
         });
 
-        it('sends acknowledgeExisting with the save after "acknowledge them"', async () => {
+        it('sends acknowledgeExisting with the save after "acknowledge existing"', async () => {
             await open(transport);
             await tick();
             await fireEvent.click(screen.getByTestId('auto-ack-existing'));
