@@ -56,6 +56,8 @@
     /* Accents */
     --hmm-accent: #0070c1;
     --hmm-accent-bg: #e2eefa;
+    /* Text on a surface painted in --hmm-accent: a tab's main action (tasks 28 and 33). */
+    --hmm-accent-fg: #ffffff;
     --hmm-ok: #008000;
     --hmm-warn: #a06800;
     --hmm-error: #cd3131;
@@ -154,6 +156,7 @@
 
         --hmm-accent: #569cd6;
         --hmm-accent-bg: #253b52;
+        --hmm-accent-fg: #1e1e1e;
         --hmm-ok: #4ec9b0;
         --hmm-warn: #cca700;
         --hmm-error: #f48771;
@@ -199,6 +202,7 @@
 
     --hmm-accent: #569cd6;
     --hmm-accent-bg: #253b52;
+    --hmm-accent-fg: #1e1e1e;
     --hmm-ok: #4ec9b0;
     --hmm-warn: #cca700;
     --hmm-error: #f48771;

@@ -20,6 +20,11 @@ describe('I18n', () => {
         expect(i18n.t('Theme')).toBe('Design');
     });
 
+    it('captions the main action of the Links tab (task 33)', () => {
+        expect(createI18n('de').t('Add link')).toBe('Verknüpfung anlegen');
+        expect(createI18n('en').t('Add link')).toBe('Add link');
+    });
+
     it('re-translates when the language changes', () => {
         const i18n = createI18n('de');
         expect(i18n.t('Devices')).toBe('Geräte');

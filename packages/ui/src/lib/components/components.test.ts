@@ -13,6 +13,7 @@ import Loader from './Loader.svelte';
 import MultiSelect from './MultiSelect.svelte';
 import {filterOptions, step} from './multiSelect.js';
 import Notices from './Notices.svelte';
+import PrimaryToolbarButton from './PrimaryToolbarButton.svelte';
 import RpcLogPanel from './RpcLogPanel.svelte';
 import RpcProgress from './RpcProgress.svelte';
 import Tabs from './Tabs.svelte';
@@ -474,6 +475,85 @@ describe('Toolbar and ToolbarButton', () => {
     it('renders a toolbar with a label', () => {
         render(Toolbar, {props: {label: 'Devices toolbar'}});
         expect(screen.getByRole('toolbar', {name: 'Devices toolbar'})).toBeTruthy();
+    });
+});
+
+/**
+ * Tasks 28 and 33: "Pair device" and "Add link" were a bare `+` among the toolbar icons. The main
+ * action of a tab has an icon and a caption now, and only a band without room for the caption
+ * takes it away again.
+ */
+describe('PrimaryToolbarButton', () => {
+    const hasLayout = document.body.getBoundingClientRect().width > 0;
+
+    it('shows its icon and its caption, and is named by the caption', async () => {
+        const onclick = vi.fn();
+        render(PrimaryToolbarButton, {
+            props: {caption: 'Pair device', icon: '+', compact: false, onclick, testId: 'pair'},
+        });
+        const button = screen.getByRole('button', {name: 'Pair device'});
+        expect(button.querySelector('.hmm-primary-icon')?.textContent).toBe('+');
+        expect(screen.getByTestId('pair-caption').textContent).toBe('Pair device');
+        expect(button.getAttribute('data-compact')).toBe('false');
+        // the caption is on the button already; a tooltip saying it again would only be in the way
+        expect(screen.getByTestId('pair-tooltip').getAttribute('data-tooltip')).toBeNull();
+
+        await fireEvent.click(button);
+        expect(onclick).toHaveBeenCalledOnce();
+    });
+
+    it('is the icon alone in its compact form, and keeps the caption as name and tooltip', () => {
+        render(PrimaryToolbarButton, {props: {caption: 'Add link', icon: '+', compact: true, testId: 'add'}});
+        const button = screen.getByRole('button', {name: 'Add link'});
+        expect(button.textContent.trim()).toBe('+');
+        expect(button.getAttribute('data-compact')).toBe('true');
+        expect(screen.queryByTestId('add-caption')).toBeNull();
+        expect(screen.getByTestId('add-tooltip').getAttribute('data-tooltip')).toBe('Add link');
+    });
+
+    it('explains in the tooltip why it is disabled', () => {
+        const onclick = vi.fn();
+        render(PrimaryToolbarButton, {
+            props: {
+                caption: 'Pair device',
+                disabled: true,
+                reason: 'This interface cannot pair devices',
+                compact: false,
+                onclick,
+                testId: 'pair',
+            },
+        });
+        expect(screen.getByRole<HTMLButtonElement>('button', {name: 'Pair device'}).disabled).toBe(true);
+        expect(screen.getByTestId('pair-tooltip').getAttribute('data-tooltip')).toBe(
+            'Pair device — This interface cannot pair devices',
+        );
+    });
+
+    it.skipIf(!hasLayout)('gives up the caption when the row has no room for it, and takes it back', async () => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.width = '400px';
+        document.body.append(row);
+        render(PrimaryToolbarButton, {target: row, props: {caption: 'Pair device', testId: 'auto'}});
+
+        const button = screen.getByTestId('auto');
+        await waitFor(() => {
+            expect(button.getAttribute('data-compact')).toBe('false');
+        });
+        expect(screen.getByTestId('auto-caption')).toBeTruthy();
+
+        row.style.width = '40px';
+        await waitFor(() => {
+            expect(button.getAttribute('data-compact')).toBe('true');
+        });
+        // never gone: the icon keeps its size
+        expect(button.getBoundingClientRect().width).toBeGreaterThanOrEqual(28);
+
+        row.style.width = '400px';
+        await waitFor(() => {
+            expect(button.getAttribute('data-compact')).toBe('false');
+        });
+        row.remove();
     });
 });
 

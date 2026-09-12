@@ -355,6 +355,12 @@ export const UI_MESSAGES: MessageCatalogue = {
     },
 
     // The links tab.
+    // Task 33: the captioned button; the dialog it opens keeps its title "Create link".
+    'Add link': {de: 'Verknüpfung anlegen', en: 'Add link'},
+    'No channel of this interface can be the sender of a link': {
+        de: 'Kein Kanal dieser Schnittstelle kann Sender einer Verknüpfung sein',
+        en: 'No channel of this interface can be the sender of a link',
+    },
     'Select one link': {de: 'Eine Verknüpfung auswählen', en: 'Select one link'},
     'No channel can receive from this sender': {
         de: 'Kein Kanal kann von diesem Sender empfangen',

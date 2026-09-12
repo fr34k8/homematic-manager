@@ -141,6 +141,37 @@ describe('the links grid', () => {
         await fireEvent.click(screen.getByTestId('links-play-long'));
         expect(transport.lastCall('links.activate')).toEqual(['BidCos-RF', 'MEQ0123456:1', 'JEQ0234567:1', true]);
     });
+
+    it('opens the create-link dialog from the captioned "Add link" button (task 33)', async () => {
+        await mountApp({transport, hash: '#/BidCos-RF/links'});
+        const button = screen.getByRole('button', {name: 'Verknüpfung anlegen'});
+        expect(button.getAttribute('data-testid')).toBe('links-add');
+        expect(button.classList.contains('hmm-primary-button')).toBe(true);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('links-add-caption').textContent).toBe('Verknüpfung anlegen');
+            expect(screen.getByTestId<HTMLButtonElement>('links-add').disabled).toBe(false);
+        });
+        await fireEvent.click(button);
+        await waitFor(() => {
+            expect(screen.getByTestId('add-link-dialog').hasAttribute('open')).toBe(true);
+        });
+    });
+
+    it('disables "Add link" and says why where no channel can send (task 33)', async () => {
+        transport.result('devices.list', []);
+        const {stores} = await mountApp({transport, hash: '#/BidCos-RF/links'});
+        await waitFor(() => {
+            expect(stores.devices.index('BidCos-RF')).toBeDefined();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId<HTMLButtonElement>('links-add').disabled).toBe(true);
+        });
+        expect(screen.getByTestId('links-add-tooltip').getAttribute('data-tooltip')).toBe(
+            'Verknüpfung anlegen — Kein Kanal dieser Schnittstelle kann Sender einer Verknüpfung sein',
+        );
+    });
 });
 
 describe('the add-link dialog', () => {

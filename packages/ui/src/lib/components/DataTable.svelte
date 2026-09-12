@@ -594,10 +594,14 @@
         font-weight: bold;
     }
 
+    /* Tasks 28 and 33: the actions take the free space of the band, so a tab's main action
+       (`PrimaryToolbarButton`) has room for its caption when there is some, and is the one thing
+       that gives way - down to its icon - when there is not. */
     .hmm-table-actions {
         display: flex;
         align-items: center;
         gap: 2px;
+        flex: 1 1 auto;
     }
 
     /* `margin-left: auto` rather than a spacer: the count sits on the right edge of the band

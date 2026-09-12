@@ -12,6 +12,7 @@ export {default as ContextMenu} from './ContextMenu.svelte';
 export {default as Tabs} from './Tabs.svelte';
 export {default as Toolbar} from './Toolbar.svelte';
 export {default as ToolbarButton} from './ToolbarButton.svelte';
+export {default as PrimaryToolbarButton} from './PrimaryToolbarButton.svelte';
 export {default as Tooltip} from './Tooltip.svelte';
 export {default as Loader} from './Loader.svelte';
 export {default as Notices} from './Notices.svelte';

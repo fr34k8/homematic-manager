@@ -11,6 +11,7 @@
 import type {Locator} from '@playwright/test';
 
 import {HMIP_BUTTON, HMIP_DIMMER, expect, simulatorReady, test} from './fixtures.js';
+import {expectPrimaryToolbarButton} from './primaryButton.js';
 
 const SENDER = `${HMIP_BUTTON}:1`;
 const RECEIVER = `${HMIP_DIMMER}:3`;
@@ -242,4 +243,19 @@ test('the channel lists show two-line entries that the filter finds by address',
     const menu = await receivers.locator('.hmm-multiselect-menu').boundingBox();
     expect(menu!.x).toBeGreaterThanOrEqual(0);
     expect(menu!.x + menu!.width).toBeLessThanOrEqual(360);
+});
+
+/**
+ * Task 33: the way into creating a link was a bare `+` among the toolbar icons, named only by its
+ * tooltip. It is the same captioned main action as the Devices tab's "Pair device" now.
+ */
+test('"Add link" is the captioned main action of the Links tab (task 33)', async ({page, host}) => {
+    await page.goto(`${host.url}#/HmIP-RF/links`);
+    await expect(page.getByTestId('links-table')).toBeVisible();
+    await expectPrimaryToolbarButton(page, {
+        testId: 'links-add',
+        neighbour: 'links-edit',
+        dialog: 'add-link-dialog',
+        captions: {en: 'Add link', de: 'Verknüpfung anlegen'},
+    });
 });

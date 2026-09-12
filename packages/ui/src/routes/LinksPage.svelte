@@ -1,12 +1,13 @@
 <script lang="ts">
     import type {LinkRecord} from '@homematic-manager/core';
-    import {decodeLinkFlags} from '@homematic-manager/core';
+    import {decodeLinkFlags, linkSenders} from '@homematic-manager/core';
 
     import ContextMenu from '../lib/components/ContextMenu.svelte';
     import type {ContextMenuItem} from '../lib/components/contextMenu.js';
     import DataTable from '../lib/components/DataTable.svelte';
     import DeviceImage from '../lib/components/DeviceImage.svelte';
     import {ICON_COLUMN_WIDTH} from '../lib/components/metrics.js';
+    import PrimaryToolbarButton from '../lib/components/PrimaryToolbarButton.svelte';
     import ToolbarButton from '../lib/components/ToolbarButton.svelte';
     import type {DataTableColumn} from '../lib/components/tableModel.js';
     import {getStores} from '../lib/stores/context.js';
@@ -53,6 +54,14 @@
     const defective = $derived(stores.links.defective(interfaceName).length);
     /** 2.x offered "play" only on BidCos-RF: only there does `activateLinkParamset` exist. */
     const canActivate = $derived(interfaceType === 'BidCos-RF');
+    /**
+     * Task 33: a link needs a sender, so an interface none of whose channels has source roles
+     * (VirtualDevices, CUxD, a gateway without buttons) has nothing to create. Until the device
+     * list is there the button stays usable - the dialog says the same once it has loaded, and a
+     * button that flickers from disabled to enabled on every tab switch would be worse.
+     */
+    const deviceIndex = $derived(stores.devices.index(interfaceName));
+    const canCreate = $derived(deviceIndex === undefined || linkSenders(deviceIndex).length > 0);
 
     const selectedLinks = $derived(
         selected
@@ -195,7 +204,14 @@
             testId="links-table"
         >
             {#snippet toolbar()}
-                <ToolbarButton title={t('Create link')} icon="+" testId="links-add" onclick={() => (addOpen = true)} />
+                <PrimaryToolbarButton
+                    caption={t('Add link')}
+                    icon="+"
+                    disabled={!canCreate}
+                    reason={t('No channel of this interface can be the sender of a link')}
+                    testId="links-add"
+                    onclick={() => (addOpen = true)}
+                />
                 <ToolbarButton
                     title={t('Edit link')}
                     icon="⚙"

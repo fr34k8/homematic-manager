@@ -49,6 +49,8 @@ const MEANINGFUL_TOKENS = [
     '--hmm-error',
     '--hmm-warn',
     '--hmm-accent',
+    // Tasks 28 and 33: the caption on a tab's main action, which is painted in the accent.
+    '--hmm-accent-fg',
     '--hmm-row-selected',
     '--hmm-row-selected-text',
     '--hmm-fg',
