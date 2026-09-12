@@ -27,6 +27,17 @@ Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homemat
   at the first start. There, `service.cgi?…&cmd=log` and the addon's settings page lead to the Log page. On a CCU
   and OpenCCU nothing changes: `var/hmm.log`, rotated at 1 MB.
 
+### Fixed
+
+- **CUxD no longer writes a warning into the CCU's log every five minutes** (#158). The app asked every
+  interface for its service messages every five minutes, including CUxD, which has no such method. CUxD
+  logged `called unknown request method 'getServiceMessages'` each time, and the app logged the refusal
+  just as often, because it did not recognise CUxD's wording of it. CUxD is no longer asked. An interface
+  you configured yourself is asked only if its own list of methods names `getServiceMessages`; if it has
+  no such list, it is asked once, as before. A service-message read that keeps failing for another reason
+  is logged once, not every five minutes, and once more when it works again. Baxxy13 found it on OpenCCU
+  with CUxD installed.
+
 ## [3.0.0-beta.14] — 2026-09-12
 
 Herbert-Testmann's two requests on beta.13 (#157, #147), the addon's start that said OK when nothing
