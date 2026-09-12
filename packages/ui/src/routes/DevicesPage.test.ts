@@ -159,6 +159,19 @@ describe('the service-message marks', () => {
         expect(serviceMarks('A', messages, 99).map((mark) => mark.level)).toEqual(['error', 'warn', 'warn']);
     });
 
+    it('B-24: marks a thermostat whose transceiver channel reports a fault', () => {
+        const fault: ServiceMessage = {
+            interfaceName: 'BidCos-RF',
+            address: 'LEQ0853419:4',
+            datapoint: 'FAULT_REPORTING',
+            value: 4,
+            since: 0,
+        };
+        expect(serviceMarks('LEQ0853419', [fault])).toEqual([
+            {datapoint: 'FAULT_REPORTING', symbol: '⚠', level: 'error', title: 'FAULT_REPORTING LEQ0853419:4'},
+        ]);
+    });
+
     for (const theme of ['light', 'dark'] as const) {
         it(`marks a device with a service message in the ${theme} theme`, async () => {
             document.documentElement.setAttribute('data-theme', theme);

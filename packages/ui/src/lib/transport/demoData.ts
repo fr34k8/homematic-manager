@@ -1116,6 +1116,27 @@ export const DEMO_DESCRIPTIONS: Readonly<Record<string, ParamsetDescription>> = 
         STICKY_UNREACH: {TYPE: 'BOOL', OPERATIONS: 7, FLAGS: 9, DEFAULT: false},
         LOWBAT: {TYPE: 'BOOL', OPERATIONS: 5, FLAGS: 9, DEFAULT: false},
     },
+    /** B-24: the HM-CC-RT-DN's fault report, an ENUM service message on channel 4. */
+    'CLIMATECONTROL_RT_TRANSCEIVER|VALUES': {
+        FAULT_REPORTING: {
+            TYPE: 'ENUM',
+            OPERATIONS: 5,
+            FLAGS: 9,
+            DEFAULT: 0,
+            MIN: 0,
+            MAX: 7,
+            VALUE_LIST: [
+                'NO_FAULT',
+                'VALVE_TIGHT',
+                'ADJUSTING_RANGE_TOO_LARGE',
+                'ADJUSTING_RANGE_TOO_SMALL',
+                'COMMUNICATION_ERROR',
+                '',
+                'LOWBAT',
+                'VALVE_ERROR_POSITION',
+            ],
+        },
+    },
     /** A device (not a channel) - keyed by the empty channel type. */
     '|MASTER': {
         ARR_TIMEOUT: {TYPE: 'INTEGER', OPERATIONS: 3, FLAGS: 1, MIN: 1, MAX: 20, DEFAULT: 10},
@@ -1202,7 +1223,11 @@ export const DEMO_DATA_FILES: Readonly<Record<string, unknown>> = {
         channelTypes: {SWITCH: 'Schaltaktor'},
         deviceModels: {},
         parameters: {LOGGING: 'Statusmeldungen', 'SWITCH|ON_TIME': 'Einschaltdauer'},
-        parameterValues: {'LOGGING|ON': 'an', 'LOGGING|OFF': 'aus'},
+        parameterValues: {
+            'LOGGING|ON': 'an',
+            'LOGGING|OFF': 'aus',
+            'CLIMATECONTROL_RT_TRANSCEIVER|FAULT_REPORTING|COMMUNICATION_ERROR': 'Kommunikationsstörung',
+        },
         parameterHelp: {LOGGING: '<b>Sendet</b> zyklisch den Status.'},
         uiLabels: {not_used: 'nicht benutzt', delay_max: 'Verzögerung größer als die Sendeversuche'},
     },
@@ -1211,7 +1236,7 @@ export const DEMO_DATA_FILES: Readonly<Record<string, unknown>> = {
         channelTypes: {SWITCH: 'Switch actuator'},
         deviceModels: {},
         parameters: {LOGGING: 'Status messages'},
-        parameterValues: {},
+        parameterValues: {'CLIMATECONTROL_RT_TRANSCEIVER|FAULT_REPORTING|COMMUNICATION_ERROR': 'Communication error'},
         parameterHelp: {},
         uiLabels: {not_used: 'not used', delay_max: 'delay larger than the transmit tries'},
     },

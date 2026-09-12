@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
+import type {ParameterDescription} from '../paramset/description.js';
 import {
     ACKNOWLEDGEABLE_DATAPOINTS,
     countsAsServiceMessage,
@@ -7,6 +8,7 @@ import {
     isServiceMessageDatapoint,
     SERVICE_MESSAGE_DATAPOINTS,
     ServiceMessageStore,
+    serviceMessageValueName,
 } from './index.js';
 
 describe('which datapoints are service messages', () => {
@@ -54,6 +56,92 @@ describe('which service messages can be acknowledged', () => {
         expect(isAcknowledgeable('LOWBAT')).toBe(false);
         expect(isAcknowledgeable('CONFIG_PENDING')).toBe(false);
         expect(isAcknowledgeable('DUTY_CYCLE')).toBe(false);
+    });
+
+    it('B-24: FAULT_REPORTING cannot be acknowledged - it is not writable (OPERATIONS 5)', () => {
+        expect(isAcknowledgeable('FAULT_REPORTING')).toBe(false);
+        expect(ACKNOWLEDGEABLE_DATAPOINTS).not.toContain('FAULT_REPORTING');
+    });
+});
+
+describe('B-24: FAULT_REPORTING of the HM-CC-RT-DN (#150)', () => {
+    const clock = () => 1_700_000_000_000;
+    /** As the HM-CC-RT-DN describes it (test/fixtures/paramset-descriptions.json). */
+    const faultReporting: ParameterDescription = {
+        TYPE: 'ENUM',
+        OPERATIONS: 5,
+        FLAGS: 9,
+        DEFAULT: 0,
+        MIN: 0,
+        MAX: 7,
+        VALUE_LIST: [
+            'NO_FAULT',
+            'VALVE_TIGHT',
+            'ADJUSTING_RANGE_TOO_LARGE',
+            'ADJUSTING_RANGE_TOO_SMALL',
+            'COMMUNICATION_ERROR',
+            '',
+            'LOWBAT',
+            'VALVE_ERROR_POSITION',
+        ],
+    };
+
+    it('is a service message', () => {
+        expect(SERVICE_MESSAGE_DATAPOINTS).toContain('FAULT_REPORTING');
+        expect(isServiceMessageDatapoint('FAULT_REPORTING')).toBe(true);
+        expect(countsAsServiceMessage('FAULT_REPORTING', 4)).toBe(true);
+    });
+
+    it('is listed from an event on the transceiver channel and cleared by NO_FAULT (index 0)', () => {
+        const messages = new ServiceMessageStore({now: clock});
+        // 4 = COMMUNICATION_ERROR, what the WebUI shows as "Kommunikationsstörung"
+        expect(messages.applyEvent('BidCos-RF', 'LEQ0853419:4', 'FAULT_REPORTING', 4)).toBe(true);
+        expect(messages.list()).toEqual([
+            {
+                interfaceName: 'BidCos-RF',
+                address: 'LEQ0853419:4',
+                device: 'LEQ0853419',
+                datapoint: 'FAULT_REPORTING',
+                value: 4,
+                acknowledgeable: false,
+                timestamp: 1_700_000_000_000,
+            },
+        ]);
+        // another fault replaces the value, it does not add a second row
+        expect(messages.applyEvent('BidCos-RF', 'LEQ0853419:4', 'FAULT_REPORTING', 1)).toBe(true);
+        expect(messages.size).toBe(1);
+
+        expect(messages.applyEvent('BidCos-RF', 'LEQ0853419:4', 'FAULT_REPORTING', 0)).toBe(true);
+        expect(messages.size).toBe(0);
+        // the periodic NO_FAULT of a healthy thermostat changes nothing
+        expect(messages.applyEvent('BidCos-RF', 'LEQ0853419:4', 'FAULT_REPORTING', 0)).toBe(false);
+    });
+
+    it('is kept from a getServiceMessages answer', () => {
+        const messages = new ServiceMessageStore({now: clock});
+        messages.replaceInterface('BidCos-RF', [
+            ['LEQ0853419:4', 'FAULT_REPORTING', 4],
+            ['IEQ0548927:0', 'STICKY_UNREACH', true],
+        ]);
+        expect(messages.forInterface('BidCos-RF').map((message) => message.datapoint)).toEqual([
+            'STICKY_UNREACH',
+            'FAULT_REPORTING',
+        ]);
+    });
+
+    it('names the value by the description, from an index or from a name', () => {
+        expect(serviceMessageValueName(faultReporting, 4)).toBe('COMMUNICATION_ERROR');
+        expect(serviceMessageValueName(faultReporting, 'VALVE_TIGHT')).toBe('VALVE_TIGHT');
+    });
+
+    it('has no name for a gap, an index past the list, an unknown name or a non-ENUM', () => {
+        expect(serviceMessageValueName(faultReporting, 5)).toBeUndefined();
+        expect(serviceMessageValueName(faultReporting, 9)).toBeUndefined();
+        expect(serviceMessageValueName(faultReporting, 'SOMETHING_ELSE')).toBeUndefined();
+        expect(serviceMessageValueName(faultReporting, true)).toBeUndefined();
+        expect(serviceMessageValueName({TYPE: 'INTEGER', OPERATIONS: 5}, 4)).toBeUndefined();
+        expect(serviceMessageValueName({TYPE: 'ENUM', OPERATIONS: 5}, 4)).toBeUndefined();
+        expect(serviceMessageValueName(undefined, 4)).toBeUndefined();
     });
 });
 

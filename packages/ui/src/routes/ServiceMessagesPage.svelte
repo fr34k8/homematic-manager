@@ -42,6 +42,33 @@
         }
     });
 
+    /** B-24: the descriptions that turn an ENUM index into a name, read once per channel. */
+    $effect(() => {
+        if (messages.some((message) => typeof message.value === 'number')) {
+            void stores.serviceMessages.loadDescriptions(interfaceName);
+        }
+    });
+
+    /**
+     * B-24: what the Value column shows. An ENUM message reads as the CCU's own label -
+     * "Kommunikationsstörung" rather than `4` - looked up by channel type, parameter and name the
+     * way the WebUI's service-message page does it; anything else as the raw value.
+     */
+    function valueText(message: ServiceMessage): string {
+        const name = stores.serviceMessages.valueName(message);
+        if (name === undefined) {
+            return formatRpcValue(message.value);
+        }
+        const channelType = stores.devices.index(interfaceName)?.get(message.address)?.TYPE ?? '';
+        return stores.meta.valueLabel(message.datapoint, name, channelType);
+    }
+
+    /** The name and the raw value behind a label, for the tooltip of the cell. */
+    function valueTitle(message: ServiceMessage): string | undefined {
+        const name = stores.serviceMessages.valueName(message);
+        return name === undefined ? undefined : `${name} (${formatRpcValue(message.value)})`;
+    }
+
     async function suppress(message: ServiceMessage, value: boolean): Promise<void> {
         busy = true;
         const ok = await stores.serviceMessages.suppress(interfaceName, message.address, message.datapoint, value);
@@ -75,7 +102,7 @@
             value: (message) => deviceAddress(message.address),
         },
         {key: 'datapoint', label: t('Message'), width: 180},
-        {key: 'value', label: t('Value'), width: 90, value: (message) => formatRpcValue(message.value)},
+        {key: 'value', label: t('Value'), width: 160, value: valueText},
         {
             key: 'explanation',
             label: '',
@@ -166,6 +193,10 @@
                         class="hmm-msg-name"
                         class:hmm-msg-ackable={isAcknowledgeable(row.datapoint)}
                         data-testid={`message-${row.address}-${row.datapoint}`}>{row.datapoint}</span
+                    >
+                {:else if column.key === 'value'}
+                    <span title={valueTitle(row)} data-testid={`message-value-${row.address}-${row.datapoint}`}
+                        >{valueText(row)}</span
                     >
                 {:else if column.key === 'suppress'}
                     {@const suppressed = stores.serviceMessages.isSuppressed(row)}

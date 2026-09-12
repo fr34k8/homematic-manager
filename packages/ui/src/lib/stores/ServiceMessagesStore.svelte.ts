@@ -1,5 +1,5 @@
-import type {ServiceMessage, Transport} from '@homematic-manager/core';
-import {isAcknowledgeable} from '@homematic-manager/core';
+import type {ParamsetDescription, ServiceMessage, Transport} from '@homematic-manager/core';
+import {isAcknowledgeable, serviceMessageValueName} from '@homematic-manager/core';
 
 import type {NoticesStore} from './NoticesStore.svelte.js';
 import {readSuppressed, writeSuppressed} from './suppression.js';
@@ -22,6 +22,8 @@ export class ServiceMessagesStore {
      * of the list on request. Only channels of an interface that offers the method appear here.
      */
     suppressed = $state<Record<string, string[]>>({});
+    /** B-24: per `<interface>|<channel>`, the VALUES description of a channel whose message is a number. */
+    descriptions = $state<Record<string, ParamsetDescription>>({});
 
     readonly #transport: Transport;
     readonly #notices: NoticesStore;
@@ -32,6 +34,8 @@ export class ServiceMessagesStore {
     #seeded = false;
     /** `<interface>|<address>` of every channel asked for its suppressed list, so an interface without the method is asked once. */
     #asked: string[] = [];
+    /** `<interface>|<address>` of every channel whose description was asked for, answered or not. */
+    #described: string[] = [];
 
     constructor(transport: Transport, notices: NoticesStore) {
         this.#transport = transport;
@@ -173,6 +177,46 @@ export class ServiceMessagesStore {
         await this.#readSuppressed(interfaceName, address);
         await this.load();
         return true;
+    }
+
+    /**
+     * B-24: the `VALUE_LIST` name of an ENUM message's value (`COMMUNICATION_ERROR` for a
+     * `FAULT_REPORTING` of 4), once {@link loadDescriptions} has read the channel; `undefined`
+     * before that, for a value that is not an ENUM, or where the interface refused the read.
+     */
+    valueName(message: ServiceMessage): string | undefined {
+        const description = this.descriptions[suppressKey(message.interfaceName, message.address)];
+        return serviceMessageValueName(description?.[message.datapoint], message.value);
+    }
+
+    /**
+     * Reads the VALUES description of every channel in the interface's list that carries a number
+     * and has not been asked yet - a number is how an ENUM arrives from BidCos. A channel is asked
+     * once per session: a description does not change while the device is paired. A failure is
+     * silent, because the row still shows the raw value, which is what it showed before.
+     */
+    async loadDescriptions(interfaceName: string): Promise<void> {
+        const addresses = this.of(interfaceName)
+            .filter((message) => typeof message.value === 'number')
+            .map((message) => message.address)
+            .filter((address, index, all) => all.indexOf(address) === index)
+            .filter((address) => !this.#described.includes(suppressKey(interfaceName, address)));
+        this.#described = [...this.#described, ...addresses.map((address) => suppressKey(interfaceName, address))];
+        await Promise.all(
+            addresses.map(async (address) => {
+                try {
+                    const description = await this.#transport.request(
+                        'paramset.description',
+                        interfaceName,
+                        address,
+                        'VALUES',
+                    );
+                    this.descriptions = {...this.descriptions, [suppressKey(interfaceName, address)]: description};
+                } catch {
+                    // the raw value stays in the row
+                }
+            }),
+        );
     }
 
     async #readSuppressed(interfaceName: string, address: string): Promise<void> {

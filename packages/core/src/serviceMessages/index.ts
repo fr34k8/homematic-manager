@@ -12,16 +12,29 @@
  */
 
 import {deviceAddress} from '../address/address.js';
+import type {ParameterDescription} from '../paramset/description.js';
 import type {Paramset, ParamsetValue} from '../rpc/values.js';
 
 /**
  * The datapoints that are service messages. `ERROR*` is a prefix rule: devices carry `ERROR`,
  * `ERROR_CODE`, `ERROR_OVERHEAT`, `ERROR_JAMMED` and a dozen more, all of them meaning the same
  * thing for the list.
+ *
+ * `FAULT_REPORTING` (BUGS.md B-24, #150) is the ENUM of the HM-CC-RT-DN's
+ * `CLIMATECONTROL_RT_TRANSCEIVER` channel - not on `:0` and not named `ERROR*`, so it was dropped
+ * and the WebUI's "Kommunikationsstörung" never reached the list. Its index `0` is `NO_FAULT`,
+ * which is falsy, so the store's "falsy clears" rule needs no exception for it. It is not
+ * acknowledgeable: its `OPERATIONS` are 5 (read, event), and the WebUI's service-message page
+ * enables its confirm button only for a datapoint with the write bit.
+ *
+ * Only the datapoints named here count, not every one with the description's SERVICE flag: that
+ * would take the next device-specific one automatically, but it needs a description per channel
+ * before a message can be listed, and it is a broader change than this bug.
  */
 export const SERVICE_MESSAGE_DATAPOINTS: readonly string[] = [
     'CONFIG_PENDING',
     'DUTY_CYCLE',
+    'FAULT_REPORTING',
     'LOWBAT',
     'LOW_BAT',
     'SABOTAGE',
@@ -63,6 +76,26 @@ export function countsAsServiceMessage(datapoint: string, value: ParamsetValue):
         return false;
     }
     return datapoint !== 'DUTY_CYCLE' || typeof value === 'boolean';
+}
+
+/**
+ * The `VALUE_LIST` name of an ENUM service message's value: `COMMUNICATION_ERROR` for a
+ * `FAULT_REPORTING` of `4` (B-24). BidCos sends the index, HmIP may send the name itself; either
+ * way the answer is the name, which is what the translations are keyed by
+ * (`CLIMATECONTROL_RT_TRANSCEIVER|FAULT_REPORTING|COMMUNICATION_ERROR`). `undefined` when the
+ * parameter is not an ENUM, has no such entry, or the entry is one of the empty gaps of a list.
+ */
+export function serviceMessageValueName(
+    parameter: ParameterDescription | undefined,
+    value: unknown,
+): string | undefined {
+    const list = parameter?.TYPE === 'ENUM' ? parameter.VALUE_LIST : undefined;
+    if (list === undefined) {
+        return undefined;
+    }
+    const name =
+        typeof value === 'number' ? list[value] : typeof value === 'string' && list.includes(value) ? value : '';
+    return name === undefined || name === '' ? undefined : name;
 }
 
 /**

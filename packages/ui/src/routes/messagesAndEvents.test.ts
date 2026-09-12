@@ -101,6 +101,67 @@ describe('the service messages tab', () => {
         expect(row?.textContent).toContain('Aufwachen');
     });
 
+    /**
+     * B-24 (#150): the WebUI lists "Kommunikationsstörung" for an HM-CC-RT-DN, which is
+     * `FAULT_REPORTING` = 4 on its transceiver channel. The row shows the CCU's own label for the
+     * value, read through the channel's description, and it is not acknowledgeable - the datapoint
+     * is not writable, and the WebUI's confirm button is disabled for it too.
+     */
+    const fault: ServiceMessage = {
+        interfaceName: 'BidCos-RF',
+        address: 'KEQ0345678:4',
+        datapoint: 'FAULT_REPORTING',
+        value: 4,
+        since: 0,
+    };
+
+    it('B-24: shows a FAULT_REPORTING with the label of its value, and cannot acknowledge it', async () => {
+        transport.result('serviceMessages.list', [fault]);
+        await mountApp({transport, hash: '#/BidCos-RF/messages'});
+
+        await waitFor(() => {
+            expect(screen.getByTestId('message-value-KEQ0345678:4-FAULT_REPORTING').textContent).toBe(
+                'Kommunikationsstörung',
+            );
+        });
+        const cell = screen.getByTestId('message-value-KEQ0345678:4-FAULT_REPORTING');
+        expect(cell.getAttribute('title')).toBe('COMMUNICATION_ERROR (4)');
+        expect(
+            transport.calls.filter((call) => call.method === 'paramset.description').map((call) => call.params),
+        ).toEqual([['BidCos-RF', 'KEQ0345678:4', 'VALUES']]);
+
+        await fireEvent.click(document.querySelector('[data-row-id="KEQ0345678:4/FAULT_REPORTING"]')!);
+        expect(screen.getByTestId<HTMLButtonElement>('messages-ack').disabled).toBe(true);
+        expect(screen.getByTestId<HTMLButtonElement>('messages-ack-all').disabled).toBe(true);
+    });
+
+    it('B-24: keeps the raw value, quietly, where the description cannot be read', async () => {
+        transport.result('serviceMessages.list', [fault]);
+        transport.fail('paramset.description', 'Unknown instance');
+        const {stores} = await mountApp({transport, hash: '#/BidCos-RF/messages'});
+
+        await waitFor(() => {
+            expect(transport.countOf('paramset.description')).toBe(1);
+        });
+        const cell = screen.getByTestId('message-value-KEQ0345678:4-FAULT_REPORTING');
+        expect(cell.textContent).toBe('4');
+        expect(cell.getAttribute('title')).toBeNull();
+        expect(stores.notices.items).toHaveLength(0);
+
+        // asked once per channel, not on every change of the list
+        transport.emit('serviceMessages.changed', [fault, sabotage]);
+        await waitFor(() => {
+            expect(document.querySelector('[data-row-id="GEQ0567890:0/SABOTAGE"]')).not.toBeNull();
+        });
+        expect(transport.countOf('paramset.description')).toBe(1);
+    });
+
+    it('B-24: asks no description for a list of booleans', async () => {
+        await mountApp({transport, hash: '#/BidCos-RF/messages'});
+        expect(document.querySelector('[data-row-id="LEQ0456789:0/LOWBAT"]')).not.toBeNull();
+        expect(transport.countOf('paramset.description')).toBe(0);
+    });
+
     it('announces a message that arrives later as a toast, never as a modal (#77)', async () => {
         const {stores} = await mountApp({transport, hash: '#/BidCos-RF/messages'});
         expect(stores.notices.items).toHaveLength(0);

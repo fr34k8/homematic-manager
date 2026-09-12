@@ -27,6 +27,8 @@ const MARKS: Readonly<Record<string, {symbol: string; level: 'warn' | 'error'}>>
     ERROR: {symbol: '⚠', level: 'error'},
     ERROR_CODE: {symbol: '⚠', level: 'error'},
     SABOTAGE: {symbol: '⚠', level: 'error'},
+    // B-24: the HM-CC-RT-DN's fault report - a communication error, a stuck valve
+    FAULT_REPORTING: {symbol: '⚠', level: 'error'},
     CONFIG_PENDING: {symbol: '⚙', level: 'warn'},
     UPDATE_PENDING: {symbol: '⇩', level: 'warn'},
 };
