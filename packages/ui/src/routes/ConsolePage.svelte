@@ -336,7 +336,12 @@
             </datalist>
         </section>
 
-        <section class="hmm-console-panel">
+        <!--
+            Task 37: the response takes what the column has left. It used to be a 220 px box with
+            the history under it, which left the lower half of a normal window empty while a
+            `listDevices` answer scrolled inside those 220 px.
+        -->
+        <section class="hmm-console-panel hmm-console-output" data-testid="console-output">
             <h3>
                 {t('Response')}
                 {#if answer && !answer.ok}
@@ -375,7 +380,7 @@
     </div>
 
     {#if info?.help}
-        <section class="hmm-console-help">
+        <section class="hmm-console-help" data-testid="console-help-section">
             <h3>{info.name}</h3>
             <p data-testid="console-help">
                 {info.help
@@ -419,22 +424,39 @@
         white-space: nowrap;
     }
 
+    /*
+        Task 37: the columns get what the toolbar, the method row and the help leave over (a basis
+        of 0, not `auto`, so their content never decides their height), and the one row is
+        `minmax(0, 1fr)` so a long argument list scrolls inside its column instead of growing it.
+    */
     .hmm-console-columns {
         display: grid;
         grid-template-columns: 1fr 1fr;
+        grid-template-rows: minmax(0, 1fr);
         gap: 12px;
-        flex: 1 1 auto;
+        flex: 1 1 0;
         min-height: 0;
     }
 
     .hmm-console-panel {
         min-width: 0;
+        min-height: 0;
         overflow: auto;
     }
 
     .hmm-console-panel h3 {
         margin: 0 0 6px;
         font-size: var(--hmm-font-size);
+    }
+
+    /* The right column: the response takes the height, the history keeps what its rows need. */
+    .hmm-console-output {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .hmm-console-output h3 {
+        flex: 0 0 auto;
     }
 
     .hmm-console-arg {
@@ -485,9 +507,16 @@
         border-color: var(--hmm-error);
     }
 
+    /*
+        Task 37: no fixed height. It grows into the column and shrinks with the window down to a
+        floor that still shows a dozen lines; below that the column scrolls. No resize grip: the
+        field follows the window, and a dragged height would fight the flex layout.
+    */
     .hmm-console-response {
+        flex: 1 1 auto;
         width: 100%;
-        height: 220px;
+        min-height: 120px;
+        resize: none;
         border: 1px solid var(--hmm-border);
         border-radius: var(--hmm-radius);
         background: var(--hmm-bg-sunken);
@@ -497,10 +526,16 @@
         color: var(--hmm-error);
     }
 
+    /*
+        Its rows up to 200 px, then it scrolls - the cap it always had. Empty, it is nothing but its
+        heading, and the response gets that room too.
+    */
     .hmm-console-history {
+        flex: 0 1 auto;
         list-style: none;
         margin: 0;
         padding: 0;
+        min-height: 0;
         max-height: 200px;
         overflow: auto;
     }
@@ -529,7 +564,13 @@
         color: var(--hmm-fg-muted);
     }
 
+    /* Task 37: a long help text scrolls inside a quarter of the window rather than pushing the
+       columns - and the response with them - off the bottom. */
     .hmm-console-help {
+        flex: 0 1 auto;
+        max-height: 25vh;
+        min-height: 0;
+        overflow: auto;
         border-top: 1px solid var(--hmm-border);
         padding-top: 6px;
     }
