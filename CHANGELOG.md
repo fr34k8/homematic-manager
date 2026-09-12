@@ -6,6 +6,85 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [3.0.0-beta.13] — 2026-09-12
+
+The decisions of the issue round of 2026-09-12 (#147, #144, #150), the two reports that came in on
+beta.12 (#156, #150), and the maintainer's wishes for the link dialog, the pairing and link buttons
+and the RPC console.
+
+### Fixed
+
+- **A thermostat's fault report is a service message** (#150). The CCU WebUI lists
+  "Kommunikationsstörung" for an HM-CC-RT-DN; that is `FAULT_REPORTING` on its thermostat channel,
+  which the app dropped because it was not on its list of service-message datapoints. It is listed
+  now, marked in the device grid, and shown with the CCU's own text for its value instead of a bare
+  number. Like in the WebUI it cannot be acknowledged; it clears when the device reports
+  `NO_FAULT`.
+- **Refresh on the service messages tab no longer drops the other interfaces' messages** until
+  their next event.
+- **The Funk tab counts HmIP outages too.** The periodic status read of HmIP devices now feeds the
+  unreach counter the way the BidCos poll does, so an outage that no event reported is counted as
+  well. Nothing is acknowledged on HmIP; there is nothing to acknowledge there.
+- **Umlauts in a link's name and description** (#156): "StandardverknÃ¼pfung" reads
+  "Standardverknüpfung" again. rfd hands these two fields back as the UTF-8 bytes their writer sent,
+  and the app read them as ISO-8859-1 like every other answer. They are now read again as UTF-8 —
+  only when they really are UTF-8, so real ISO-8859-1 text such as `°C` stays as it is.
+
+### Changed
+
+- **The CCU addon uses fixed callback ports: 2031 for XML-RPC, 2032 for BIN-RPC** (#144). Until now
+  every start took a free port from the kernel and so registered a new callback URL; the process
+  behind VirtualDevices keeps its handlers by URL and does not drop the entry of an HMM that ended
+  hard (kill, power loss), so each such start left one more entry. With a fixed port the next start
+  overwrites its own. A taken port is logged once and replaced by a free one for that start. Ports
+  set in the settings dialog always win and survive updates; `etc/hmm.env` can move the defaults, or
+  set `0` for the old behaviour. On the CCU the callback servers listen on the loopback only. The
+  desktop app, npm and Docker keep a free port.
+- **Switching on the automatic acknowledgement asks about the messages already there** (#147). The
+  option acknowledged a `STICKY_UNREACH` only at the moment it appeared while the app was running,
+  so messages older than the tick — or older than the last restart — stayed in the list for good.
+  Switching it on now asks once whether the `STICKY_UNREACH` messages already listed should be
+  acknowledged as well, and says what that costs: the list no longer shows which devices were away,
+  while the unreach counter in the Funk tab keeps it. "Acknowledge them" sends one acknowledgement
+  per message after _Save & Restart_, the same write the acknowledge button does, with progress and
+  errors in the RPC log; "only new ones" keeps today's behaviour. The label now reads "Acknowledge
+  STICKY_UNREACH automatically as they occur".
+- **"Saving and reconnecting…" stands out** (#149): a highlighted status with a spinner beside the
+  buttons of the settings dialog, announced by screen readers, instead of grey text that was easy
+  to miss.
+- **The RPC console's response field uses the height of the window** instead of a fixed 220 px box;
+  the history stays below it with a capped height, and a long method help scrolls on its own.
+- **The service messages band counts the whole box** (#150): "4 of 7 on this box" while other
+  interfaces have messages too. The list stays per interface, as the maintainer decided; a click on
+  the total switches to the next interface that has messages, and its tooltip lists them. "First
+  reported" from ReGa, the other half of that decision, is not in this release.
+- **The "Create link" dialog is larger**: at least 650 px tall and 920 px wide, clamped to the
+  window; its buttons wrap on a phone instead of running off the screen.
+- **The link dialog's channel lists are easier to read**: each entry shows the channel's name, the
+  device's name after it, and the channel index with its type on a second line
+  (`3: VIRTUAL_SWITCH_TRANSMITTER`). The address is no longer printed; the filter still finds a
+  channel by it.
+- **"Pair device" and "Add link" are real buttons** (the maintainer's wish): larger than the toolbar
+  icons, with the `+` and a caption ("Pair device" / "Gerät anlernen", "Add link" / "Verknüpfung
+  anlegen"), in the accent colour at the start of the band. When the band runs out of room they
+  shrink to their icon. "Pair device" is disabled on VirtualDevices and CUxD, which have no install
+  mode; "Add link" is disabled where no channel can send.
+
+### New
+
+- **HmIP devices can be paired without their SGTIN**: the pairing dialog offers a third way, "Any
+  device (no SGTIN)", next to "SGTIN and key" and "SGTIN only". It arms the interface for whatever
+  device in factory state asks to join next, the way the CCU WebUI does it. The dialog says what each
+  way needs — only "SGTIN and key" works without eQ-3's key server — and, when the window runs out
+  with nothing paired, why that can happen (a device paired elsewhere sends no request).
+- HmIP interfaces no longer receive BidCos's install-mode parameter as a third argument; hmipserver
+  ignores the whole call when it gets one.
+
+### Known issues
+
+- "First reported" (the WebUI's "Erste Meldung") is still the time this app first saw a message,
+  not the CCU's own time (#150).
+
 ## [3.0.0-beta.12] — 2026-09-11
 
 The cause of #143, found in the reporter's own developer console, and the two small things the
@@ -727,6 +806,7 @@ XML-RPC on `/RPC3` of port 2121, so a user-defined interface reaches it, but no 
 available to verify that against]; and the extended set of device-specific editors (universal light
 effects, RGBW/dual-white, alarm panel, the ESI energy meter, door locks).
 
+[3.0.0-beta.13]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.13
 [3.0.0-beta.12]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.12
 [3.0.0-beta.11]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.11
 [3.0.0-beta.10]: https://github.com/hobbyquaker/homematic-manager/releases/tag/v3.0.0-beta.10
