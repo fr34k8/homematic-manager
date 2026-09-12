@@ -85,6 +85,16 @@ export function installModeCalls(on: boolean, options: InstallModeOptions = {}):
     const seconds = installSeconds(options.seconds);
     const calls: InstallModeCall[] = [];
 
+    if (options.hmipKeyMode === 'ANY') {
+        // Task 28: any HmIP device, no SGTIN. hmipserver's third parameter is a String - the address
+        // to admit - so BidCos's `mode` integer there is a type fault, which is why "setInstallMode
+        // does not work on HmIP" gets reported. Two arguments arm the interface for whatever asks to
+        // join next, as the CCU WebUI's key-server branch sends it (setinstallmodehmip.tcl); an SGTIN
+        // still in the dialog's field or a BidCos mode must not turn into a third one.
+        calls.push({method: 'setInstallMode', params: [true, seconds]});
+        return calls;
+    }
+
     if (options.tempKey !== undefined && options.tempKey !== '') {
         // issue #20: the temporary key has to be set before the install mode opens
         calls.push({method: 'setTempKey', params: [options.tempKey]});

@@ -115,4 +115,48 @@ describe('installModeCalls', () => {
             {method: 'setInstallMode', params: [true, DEFAULT_INSTALL_SECONDS]},
         ]);
     });
+
+    /**
+     * Task 28: pairing any HmIP device without its SGTIN. hmipserver's `setInstallMode` takes a
+     * String as its third parameter, so the call has exactly two - the lab's hmipserver answered
+     * `setInstallMode(true, 30)` with an empty value and `getInstallMode` with the seconds left.
+     */
+    it('arms HmIP for any device with exactly two arguments', () => {
+        const calls = installModeCalls(true, {seconds: 30, hmipKeyMode: 'ANY'});
+        expect(calls).toEqual([{method: 'setInstallMode', params: [true, 30]}]);
+        expect(calls[0]?.params).toHaveLength(2);
+    });
+
+    it('never lets a leftover SGTIN, key, mode or serial become a third argument in ANY mode', () => {
+        expect(
+            installModeCalls(true, {
+                hmipKeyMode: 'ANY',
+                hmipKey: {sgtin: '3014F711A000000000001234', key: 'AAAAAAAAAAAA'},
+                mode: 2,
+                tempKey: 'K',
+                address: 'LEQ0123456',
+            }),
+        ).toEqual([{method: 'setInstallMode', params: [true, DEFAULT_INSTALL_SECONDS]}]);
+    });
+
+    it('switches the install mode off in ANY mode as in every other', () => {
+        expect(installModeCalls(false, {hmipKeyMode: 'ANY'})).toEqual([{method: 'setInstallMode', params: [false]}]);
+    });
+
+    /**
+     * Task 28's second trap: hmipserver matches the whitelist as an exact string, and only
+     * `setInstallModeWithWhitelist` upper-cases what it is given. A lower-case SGTIN must never
+     * leave the backend lower-case, whichever key mode sent it.
+     */
+    it('upper-cases the SGTIN of both whitelist modes', () => {
+        for (const hmipKeyMode of ['KEY', 'SGTIN'] as const) {
+            const [call] = installModeCalls(true, {
+                hmipKeyMode,
+                hmipKey: {sgtin: '3014f711a000000000001234', key: 'aaaaaaaaaaaa'},
+            });
+            expect(call?.method).toBe('setInstallModeWithWhitelist');
+            const [entry] = call?.params[2] as [Record<string, string>];
+            expect(entry['ADDRESS']).toBe('3014F711A000000000001234');
+        }
+    });
 });

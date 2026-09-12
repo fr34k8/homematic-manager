@@ -448,8 +448,13 @@ export interface InstallModeOptions {
     mode?: number;
     /** HmIP: the device key (SGTIN + key from the QR code or the sticker). */
     hmipKey?: {sgtin: string; key: string};
-    /** HmIP: whether the key mode is "KEY" or "SGTIN". */
-    hmipKeyMode?: 'KEY' | 'SGTIN';
+    /**
+     * HmIP: how the device is admitted. `KEY` whitelists the SGTIN with its key (the only way that
+     * works offline), `SGTIN` whitelists the SGTIN and takes the key from eQ-3's key server, and
+     * `ANY` (task 28) admits whatever device in factory state asks to join: `setInstallMode(true,
+     * seconds)` with exactly two arguments, `hmipKey` ignored.
+     */
+    hmipKeyMode?: 'KEY' | 'SGTIN' | 'ANY';
     /** BidCos: temporary key for `setTempKey`. */
     tempKey?: string;
     /** Restrict to a device address (BidCos `setInstallMode` with address). */

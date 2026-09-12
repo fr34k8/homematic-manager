@@ -1101,6 +1101,27 @@ describe('devices', () => {
         ]);
         await h.backend.stop();
     });
+
+    /**
+     * Task 28: any HmIP device without its SGTIN. `hmipKeyMode: 'ANY'` in the contract is
+     * `setInstallMode` with exactly two arguments on the wire, and a mode integer never reaches
+     * hmipserver - the lab's answered `setInstallMode(true, 30, 1)` with an empty HTTP reply and
+     * opened no install mode. BidCos keeps its mode.
+     */
+    it('arms HmIP for any device with two arguments and never sends it a mode (task 28)', async () => {
+        const h = await harness();
+        h.calls.length = 0;
+        await h.backend.request('devices.installMode.set', 'HmIP-RF', true, {seconds: 30, hmipKeyMode: 'ANY'});
+        await h.backend.request('devices.installMode.set', 'HmIP-RF', true, {seconds: 30, mode: 1});
+        await h.backend.request('devices.installMode.set', 'BidCos-RF', true, {seconds: 30, mode: 1});
+        const install = h.calls.filter((call) => call.method === 'setInstallMode');
+        expect(install.map(({interfaceName, params}) => [interfaceName, params])).toEqual([
+            ['HmIP-RF', [true, 30]],
+            ['HmIP-RF', [true, 30]],
+            ['BidCos-RF', [true, 30, 1]],
+        ]);
+        await h.backend.stop();
+    });
 });
 
 describe('the callbacks', () => {

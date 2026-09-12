@@ -1118,7 +1118,14 @@ export class Backend {
     }
 
     async #setInstallMode(interfaceName: string, on: boolean, options?: InstallModeOptions): Promise<null> {
-        for (const call of installModeCalls(on, options ?? {})) {
+        const effective: InstallModeOptions = {...options};
+        if (interfaceName === 'HmIP-RF') {
+            // Task 28, measured in the lab: hmipserver's third `setInstallMode` parameter is a String,
+            // and `setInstallMode(true, 30, 1)` got an empty HTTP reply and no install mode at all.
+            // BidCos's mode integer never reaches HmIP, whoever asks for it.
+            delete effective.mode;
+        }
+        for (const call of installModeCalls(on, effective)) {
             await this.#write(interfaceName, call.method, call.params);
         }
         return null;
