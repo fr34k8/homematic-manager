@@ -55,6 +55,7 @@ import {
     type ServiceMessage,
     type ConfigSetOptions,
     normaliseDescription,
+    repairMisdecodedUtf8,
 } from '@homematic-manager/core';
 
 import {CacheStore} from '../cache/store.js';
@@ -1614,7 +1615,7 @@ function asLinks(value: unknown): LinkRecord[] {
     const links: LinkRecord[] = [];
     for (const entry of value) {
         if (isStruct(entry) && typeof entry['SENDER'] === 'string' && typeof entry['RECEIVER'] === 'string') {
-            links.push(entry as unknown as LinkRecord);
+            links.push(withLinkText(entry as unknown as LinkRecord));
         }
     }
     return links;
@@ -1622,9 +1623,23 @@ function asLinks(value: unknown): LinkRecord[] {
 
 function asLink(value: unknown, sender: string, receiver: string): LinkRecord {
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        return {SENDER: sender, RECEIVER: receiver, ...(value as unknown as Partial<LinkRecord>)};
+        return withLinkText({SENDER: sender, RECEIVER: receiver, ...(value as unknown as Partial<LinkRecord>)});
     }
     return {SENDER: sender, RECEIVER: receiver};
+}
+
+/**
+ * B-23 (#156): a link's `NAME` and `DESCRIPTION` are UTF-8 in rfd - the WebUI's default description
+ * "Standardverknüpfung" and our own `setLinkInfo` alike - and the XML-RPC client reads them as
+ * ISO-8859-1. Repaired here, once, for both reads; a BIN-RPC answer (its library decodes UTF-8) and
+ * a real ISO-8859-1 text pass through unchanged.
+ */
+function withLinkText(link: LinkRecord): LinkRecord {
+    return {
+        ...link,
+        ...(typeof link.NAME === 'string' ? {NAME: repairMisdecodedUtf8(link.NAME)} : {}),
+        ...(typeof link.DESCRIPTION === 'string' ? {DESCRIPTION: repairMisdecodedUtf8(link.DESCRIPTION)} : {}),
+    };
 }
 
 function asBidcosInterfaces(value: unknown): BidcosInterfaceInfo[] {

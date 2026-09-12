@@ -23,6 +23,7 @@ export * from './links/roles.js';
 // Values and the write path (task 6)
 export * from './rpc/values.js';
 export * from './rpc/methods.js';
+export * from './rpc/text.js';
 export * from './paramset/description.js';
 export * from './paramset/units.js';
 export * from './paramset/time.js';

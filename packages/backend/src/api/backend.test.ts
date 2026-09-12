@@ -1288,6 +1288,44 @@ describe('paramsets, values and links', () => {
         await h.backend.stop();
     });
 
+    it('repairs the UTF-8 link texts the XML-RPC client read as ISO-8859-1 (B-23, #156)', async () => {
+        // what the reporter's Links tab showed: rfd hands back the UTF-8 bytes of the WebUI's
+        // default description, and the latin1 decode makes two characters of every umlaut
+        const h = await harness({
+            answers: {
+                'BidCos-RF': (method) => {
+                    switch (method) {
+                        case 'getLinks':
+                            return [
+                                {
+                                    SENDER: 'LEQ1:1',
+                                    RECEIVER: 'LEQ2:1',
+                                    NAME: 'KÃ¼che',
+                                    DESCRIPTION: 'StandardverknÃ¼pfung',
+                                },
+                                {SENDER: 'LEQ1:2', RECEIVER: 'LEQ2:2', NAME: 'Küche 21 °C', FLAGS: 0},
+                            ];
+                        case 'getLinkInfo':
+                            return {NAME: 'Au\u00c3\u009fent\u00c3\u00bcr', DESCRIPTION: 'Taster 1'};
+                        default:
+                            return '';
+                    }
+                },
+            },
+        });
+        expect(await h.backend.request('links.list', 'BidCos-RF')).toEqual([
+            {SENDER: 'LEQ1:1', RECEIVER: 'LEQ2:1', NAME: 'Küche', DESCRIPTION: 'Standardverknüpfung'},
+            {SENDER: 'LEQ1:2', RECEIVER: 'LEQ2:2', NAME: 'Küche 21 °C', FLAGS: 0},
+        ]);
+        expect(await h.backend.request('links.info.get', 'BidCos-RF', 'LEQ1:1', 'LEQ2:1')).toEqual({
+            SENDER: 'LEQ1:1',
+            RECEIVER: 'LEQ2:1',
+            NAME: 'Außentür',
+            DESCRIPTION: 'Taster 1',
+        });
+        await h.backend.stop();
+    });
+
     it('answers links.info.get for an interface that returns nothing', async () => {
         const h = await harness({answers: {'BidCos-RF': () => ''}});
         expect(await h.backend.request('links.info.get', 'BidCos-RF', 'A:1', 'B:1')).toEqual({
