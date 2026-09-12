@@ -10,15 +10,16 @@
         <p>
             Der Dienst läuft nicht. In <em>Einstellungen &rarr; Systemsteuerung &rarr; Zusatzsoftware</em> auf
             <em>Neu starten</em> klicken, oder auf der CCU <code>/usr/local/etc/config/rc.d/hmm start</code> ausführen.
-            Das Log steht in <code>/usr/local/addons/hmm/var/hmm.log</code>, auf openccu-lite im Journal:
+            Das Log steht in <code>/var/log/hmm.log</code>, oder in <code>/usr/local/addons/hmm/var/hmm.log</code>, wenn
+            es in den Einstellungen des Addons so gewählt ist; auf openccu-lite im Journal:
             <a href="/log?unit=addon-hmm">Log-Seite</a>, Unit <code>addon-hmm</code>.
         </p>
         <p>
             The service is not running. Use <em>Restart</em> in
             <em>Settings &rarr; Control panel &rarr; Additional software</em>, or run
-            <code>/usr/local/etc/config/rc.d/hmm start</code> on the CCU. The log is
-            <code>/usr/local/addons/hmm/var/hmm.log</code>; on openccu-lite it is the journal:
-            <a href="/log?unit=addon-hmm">the Log page</a>, unit <code>addon-hmm</code>.
+            <code>/usr/local/etc/config/rc.d/hmm start</code> on the CCU. The log is <code>/var/log/hmm.log</code>, or
+            <code>/usr/local/addons/hmm/var/hmm.log</code> when the addon's settings say so; on openccu-lite it is the
+            journal: <a href="/log?unit=addon-hmm">the Log page</a>, unit <code>addon-hmm</code>.
         </p>
     </body>
 </html>

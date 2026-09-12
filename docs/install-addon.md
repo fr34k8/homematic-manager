@@ -203,7 +203,8 @@ not touch lighttpd at all. The uninstall removes the file and reloads the same w
 
 | Path | What |
 | --- | --- |
-| `/usr/local/addons/hmm/` | the addon: `bin/node`, `app/`, `rc.d/hmm`, `etc/`, `www/`, `var/hmm.log` (not on openccu-lite) |
+| `/usr/local/addons/hmm/` | the addon: `bin/node`, `app/`, `rc.d/hmm`, `etc/`, `www/`, `var/hmm.log` (only when the log is set to the addon directory) |
+| `/var/log/hmm.log` | the addon's log by default, on the CCU's tmpfs (not on openccu-lite; see [Troubleshooting](#troubleshooting)) |
 | `/usr/local/hmm/` | the **profile**: `config.json`, the caches, `images/`, `token` (mode 600) |
 | `/usr/local/etc/config/rc.d/hmm` | symlink to the service script |
 | `/usr/local/etc/config/addons/www/hmm` | symlink to `www/` — this is what serves the CGIs |
@@ -259,11 +260,12 @@ on the first install and never overwritten again:
 ```sh
 HMM_PORT=8090        # loopback only; change hmm.conf with it, or re-run the update
 HMM_LOG_LEVEL=info   # error, warn, info, debug
+HMM_ADDON_LOG=varlog # varlog (/var/log/hmm.log, default) or addon (var/hmm.log) - see "Troubleshooting"
 HMM_AUTH_MODE=token  # token (default) or rega - see "Optional: a login with a CCU user"
 HMM_SESSION_TTL=24h  # with rega: how long a login lasts without being used
 ```
 
-`HMM_AUTH_MODE` is also settable from the addon's own settings page,
+`HMM_AUTH_MODE` and `HMM_ADDON_LOG` are also settable from the addon's own settings page,
 `/addons/hmm/settings.cgi?cmd=config`, which is linked from the addon's entry on the Zusatzsoftware
 page; it writes the same file and restarts the service.
 
@@ -277,7 +279,7 @@ settings but the definition of "we are the addon".
 | Symptom | Look at |
 | --- | --- |
 | The button opens a page saying the session is invalid | The WebUI session expired. Reload the WebUI and open the addon again. |
-| The button opens a 503 page | The service is not running: `service.cgi?…&cmd=log`, or `/usr/local/addons/hmm/var/hmm.log`; on openccu-lite the box's Log page with unit `addon-hmm`, or `journalctl -t addon-hmm`. Start it with the _Neu starten_ button. |
+| The button opens a 503 page | The service is not running: `service.cgi?…&cmd=log`, or `/var/log/hmm.log` (`/usr/local/addons/hmm/var/hmm.log` when the log is set to the addon directory); on openccu-lite the box's Log page with unit `addon-hmm`, or `journalctl -t addon-hmm`. Start it with the _Neu starten_ button. |
 | The UI loads but stays disconnected | The WebSocket did not get through. `grep hmm /var/log/messages`, and check that `/usr/local/etc/config/lighttpd/hmm.conf` exists and lighttpd has read it (`/etc/init.d/S50lighttpd reload`). **CCU3 firmware older than 3.61.5 does not read that directory at all.** |
 | No devices, interfaces marked red | The interface processes answer on the CCU's loopback only (D-28). `netstat -tlnp` should show 32001 / 32010; a CCU in safe mode or with `HM_MODE` other than `NORMAL` starts neither them nor addons. |
 | Device pictures are missing | They come from the CCU's own `/config/img/devices/`; the app falls back to the pictures that ship in `app/data/icons/`. |
@@ -287,13 +289,30 @@ settings but the definition of "we are the addon".
 | Everything is slow on a CCU3 | It is a 1 GB armv7 board. The addon raises its own `oom_score_adj` to 800, so the kernel takes it before it takes `rfd` or `ReGaHSS`. |
 
 Log lines are tagged `hmm` in `/var/log/messages`; the process's own output is
-`/usr/local/addons/hmm/var/hmm.log`, rotated at 1 MB.
+`/var/log/hmm.log` by default, rotated at 1 MB.
+
+On a CCU and OpenCCU you choose where that log goes, in the _Log_ section of the addon's settings page
+(`/addons/hmm/settings.cgi?cmd=config`), or with `HMM_ADDON_LOG` in `etc/hmm.env` (#159):
+
+| Setting | File | Trade-off |
+| --- | --- | --- |
+| `varlog`, the default | `/var/log/hmm.log` | where a CCU keeps its logs; in memory (tmpfs), so no writes to the SD card, and empty after a reboot |
+| `addon` | `/usr/local/addons/hmm/var/hmm.log` | survives a reboot, and writes to the SD card |
+
+- Both files are rotated at 1 MB into `hmm.log.1`.
+- A change takes effect with the restart the settings page does. That start removes the file at the other
+  location, so the page never shows an old log.
+- When `/var/log` cannot be written, the log goes to the addon directory instead, and syslog says so.
+- The settings page shows the last lines of the log, and `service.cgi?…&cmd=log` shows the log; both
+  follow the setting.
+- An uninstall removes `/var/log/hmm.log` as well.
 
 On openccu-lite there is no log file (task 41, following openccu-lite's rule that everything logs to
 the journal): the process's output goes to the journal under the unit's identifier `addon-hmm`. The
 box's Log page shows it with the unit `addon-hmm` chosen, `journalctl -t addon-hmm` on the box, and
 `service.cgi?…&cmd=log` sends the browser to that Log page. A `var/hmm.log` from an earlier version is
-removed at the first start. The log level (`HMM_LOG_LEVEL`) is the same on both.
+removed at the first start. The log level (`HMM_LOG_LEVEL`) is the same on both. The settings page
+offers no location there; it links the Log page, and where the journal is stored is set in occulited.
 
 The token itself is **not** in that log: the addon supplies it through the environment, and a
 supplied token is logged at `debug` only (a generated one is printed once at `info`, because that is

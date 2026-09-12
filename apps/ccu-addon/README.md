@@ -57,7 +57,8 @@ ssh root@ccu /bin/install_addon        # OpenCCU: the exact path the WebUI takes
 
 | Path                                        | What                                                        |
 | ------------------------------------------- | ----------------------------------------------------------- |
-| `/usr/local/addons/hmm/`                    | the addon: `bin/node`, `app/`, `rc.d/hmm`, `etc/`, `www/`, `var/hmm.log` (not on openccu-lite), `var/hmm.pid` |
+| `/usr/local/addons/hmm/`                    | the addon: `bin/node`, `app/`, `rc.d/hmm`, `etc/`, `www/`, `var/hmm.pid`, `var/hmm.log` (only with `HMM_ADDON_LOG=addon`) |
+| `/var/log/hmm.log`                          | the backend's log by default, on the CCU's tmpfs (not on openccu-lite; see [Troubleshooting](#troubleshooting)) |
 | `/usr/local/hmm/`                           | the **profile**: `config.json`, the caches, `images/`, `token` (mode 600) |
 | `/usr/local/etc/config/rc.d/hmm`            | symlink to the service script                                |
 | `/usr/local/etc/config/addons/www/hmm`      | symlink to `www/` — this is what serves the CGIs             |
@@ -259,6 +260,7 @@ overwritten again:
 ```sh
 HMM_PORT=8090        # loopback only; change hmm.conf with it, or re-run update_script
 HMM_LOG_LEVEL=info   # error, warn, info, debug
+HMM_ADDON_LOG=varlog # varlog (/var/log/hmm.log, default) or addon (var/hmm.log) - see "Troubleshooting"
 HMM_AUTH_MODE=token  # token (default) or rega - see "The optional login (D-32)"
 HMM_SESSION_TTL=24h  # with rega: how long a login lasts without being used
 HMM_CALLBACK_XMLRPC_DEFAULT_PORT=2031  # the callback ports while the settings say 0, see "Callback ports"
@@ -339,7 +341,7 @@ touched by it.
 | Symptom | Look at |
 | --- | --- |
 | The button opens a page saying the session is invalid | The WebUI session expired. Reload the WebUI and open the addon again. |
-| The button opens a 503 page | The service is not running: `service.cgi?…&cmd=log`, or `/usr/local/addons/hmm/var/hmm.log`; on openccu-lite the box's Log page with unit `addon-hmm`, or `journalctl -t addon-hmm`. Start it with the _Neu starten_ button. |
+| The button opens a 503 page | The service is not running: `service.cgi?…&cmd=log`, or `/var/log/hmm.log` (`/usr/local/addons/hmm/var/hmm.log` with `HMM_ADDON_LOG=addon`); on openccu-lite the box's Log page with unit `addon-hmm`, or `journalctl -t addon-hmm`. Start it with the _Neu starten_ button. |
 | The UI loads but stays disconnected | The WebSocket did not get through. `grep hmm /var/log/messages`, and check that `/usr/local/etc/config/lighttpd/hmm.conf` exists and lighttpd has read it (`/etc/init.d/S50lighttpd reload`). CCU3 firmware older than 3.61.5 does not read that directory at all. |
 | No devices, interfaces marked red | The interface processes answer on the CCU's loopback only (D-28). `netstat -tlnp` should show 32001 / 32010; a CCU in safe mode or with `HM_MODE` other than `NORMAL` starts neither them nor addons. |
 | Device pictures are missing | They come from the CCU's own `/config/img/devices/`; the app falls back to the pictures that ship in `app/data/icons/`. |
@@ -349,13 +351,32 @@ touched by it.
 | Everything is slow on a CCU3 | It is a 1 GB armv7 board. The addon raises its own `oom_score_adj` to 800 so the kernel takes it before it takes rfd or ReGaHSS. |
 
 Log lines are tagged `hmm` in `/var/log/messages`; the process's own output is
-`/usr/local/addons/hmm/var/hmm.log`, rotated at 1 MB.
+`/var/log/hmm.log` by default, rotated at 1 MB.
+
+On a CCU and OpenCCU the location is a setting (task 43, #159): the _Log_ section of the addon's
+settings page (`settings.cgi?cmd=config`), or `HMM_ADDON_LOG` in `etc/hmm.env`.
+
+| `HMM_ADDON_LOG`             | File                                | Trade-off                                                            |
+| --------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
+| `varlog` (the default, and unset) | `/var/log/hmm.log`            | the CCU convention; on a tmpfs, so no SD-card writes, and gone after a reboot |
+| `addon`                     | `/usr/local/addons/hmm/var/hmm.log` | survives a reboot, and writes to the SD card                         |
+
+- **Rotation:** both files are rotated at 1 MB into `hmm.log.1`.
+- **A switch** takes effect with the restart the settings page does. That start removes the file at the
+  other location (and its `hmm.log.1`), so the log views never show a stale log and nothing old stays on
+  the SD card.
+- **The fallback:** when `/var/log` cannot be created or written, the start logs to the addon directory
+  instead, and says so in syslog.
+- **The log views:** `service.cgi?…&cmd=log` and the settings page's last lines show the chosen file, or
+  the other one when only that one exists.
+- **An uninstall** removes `/var/log/hmm.log` too.
 
 On openccu-lite there is no log file (task 41, following openccu-lite's rule that everything logs to
 the journal): the process's output goes to the journal under the unit's identifier `addon-hmm`. The
 box's Log page shows it with the unit `addon-hmm` chosen, `journalctl -t addon-hmm` on the box, and
 `service.cgi?…&cmd=log` sends the browser to that Log page. A `var/hmm.log` from an earlier version is
-removed at the first start. The log level (`HMM_LOG_LEVEL`) is the same on both.
+removed at the first start. The log level (`HMM_LOG_LEVEL`) is the same on both. The settings page shows
+no location to choose there, only a link to the Log page; where the journal is stored is set in occulited.
 
 ## Building it
 
@@ -402,7 +423,10 @@ apps/ccu-addon/test/container-test.sh --idle         # needs docker
   unknown user, the right credentials (whose password contains a colon and a backslash, so the
   datagram escaping is exercised), the cookie's attributes, the WebSocket and `session.info` on it,
   the `settings.cgi` hand-over still bypassing the login, the settings page, logout, the rate limit,
-  and the way back to `token`.
+  and the way back to `token`. Since task 43 it also follows the log: `/var/log/hmm.log` after the
+  install, the settings page's switch to the addon directory and back with `service.cgi`'s log view
+  following, the 1 MB rotation of both files, the fallback when `/var/log/hmm.log` cannot be written,
+  and the file going with an uninstall.
 
 Without `tclsh` on the machine (a plain WSL Debian has none) the first two run in the test image:
 
@@ -432,9 +456,10 @@ lab's admin user, and both boxes were left in `token` mode. The results are in
 user at a *lower* ReGa level. The recipe stays here because it is how the check is repeated:
 
 ```sh
+# the log is /var/log/hmm.log since task 43; with HMM_ADDON_LOG=addon it is /usr/local/addons/hmm/var/hmm.log
 # 1. switch the addon over and restart it
 ssh root@<box> "echo 'HMM_AUTH_MODE=rega' >> /usr/local/addons/hmm/etc/hmm.env; \
-    /usr/local/etc/config/rc.d/hmm restart; sleep 3; grep -c 'login:' /usr/local/addons/hmm/var/hmm.log"
+    /usr/local/etc/config/rc.d/hmm restart; sleep 3; grep -c 'login:' /var/log/hmm.log"
 
 # 2. the login page instead of the UI, and the form against the real ReGa + udp 1998
 curl -s  http://<box>/addons/hmm/ | grep -c 'name="password"'          # 1
@@ -445,7 +470,7 @@ curl -si -X POST http://<box>/addons/hmm/login \
 curl -s -b 'hmm_session=<id>' http://<box>/addons/hmm/ | grep -c 'id="app"'   # 1
 
 # 3. the level ReGa really reports for that user, in the log and in session.info
-ssh root@<box> "grep 'login:' /usr/local/addons/hmm/var/hmm.log | tail -2"   # level 8 for an admin
+ssh root@<box> "grep 'login:' /var/log/hmm.log | tail -2"   # level 8 for an admin
 
 # 4. the hand-over still bypasses the login: open the button in Systemsteuerung, expect the UI
 #    with no login page, then check the header shows no user for that path and does for the other
