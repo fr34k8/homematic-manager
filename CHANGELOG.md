@@ -6,6 +6,21 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [Unreleased]
+
+### Fixed
+
+- **An interface that does not answer in time is no longer shown as "not present".** A user-defined interface
+  such as CCU-Jack or a remote CUxD that was slow at the start, or briefly unreachable, was marked "not present"
+  by the background port probe, which never asked it at all, and a built-in interface whose probe timed out was
+  marked the same way. Only a port that refuses the connection means "not present" now. One that times out, or
+  whose host cannot be reached, is shown as "Not answering" ("Antwortet nicht") in the interface popup, stays
+  configured and is tried again; a "Retry now" button under the list tries it at once.
+- **On a touch screen a tap near the right edge of a column label sorts again.** Since the resize handle got a
+  finger-sized area in beta.15, a tap on the right part of a label landed on the handle and did nothing. Under a
+  finger or a pen only a drag resizes a column now; a tap sorts, as it does on the rest of the label, and the
+  double tap does not fit the column. A mouse works as before.
+
 ## [3.0.0-beta.15] — 2026-09-12
 
 Thanks to @Baxxy13, @Herbert-Testmann and @FraatTailscale for reports and ideas.
