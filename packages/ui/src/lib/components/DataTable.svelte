@@ -437,6 +437,12 @@
 
     /** A pointer that moved less than this between down and up clicked - half a double click. */
     const DRAG_THRESHOLD_PX = 2;
+    /**
+     * B-29: a finger wobbles more than a mouse. Under this, a touch on the handle is a tap, and a tap
+     * sorts like one on the rest of the label: task 42 widened the handle to 24 px for a finger, so a
+     * tap near the right edge of a label landed on the handle and did nothing a user could see.
+     */
+    const TAP_SLOP_PX = 4;
     /** Room for the ▲ of a sorted label, so fitting a column and then sorting it cuts nothing off. */
     const SORT_MARK_PX = 14;
 
@@ -531,11 +537,15 @@
         readonly startX: number;
         /** The column's width when the handle was pressed, as drawn - a proportional one included. */
         readonly startWidth: number;
+        /** B-29: pressed by a finger or a pen, where only a drag resizes and a tap sorts. */
+        readonly touch: boolean;
         moved: boolean;
     }
 
     /** Plain state: nothing is drawn from it but the one class below. */
     let resize: Resize | undefined;
+    /** B-29: the last press on a handle was a finger's, so the double click that follows two taps fits nothing. */
+    let pressedByTouch = false;
     let resizingKey = $state<string | undefined>(undefined);
 
     /** The cell a handle sits in: a label of the head, or of the sub-grid row whose handle was used. */
@@ -555,11 +565,13 @@
         } catch {
             // a pointer that is already gone, or a DOM without capture: the drag works while over the handle
         }
+        pressedByTouch = event.pointerType === 'touch' || event.pointerType === 'pen';
         resize = {
             key,
             pointerId: event.pointerId,
             startX: event.clientX,
             startWidth: cell.getBoundingClientRect().width,
+            touch: pressedByTouch,
             moved: false,
         };
         hideTooltip();
@@ -580,7 +592,7 @@
             return;
         }
         const dx = event.clientX - current.startX;
-        if (!current.moved && Math.abs(dx) < DRAG_THRESHOLD_PX) {
+        if (!current.moved && Math.abs(dx) < (current.touch ? TAP_SLOP_PX : DRAG_THRESHOLD_PX)) {
             return;
         }
         if (!current.moved) {
@@ -605,6 +617,25 @@
             saveWidth(current.key, draft.width);
         }
         draft = undefined;
+    }
+
+    /**
+     * B-29: the finger let go. A drag was a resize and is stored like a mouse's; a tap that never
+     * moved past {@link TAP_SLOP_PX} sorts the column, because the press was meant for its label.
+     * The handle holds the pointer capture, so the click that follows lands on the handle and not on
+     * the label's button - the sort has to happen here. A sub-grid's label row is not sorted.
+     */
+    function onResizeUp(event: PointerEvent, column: DataTableColumn<T>): void {
+        const current = resize;
+        onResizeEnd(event);
+        if (
+            current?.pointerId === event.pointerId &&
+            current.touch &&
+            !current.moved &&
+            scopeOf(column.key) === 'table'
+        ) {
+            toggleSort(column);
+        }
     }
 
     function onResizeKey(event: KeyboardEvent, key: string): void {
@@ -836,12 +867,15 @@
         data-testid={handleTestId}
         onpointerdown={(event) => onResizeStart(event, column.key)}
         onpointermove={onResizeMove}
-        onpointerup={onResizeEnd}
+        onpointerup={(event) => onResizeUp(event, column)}
         onpointercancel={onResizeEnd}
         onlostpointercapture={onResizeEnd}
         ondblclick={(event) => {
             event.preventDefault();
-            fitColumn(column.key);
+            // B-29: two taps sorted twice; under a finger only a drag changes a width
+            if (!pressedByTouch) {
+                fitColumn(column.key);
+            }
         }}
         onkeydown={(event) => onResizeKey(event, column.key)}
     ></div>

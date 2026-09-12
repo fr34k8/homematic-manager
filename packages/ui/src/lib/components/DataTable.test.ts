@@ -593,6 +593,71 @@ describe('column widths and the full text of a cut-off cell (#157)', () => {
         expect(store.widths('devices')).toEqual({});
     });
 
+    /** A press on a handle by `pointerType` that moves by each of `moves` and lets go. */
+    async function press(key: string, pointerType: string, moves: number[] = []): Promise<void> {
+        const handle = screen.getByTestId(`grid-resize-${key}`);
+        const x = handle.getBoundingClientRect().right - 2;
+        const pointer = {pointerId: 7, pointerType};
+        await fireEvent.pointerDown(handle, {...pointer, button: 0, clientX: x});
+        for (const dx of moves) {
+            await fireEvent.pointerMove(handle, {...pointer, clientX: x + dx});
+        }
+        await fireEvent.pointerUp(handle, {...pointer, clientX: x + (moves.at(-1) ?? 0)});
+    }
+
+    describe('B-29: under a finger only a drag resizes', () => {
+        it('sorts on a tap of the handle, even one that wobbles a little, and changes no width', async () => {
+            const store = new ColumnWidthsStore(new MemoryStorage(), () => 'ccu');
+            renderGrid({tableId: 'devices'}, {columnWidths: store});
+            expect(header('Name').getAttribute('aria-sort')).toBe('none');
+
+            await press('name', 'touch');
+            expect(header('Name').getAttribute('aria-sort')).toBe('ascending');
+            await press('name', 'touch', [2, -3]);
+            expect(header('Name').getAttribute('aria-sort')).toBe('descending');
+            // a pen on a tablet is a finger here too
+            await press('name', 'pen', [1]);
+            expect(header('Name').getAttribute('aria-sort')).toBe('none');
+            expect(store.widths('devices')).toEqual({});
+        });
+
+        it.skipIf(!hasLayout)('resizes on a drag and does not sort', async () => {
+            const store = new ColumnWidthsStore(new MemoryStorage(), () => 'ccu');
+            renderGrid({tableId: 'devices'}, {columnWidths: store});
+            const before = widthOf(header('ADDRESS'));
+
+            await press('address', 'touch', [30, 60]);
+            expect(Math.abs(widthOf(header('ADDRESS')) - (before + 60))).toBeLessThanOrEqual(2);
+            expect(store.widths('devices')['address']).toBeGreaterThan(before);
+            expect(header('ADDRESS').getAttribute('aria-sort')).toBe('none');
+        });
+
+        it('fits nothing on the double click two taps make; a mouse still fits', async () => {
+            const store = new ColumnWidthsStore(new MemoryStorage(), () => 'ccu');
+            renderGrid({tableId: 'devices'}, {columnWidths: store});
+            await press('name', 'touch');
+            await press('name', 'touch');
+            await fireEvent.dblClick(screen.getByTestId('grid-resize-name'));
+            expect(store.widths('devices')).toEqual({});
+            // sorted up and back down, which is what two taps on the label do
+            expect(header('Name').getAttribute('aria-sort')).toBe('descending');
+
+            if (hasLayout) {
+                await press('name', 'mouse');
+                await fireEvent.dblClick(screen.getByTestId('grid-resize-name'));
+                expect(Object.keys(store.widths('devices'))).toEqual(['name']);
+            }
+        });
+
+        it('leaves a mouse press without a move as it was: no sort, no width', async () => {
+            const store = new ColumnWidthsStore(new MemoryStorage(), () => 'ccu');
+            renderGrid({tableId: 'devices'}, {columnWidths: store});
+            await press('name', 'mouse');
+            expect(header('Name').getAttribute('aria-sort')).toBe('none');
+            expect(store.widths('devices')).toEqual({});
+        });
+    });
+
     it.skipIf(!hasLayout)('fits a column to its widest rendered cell on a double click', async () => {
         renderGrid();
         await drag('name', -2000);

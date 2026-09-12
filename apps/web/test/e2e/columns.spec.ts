@@ -170,6 +170,37 @@ test('a column only the channel sub-grid has is dragged, kept over a reload and 
     expect(await widthOf(typeHeader())).toBe(typeWidth);
 });
 
+test.describe('on a touch screen (B-29)', () => {
+    test.use({hasTouch: true});
+
+    test('a tap on the right edge of a label sorts, a drag of a finger resizes', async ({page, host}) => {
+        const table = await openDevices(page, host.url);
+        const typeHeader = table.getByRole('columnheader', {name: 'TYPE', exact: true});
+        // the emulated touch screen is what gives the handle its finger-sized area
+        expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+        const designed = await widthOf(typeHeader);
+        const box = (await typeHeader.boundingBox())!;
+        const y = box.y + box.height / 2;
+
+        // 20 px in from the edge: on the label, and inside the handle's 24 px for a finger
+        await page.touchscreen.tap(box.x + box.width - 20, y);
+        await expect(typeHeader).toHaveAttribute('aria-sort', 'ascending');
+        expect(await widthOf(typeHeader)).toBe(designed);
+
+        // Playwright's touchscreen only taps; a drag goes through the protocol it emulates touch with
+        const session = await page.context().newCDPSession(page);
+        const x = box.x + box.width - 3;
+        await session.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{x, y}]});
+        for (let step = 1; step <= 6; step += 1) {
+            await session.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: [{x: x + step * 20, y}]});
+        }
+        await session.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+        await expect.poll(() => widthOf(typeHeader)).toBeGreaterThanOrEqual(designed + 115);
+        // and the drag did not sort
+        await expect(typeHeader).toHaveAttribute('aria-sort', 'ascending');
+    });
+});
+
 test('Tab onto a cut-off column label shows its full text; Escape and moving on hide it', async ({page, host}) => {
     const table = await openDevices(page, host.url);
     await drag(page, table.getByTestId('devices-table-resize-ADDRESS'), -600);
