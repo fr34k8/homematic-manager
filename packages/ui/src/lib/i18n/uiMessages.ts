@@ -366,6 +366,15 @@ export const UI_MESSAGES: MessageCatalogue = {
         de: 'Nur STICKY_UNREACH und SABOTAGE lassen sich bestätigen',
         en: 'Only STICKY_UNREACH and SABOTAGE can be acknowledged',
     },
+    // Task 36 (#150): the band's total when other interfaces have messages too.
+    '{count} of {total} on this box': {
+        de: '{count} von {total} auf dieser Zentrale',
+        en: '{count} of {total} on this box',
+    },
+    'Also on this box: {list}. Click to switch to {next}.': {
+        de: 'Außerdem auf dieser Zentrale: {list}. Ein Klick wechselt zu {next}.',
+        en: 'Also on this box: {list}. Click to switch to {next}.',
+    },
 
     // The events tab.
     Pause: {de: 'Anhalten', en: 'Pause'},

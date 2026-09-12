@@ -156,6 +156,67 @@ describe('the service messages tab', () => {
         expect(transport.countOf('paramset.description')).toBe(1);
     });
 
+    /**
+     * Task 36 (#150, D-44): the list stays per interface, the band counts the box. The reporter
+     * counted seven in the CCU WebUI and four here, because one device sat on the other interface.
+     */
+    const hmipLowbat: ServiceMessage = {
+        interfaceName: 'HmIP-RF',
+        address: '0001D3C99C1234:0',
+        datapoint: 'LOW_BAT',
+        value: true,
+        since: 0,
+    };
+
+    it('task 36: shows only the count while the selected interface holds every message', async () => {
+        await mountApp({transport, hash: '#/BidCos-RF/messages'});
+        expect(screen.getByTestId('messages-table-count').textContent).toBe('2 Servicemeldungen');
+        expect(screen.queryByTestId('messages-total')).toBeNull();
+    });
+
+    it('task 36: counts the other interfaces in the band and switches to them on a click', async () => {
+        transport.result('serviceMessages.list', [...DEMO_SERVICE_MESSAGES, hmipLowbat]);
+        const {stores} = await mountApp({transport, hash: '#/BidCos-RF/messages'});
+
+        const total = await waitFor(() => screen.getByTestId('messages-total'));
+        expect(total.textContent).toBe('2 von 3 auf dieser Zentrale');
+        expect(screen.queryByTestId('messages-table-count')).toBeNull();
+        expect(screen.getByTestId('messages-total-tooltip').getAttribute('data-tooltip')).toBe(
+            'Außerdem auf dieser Zentrale: HmIP-RF (1). Ein Klick wechselt zu HmIP-RF.',
+        );
+        // the list itself is still the selected interface's
+        expect(document.querySelector('[data-row-id="0001D3C99C1234:0/LOW_BAT"]')).toBeNull();
+
+        await fireEvent.click(total);
+        await waitFor(() => {
+            expect(stores.app.selectedInterface).toBe('HmIP-RF');
+        });
+        await waitFor(() => {
+            expect(document.querySelector('[data-row-id="0001D3C99C1234:0/LOW_BAT"]')).not.toBeNull();
+        });
+        expect(screen.getByTestId('messages-total').textContent).toBe('1 von 3 auf dieser Zentrale');
+    });
+
+    it('task 36: keeps the other interfaces after a refresh of the selected one', async () => {
+        transport.result('serviceMessages.list', [...DEMO_SERVICE_MESSAGES, hmipLowbat]);
+        // the backend answers a refresh of one interface with that interface's list only
+        transport.result('serviceMessages.refresh', [sabotage]);
+        const {stores} = await mountApp({transport, hash: '#/BidCos-RF/messages'});
+        await waitFor(() => {
+            expect(screen.getByTestId('messages-total').textContent).toBe('2 von 3 auf dieser Zentrale');
+        });
+
+        await fireEvent.click(screen.getByTestId('messages-refresh'));
+        await waitFor(() => {
+            expect(document.querySelector('[data-row-id="GEQ0567890:0/SABOTAGE"]')).not.toBeNull();
+        });
+        expect(document.querySelector('[data-row-id="LEQ0456789:0/LOWBAT"]')).toBeNull();
+        expect(screen.getByTestId('messages-total').textContent).toBe('1 von 2 auf dieser Zentrale');
+        expect(stores.serviceMessages.of('HmIP-RF')).toEqual([hmipLowbat]);
+        // a message that was already there is not news
+        expect(stores.notices.items.map((notice) => notice.message)).toEqual(['GEQ0567890:0 SABOTAGE']);
+    });
+
     it('B-24: asks no description for a list of booleans', async () => {
         await mountApp({transport, hash: '#/BidCos-RF/messages'});
         expect(document.querySelector('[data-row-id="LEQ0456789:0/LOWBAT"]')).not.toBeNull();

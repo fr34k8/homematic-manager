@@ -83,7 +83,7 @@ export class ServiceMessagesStore {
     async load(interfaceName?: string): Promise<void> {
         this.loading = true;
         try {
-            this.apply(asList(await this.#transport.request('serviceMessages.list', interfaceName)));
+            this.#applyFor(interfaceName, asList(await this.#transport.request('serviceMessages.list', interfaceName)));
         } catch (error) {
             this.#notices.fromError(error, 'serviceMessages.list');
         } finally {
@@ -100,12 +100,32 @@ export class ServiceMessagesStore {
     async refresh(interfaceName?: string): Promise<void> {
         this.loading = true;
         try {
-            this.apply(asList(await this.#transport.request('serviceMessages.refresh', interfaceName)));
+            this.#applyFor(
+                interfaceName,
+                asList(await this.#transport.request('serviceMessages.refresh', interfaceName)),
+            );
         } catch (error) {
             this.#notices.fromError(error, 'serviceMessages.refresh');
         } finally {
             this.loading = false;
         }
+    }
+
+    /**
+     * Task 36: an answer for one interface replaces that interface's messages and keeps the
+     * others'. The tab's refresh asks for the selected interface only, and the backend answers with
+     * that interface's list - taken as the whole list, it emptied every other interface until
+     * their next event, and with them the band's total over the box.
+     */
+    #applyFor(interfaceName: string | undefined, messages: ServiceMessage[]): void {
+        if (interfaceName === undefined) {
+            this.apply(messages);
+            return;
+        }
+        this.apply([
+            ...this.messages.filter((message) => message.interfaceName !== interfaceName),
+            ...messages.filter((message) => message.interfaceName === interfaceName),
+        ]);
     }
 
     /** Acknowledges one message by writing its datapoint; the backend answers with the new list. */

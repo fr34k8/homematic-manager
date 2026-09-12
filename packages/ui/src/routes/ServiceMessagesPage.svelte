@@ -6,11 +6,13 @@
     import DeviceImage from '../lib/components/DeviceImage.svelte';
     import {ICON_COLUMN_WIDTH} from '../lib/components/metrics.js';
     import ToolbarButton from '../lib/components/ToolbarButton.svelte';
+    import Tooltip from '../lib/components/Tooltip.svelte';
     import type {DataTableColumn} from '../lib/components/tableModel.js';
     import {getStores} from '../lib/stores/context.js';
     import {isHmipInterface} from '../lib/stores/suppression.js';
     import {serviceMessageExplanation} from '../lib/util/deviceGrid.js';
     import {formatDateTime, formatRpcValue} from '../lib/util/format.js';
+    import {serviceMessageTotal} from '../lib/util/serviceMessageTotal.js';
 
     const stores = getStores();
     const t = stores.i18n.t;
@@ -26,6 +28,27 @@
     const acknowledgeable = $derived(stores.serviceMessages.acknowledgeable(interfaceName));
     const selectedMessages = $derived(messages.filter((message) => selected.includes(idOf(message))));
     const selectedAckable = $derived(selectedMessages.filter((message) => isAcknowledgeable(message.datapoint)));
+
+    /**
+     * Task 36 (#150, D-44): the list stays per interface and the band counts the box - "4 of 7 on
+     * this box" - from the messages the app already holds for every interface. The tab badge stays
+     * the selected interface's count.
+     */
+    const total = $derived(
+        serviceMessageTotal(
+            stores.serviceMessages.messages,
+            interfaceName,
+            stores.interfaces.states.map((state) => state.name),
+        ),
+    );
+    const totalTooltip = $derived(
+        total.next === undefined
+            ? ''
+            : t('Also on this box: {list}. Click to switch to {next}.', {
+                  list: total.others.map((entry) => `${entry.interfaceName} (${String(entry.count)})`).join(', '),
+                  next: total.next,
+              }),
+    );
 
     function idOf(message: ServiceMessage): string {
         return `${message.address}/${message.datapoint}`;
@@ -149,9 +172,28 @@
             filterLabel={t('Filter')}
             emptyText={t('No data')}
             toolbarLabel={t('Service messages')}
-            countText={t('{count} service messages', {}, messages.length)}
+            countText={total.next === undefined ? t('{count} service messages', {}, messages.length) : undefined}
             testId="messages-table"
         >
+            {#snippet status()}
+                {#if total.next !== undefined}
+                    {@const next = total.next}
+                    <!--
+                        Task 36: the total leads to the next interface that has messages, wrapping
+                        round, and its tooltip lists them all - the WebUI shows them in one list.
+                    -->
+                    <Tooltip text={totalTooltip} testId="messages-total-tooltip">
+                        <button
+                            type="button"
+                            class="hmm-total-button"
+                            data-testid="messages-total"
+                            onclick={() => void stores.selectInterface(next)}
+                            >{t('{count} of {total} on this box', {total: total.total}, total.own)}</button
+                        >
+                    </Tooltip>
+                {/if}
+            {/snippet}
+
             {#snippet toolbar()}
                 <!--
                     #146: `load()` answers from the backend's cache - the button has to make the
@@ -245,6 +287,27 @@
     /* The two the CCU lets an application clear; the rest go away when their cause does. */
     .hmm-msg-ackable {
         color: var(--hmm-accent);
+    }
+
+    /* Task 36: the box's total reads as the count it replaces, and shows that it can be clicked. */
+    .hmm-total-button {
+        padding: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+        text-decoration: underline dotted;
+        text-underline-offset: 2px;
+    }
+
+    .hmm-total-button:hover {
+        color: var(--hmm-fg);
+    }
+
+    .hmm-total-button:focus-visible {
+        outline: 1px solid var(--hmm-accent);
+        outline-offset: 1px;
     }
 
     /* The row action of task 26, styled like the PARAMSETS buttons of the devices grid. */
