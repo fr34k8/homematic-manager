@@ -25,6 +25,8 @@ if {[info exists env(HMM_STATE_DIR)]} {
 set BASE_PATH /addons/hmm
 set TOKEN_FILE $STATE_DIR/token
 set LOG_FILE $ADDON_DIR/var/hmm.log
+# task 41: on openccu-lite the log is the journal, which the box's own Log page shows by unit
+set LITE_LOG_PAGE /log?unit=addon-hmm
 # in the addon tree, not /var/run - the CCU3 install chroot has no /var/run, see rc.d/hmm
 set PID_FILE $ADDON_DIR/var/hmm.pid
 set RC_SCRIPT /usr/local/etc/config/rc.d/hmm

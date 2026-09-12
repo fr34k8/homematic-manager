@@ -172,6 +172,52 @@ check "with exit 0" "exit 0" "$out"
 check "and the service runs" "running" "$(dex '/usr/local/etc/config/rc.d/hmm status')"
 
 echo
+echo "openccu-lite: the backend logs to the journal, and there is no var/hmm.log (task 41)"
+# The container runs no journald: a systemd-cat stand-in execs the command the way the real one does
+# and appends the output to /tmp/journal-<identifier>.log. Token mode keeps the backend independent of
+# occulited, which is not here either; the auth mode is not what this part is about.
+dex 'cp /usr/local/addons/hmm/etc/hmm.env /tmp/hmm.env.t41 \
+    && sed -i "s/^#*HMM_AUTH_MODE=.*/HMM_AUTH_MODE=token/" /usr/local/addons/hmm/etc/hmm.env \
+    && cp /opt/systemd-cat-stub /usr/bin/systemd-cat && chmod 755 /usr/bin/systemd-cat \
+    && printf "VERSION=3.89.8.20260719\nPRODUCT=ova\nPLATFORM=ova\nVARIANT=lite\n" > /VERSION \
+    && echo old > /usr/local/addons/hmm/var/hmm.log.1' >/dev/null
+dex '/usr/local/etc/config/rc.d/hmm stop' >/dev/null
+out="$(dex '/usr/local/etc/config/rc.d/hmm start; echo "exit $?"')"
+check "a start on openccu-lite says OK" "Starting hmm: OK" "$out"
+check "with exit 0" "exit 0" "$out"
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    dex 'grep -q "homematic-manager-web" /tmp/journal-addon-hmm.log' >/dev/null && break
+    sleep 1
+done
+check "the backend's output is in the journal, under the unit's identifier addon-hmm" "homematic-manager-web" \
+    "$(dex 'cat /tmp/journal-addon-hmm.log')"
+check "no var/hmm.log, and the old rotation from the CCU days is gone" "gone" \
+    "$(dex 'test -e /usr/local/addons/hmm/var/hmm.log || test -e /usr/local/addons/hmm/var/hmm.log.1 || echo gone')"
+check "the recorded pid is the backend's own, not systemd-cat's" "/usr/local/addons/hmm/bin/node" \
+    "$(dex "tr '\\0' ' ' < /proc/\$(cat /usr/local/addons/hmm/var/hmm.pid)/cmdline | cut -d' ' -f1")"
+out="$(dex '/usr/local/etc/config/rc.d/hmm restart; echo "exit $?"')"
+check "a restart on openccu-lite says OK" "Starting hmm: OK" "$out"
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ "$(dex 'grep -c "homematic-manager-web" /tmp/journal-addon-hmm.log')" -ge 2 ] 2>/dev/null && break
+    sleep 1
+done
+check "and the restarted backend logs to the journal too" "twice" \
+    "$(dex 'n=$(grep -c "homematic-manager-web" /tmp/journal-addon-hmm.log); [ "$n" -ge 2 ] && echo twice || echo "$n"')"
+check "still without a log file" "gone" "$(dex 'test -e /usr/local/addons/hmm/var/hmm.log || echo gone')"
+out="$(dex "curl -si 'http://127.0.0.1/addons/hmm/service.cgi?sid=%40${SID}%40&cmd=log'")"
+check "service.cgi's log view sends the browser to the box's Log page with the addon's unit" \
+    "Location: /log?unit=addon-hmm" "$out"
+# back to a CCU for everything below, which reads var/hmm.log
+dex 'rm -f /VERSION /usr/bin/systemd-cat && cp /tmp/hmm.env.t41 /usr/local/addons/hmm/etc/hmm.env \
+    && /usr/local/etc/config/rc.d/hmm restart' >/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    dex 'grep -q "homematic-manager-web" /usr/local/addons/hmm/var/hmm.log' >/dev/null && break
+    sleep 1
+done
+check "back on a CCU the backend writes var/hmm.log again" "homematic-manager-web" \
+    "$(dex 'cat /usr/local/addons/hmm/var/hmm.log')"
+
+echo
 echo "the Zusatzsoftware page (rc.d/hmm info)"
 # cp_software.cgi reads these lines through a Tcl pipe in iso8859-1 and writes them into its
 # Latin-1 page as they are; an umlaut in UTF-8 came out as "GerÃ¤te" (#140)

@@ -66,6 +66,46 @@ describe('rc.d/hmm reports a start that started nothing (B-25)', () => {
     });
 });
 
+/**
+ * Task 41 (openccu-lite D-59): on openccu-lite the backend's output goes to the journal through
+ * systemd-cat and no log file is written; on a CCU and OpenCCU the file stays. The container test runs
+ * both; these hold the shape of `Start()`.
+ */
+describe('rc.d/hmm logs to the journal on openccu-lite (task 41)', () => {
+    const rc = file('../files/hmm/rc.d/hmm');
+    const start = /\nStart\(\) \{\n([\s\S]*?)\n\}\n/.exec(rc)?.[1] ?? '';
+    const journalAt = start.indexOf('if [ "$LOG_TARGET" = journal ]; then');
+    const elseAt = start.indexOf('\n    else\n', journalAt);
+    const fileAt = start.indexOf('RUN="exec $NODE"', journalAt);
+
+    it('chooses the journal only on VARIANT=lite, and only where systemd-cat is', () => {
+        const target = /\nLogTarget\(\) \{\n([\s\S]*?)\n\}\n/.exec(rc)?.[1] ?? '';
+        expect(target).toContain("grep -q '^VARIANT=lite$' /VERSION");
+        expect(target).toContain('command -v systemd-cat');
+        expect(start).toContain('LOG_TARGET="$(LogTarget)"');
+    });
+
+    it('runs the backend through systemd-cat under the unit identifier, and removes the old file', () => {
+        expect(rc).toContain('\nJOURNAL_TAG=addon-$ADDON\n');
+        expect(journalAt).toBeGreaterThan(0);
+        expect(elseAt).toBeGreaterThan(journalAt);
+        expect(fileAt).toBeGreaterThan(elseAt);
+        const journal = start.slice(journalAt, elseAt);
+        expect(journal).toContain('RUN="exec systemd-cat -t $JOURNAL_TAG $NODE"');
+        expect(journal).toContain('OUTPUT=""');
+        expect(journal).toContain('rm -f $LOG $LOG.1');
+        expect(journal).not.toContain('mv $LOG');
+    });
+
+    it('keeps the file and its rotation everywhere else, and starts the backend with either', () => {
+        const other = start.slice(elseAt, start.indexOf('\n    fi\n', fileAt));
+        expect(other).toContain('mv $LOG $LOG.1');
+        expect(other).toContain('OUTPUT=">>$LOG 2>&1"');
+        expect(start).toMatch(/start-stop-daemon -S -b -m -p \$PIDFILE -x \/bin\/sh -- -c "\$RUN \$APP/);
+        expect(start).toContain('--data-dir $STATE_DIR $OUTPUT"');
+    });
+});
+
 describe('the callback ports of the addon (task 35)', () => {
     const rc = file('../files/hmm/rc.d/hmm');
     const {xmlrpc, binrpc} = CALLBACK_DEFAULT_PORTS;

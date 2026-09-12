@@ -30,6 +30,10 @@ TOKEN_FILE=$STATE_DIR/token
 PIDFILE=$ADDON_DIR/var/$ADDON.pid
 LOG=$ADDON_DIR/var/hmm.log
 LOG_MAX=1048576
+# Task 41 (openccu-lite D-59): on openccu-lite everything logs to the journal, and nothing of ours
+# writes a log file onto the SD card. The backend's output goes to journald under the unit's own
+# identifier, so `journalctl -t addon-hmm`, `journalctl -u addon-hmm` and the box's Log page find it.
+JOURNAL_TAG=addon-$ADDON
 
 [ -f $ADDON_DIR/versions ] && . $ADDON_DIR/versions
 
@@ -86,6 +90,20 @@ LighttpdReload() {
     [ -x /etc/init.d/S50lighttpd ] || return 0
     if ! /etc/init.d/S50lighttpd reload >/dev/null 2>&1; then
         nohup sh -c 'sleep 5; /etc/init.d/S50lighttpd restart' >/dev/null 2>&1 &
+    fi
+}
+
+# Task 41: where the backend's output goes - "journal" on openccu-lite, "file" everywhere else.
+# Decided at every start from `/VERSION`, like the auth mode below and for the same reason: the same
+# /usr/local may move between the firmwares. The output cannot simply be left to the unit: `-b` points
+# the backend's stdio at /dev/null, and a restart from a CGI would hand it the CGI's pipe. systemd-cat
+# connects stdout and stderr to journald and execs the backend, so the recorded pid stays node's own.
+# Without systemd-cat the file stays, rather than no log at all.
+LogTarget() {
+    if grep -q '^VARIANT=lite$' /VERSION 2>/dev/null && command -v systemd-cat >/dev/null 2>&1; then
+        echo journal
+    else
+        echo file
     fi
 }
 
@@ -156,26 +174,40 @@ Start() {
     export HMM_TOKEN
 
     mkdir -p $ADDON_DIR/var $ADDON_DIR/var/cache $STATE_DIR 2>/dev/null
+    LOG_TARGET="$(LogTarget)"
     # B-25: the backend's output goes to $LOG and start-stop-daemon writes $PIDFILE; when var/ is
     # not this user's, both fail inside the background start where nobody sees it
-    if [ ! -w $ADDON_DIR/var ] || { [ -e $LOG ] && [ ! -w $LOG ]; }; then
+    if [ ! -w $ADDON_DIR/var ] || { [ "$LOG_TARGET" = file ] && [ -e $LOG ] && [ ! -w $LOG ]; }; then
         echo "Starting $ADDON: FAILED ($ADDON_DIR/var cannot be written by $(id -un); is it owned by $(id -un)?)" >&2
         logger -t $ADDON -p daemon.err "cannot write $ADDON_DIR/var as $(id -un): not starting"
         return 1
     fi
-    if [ -f $LOG ] && [ "$(wc -c < $LOG)" -gt $LOG_MAX ]; then
-        mv $LOG $LOG.1
+    if [ "$LOG_TARGET" = journal ]; then
+        # the file an earlier version wrote, or this /usr/local on a CCU: nothing writes it any more,
+        # so it goes - once, since there is nothing left to remove at the next start
+        if [ -e $LOG ] || [ -e $LOG.1 ]; then
+            rm -f $LOG $LOG.1 2>/dev/null
+            logger -t $ADDON -p daemon.info "openccu-lite: the log is the journal now (journalctl -t $JOURNAL_TAG); removed $LOG"
+        fi
+        RUN="exec systemd-cat -t $JOURNAL_TAG $NODE"
+        OUTPUT=""
+    else
+        if [ -f $LOG ] && [ "$(wc -c < $LOG)" -gt $LOG_MAX ]; then
+            mv $LOG $LOG.1
+        fi
+        RUN="exec $NODE"
+        OUTPUT=">>$LOG 2>&1"
     fi
 
     printf '%s' "Starting $ADDON: "
     logger -t $ADDON -p daemon.info "starting homematic-manager $VERSION_ADDON (node $NODE_VERSION) on 127.0.0.1:$HMM_PORT"
     # cd / because the OpenCCU installer deletes its temp directory right after update_script
     # returns, and a process whose cwd is gone cannot spawn children.
-    # sh -c "exec ..." so the recorded pid is node's own, not a wrapper's.
+    # sh -c "exec ..." so the recorded pid is node's own, not a wrapper's (systemd-cat execs too).
     cd / || return 1
-    if ! start-stop-daemon -S -b -m -p $PIDFILE -x /bin/sh -- -c "exec $NODE $APP \
+    if ! start-stop-daemon -S -b -m -p $PIDFILE -x /bin/sh -- -c "$RUN $APP \
 --local --ccu 127.0.0.1 --base /addons/$ADDON --host 127.0.0.1 --no-issue-cookie \
---data-dir $STATE_DIR >>$LOG 2>&1"; then
+--data-dir $STATE_DIR $OUTPUT"; then
         echo "FAILED (start-stop-daemon could not start $NODE)"
         logger -t $ADDON -p daemon.err "start-stop-daemon could not start $NODE"
         return 1
@@ -191,9 +223,14 @@ Start() {
         i=$((i + 1))
     done
     if ! Running; then
-        echo "FAILED (the backend exited right after the start; see $LOG)"
-        tail -n 5 $LOG 2>/dev/null
-        logger -t $ADDON -p daemon.err "homematic-manager exited right after the start; see $LOG"
+        if [ "$LOG_TARGET" = journal ]; then
+            echo "FAILED (the backend exited right after the start; see journalctl -t $JOURNAL_TAG)"
+            logger -t $ADDON -p daemon.err "homematic-manager exited right after the start; see journalctl -t $JOURNAL_TAG"
+        else
+            echo "FAILED (the backend exited right after the start; see $LOG)"
+            tail -n 5 $LOG 2>/dev/null
+            logger -t $ADDON -p daemon.err "homematic-manager exited right after the start; see $LOG"
+        fi
         rm -f $PIDFILE 2>/dev/null
         return 1
     fi

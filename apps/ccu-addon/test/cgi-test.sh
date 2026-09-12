@@ -214,6 +214,29 @@ case "$out" in
     *'line two'*) pass "returns the log" ;;
     *) fail "returns the log" "$out" ;;
 esac
+# task 41: on openccu-lite the backend writes no file, and the log view is the box's Log page
+LOG_LITE_VERSION="$TMP/VERSION-lite-log"
+printf 'VERSION=3.89.8.20260719\nPRODUCT=ova\nPLATFORM=ova\nVARIANT=lite\n' > "$LOG_LITE_VERSION"
+LOG_CCU_VERSION="$TMP/VERSION-ccu-log"
+printf 'VERSION=3.83.5.20250401\nPRODUCT=HM-RASPBERRYMATIC\nPLATFORM=oci\n' > "$LOG_CCU_VERSION"
+mv "$TREE/var/hmm.log" "$TMP/hmm.log.aside"
+out="$(cd "$TREE/www" && QUERY_STRING='sid=@1234567890@&cmd=log' HMM_VERSION_FILE="$LOG_LITE_VERSION" tclsh "$STUB" service.cgi 2>&1)"
+case "$out" in
+    *'Location: /log?unit=addon-hmm'*) pass "on openccu-lite the log view sends the browser to the box's Log page (task 41)" ;;
+    *) fail "on openccu-lite the log view sends the browser to the box's Log page (task 41)" "$out" ;;
+esac
+out="$(cd "$TREE/www" && QUERY_STRING='sid=@1234567890@&cmd=log' HMM_VERSION_FILE="$LOG_CCU_VERSION" tclsh "$STUB" service.cgi 2>&1)"
+case "$out" in
+    *'Location:'*) fail "a CCU without a log file is not sent anywhere" "$out" ;;
+    *'no log yet'*) pass "a CCU without a log file is not sent anywhere" ;;
+    *) fail "a CCU without a log file is not sent anywhere" "$out" ;;
+esac
+mv "$TMP/hmm.log.aside" "$TREE/var/hmm.log"
+out="$(cd "$TREE/www" && QUERY_STRING='sid=@1234567890@&cmd=log' HMM_VERSION_FILE="$LOG_LITE_VERSION" tclsh "$STUB" service.cgi 2>&1)"
+case "$out" in
+    *'line two'*) pass "a lite box that still has the file (no systemd-cat) shows the file" ;;
+    *) fail "a lite box that still has the file (no systemd-cat) shows the file" "$out" ;;
+esac
 out="$(cgi service.cgi 'sid=@1234567890@&cmd=havoc')"
 case "$out" in
     *'unknown command'*) pass "refuses an unknown command" ;;
@@ -316,6 +339,10 @@ case "$out" in
     *'auth_mode=rega'*) fail "and rega is not offered there" "$out" ;;
     *) pass "and rega is not offered there" ;;
 esac
+case "$out" in
+    *'href="/log?unit=addon-hmm"'*) pass "and it links the box's Log page for the addon's log (task 41)" ;;
+    *) fail "and it links the box's Log page for the addon's log (task 41)" "$out" ;;
+esac
 out="$(cd "$TREE/www" && QUERY_STRING='sid=@1234567890@&cmd=config' HMM_VERSION_FILE="$CCU_VERSION" tclsh "$STUB" settings.cgi 2>&1)"
 case "$out" in
     *'current: <b>token</b>'*) pass "unset means token on a CCU, exactly as before" ;;
@@ -324,6 +351,10 @@ esac
 case "$out" in
     *'auth_mode=rega'*) pass "and rega is what is offered there" ;;
     *) fail "and rega is what is offered there" "$out" ;;
+esac
+case "$out" in
+    *'/log?unit=addon-hmm'*) fail "and no Log page link on a CCU" "$out" ;;
+    *) pass "and no Log page link on a CCU" ;;
 esac
 # a mode that belongs to the other firmware is refused rather than written into hmm.env
 out="$(cd "$TREE/www" && QUERY_STRING='sid=@1234567890@&cmd=config&auth_mode=rega' HMM_VERSION_FILE="$LITE_VERSION" tclsh "$STUB" settings.cgi 2>&1)"

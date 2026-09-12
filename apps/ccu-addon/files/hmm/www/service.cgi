@@ -117,6 +117,16 @@ switch -- $cmd {
         puts "\{[join $parts ,]\}"
     }
     log {
+        # Task 41: on openccu-lite the backend logs to the journal and there is no file to show. The
+        # addon's user may not read the journal itself, so the browser goes to the box's own Log page
+        # with the addon's unit chosen. A lite box without systemd-cat still has the file.
+        if {[is_openccu_lite] && ![file exists $LOG_FILE]} {
+            puts "Status: 302 Found"
+            puts "Location: $LITE_LOG_PAGE"
+            puts "Content-Type: text/plain; charset=utf-8\r\n"
+            puts "Das Log steht im Journal / the log is in the journal: $LITE_LOG_PAGE"
+            exit 0
+        }
         set lines 200
         if {[info exists params(lines)] && [regexp {^[0-9]+$} $params(lines)]} {
             set lines $params(lines)

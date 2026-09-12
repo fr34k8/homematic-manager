@@ -142,6 +142,15 @@ if {[string equal $cmd "config"]} {
     puts "<p class=\"note\">This writes HMM_AUTH_MODE to /usr/local/addons/hmm/etc/hmm.env and"
     puts "restarts the service. The same file takes every other option of the host, e.g."
     puts "HMM_SESSION_TTL.</p>"
+    if {$lite} {
+        # task 41: there is no log file on openccu-lite; the box's Log page shows the journal
+        puts "<h2>Log</h2>"
+        puts "<p>Auf openccu-lite schreibt das Addon ins Journal der Box, nicht in eine Datei:"
+        puts "<a href=\"[html_escape $LITE_LOG_PAGE]\">Log-Seite (Unit addon-hmm)</a>, oder auf der"
+        puts "Box <code>journalctl -t addon-hmm</code>."
+        puts "<br>On openccu-lite the addon logs to the box's journal, not to a file: the Log page"
+        puts "(unit addon-hmm), or <code>journalctl -t addon-hmm</code> on the box.</p>"
+    }
     if {![string equal $sid ""]} {
         puts "<p><a href=\"settings.cgi?sid=[html_escape $sid]\">Homematic Manager öffnen / open</a></p>"
     } else {

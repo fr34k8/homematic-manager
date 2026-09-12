@@ -57,7 +57,7 @@ ssh root@ccu /bin/install_addon        # OpenCCU: the exact path the WebUI takes
 
 | Path                                        | What                                                        |
 | ------------------------------------------- | ----------------------------------------------------------- |
-| `/usr/local/addons/hmm/`                    | the addon: `bin/node`, `app/`, `rc.d/hmm`, `etc/`, `www/`, `var/hmm.log`, `var/hmm.pid` |
+| `/usr/local/addons/hmm/`                    | the addon: `bin/node`, `app/`, `rc.d/hmm`, `etc/`, `www/`, `var/hmm.log` (not on openccu-lite), `var/hmm.pid` |
 | `/usr/local/hmm/`                           | the **profile**: `config.json`, the caches, `images/`, `token` (mode 600) |
 | `/usr/local/etc/config/rc.d/hmm`            | symlink to the service script                                |
 | `/usr/local/etc/config/addons/www/hmm`      | symlink to `www/` — this is what serves the CGIs             |
@@ -339,7 +339,7 @@ touched by it.
 | Symptom | Look at |
 | --- | --- |
 | The button opens a page saying the session is invalid | The WebUI session expired. Reload the WebUI and open the addon again. |
-| The button opens a 503 page | The service is not running: `service.cgi?…&cmd=log`, or `/usr/local/addons/hmm/var/hmm.log`. Start it with the _Neu starten_ button. |
+| The button opens a 503 page | The service is not running: `service.cgi?…&cmd=log`, or `/usr/local/addons/hmm/var/hmm.log`; on openccu-lite the box's Log page with unit `addon-hmm`, or `journalctl -t addon-hmm`. Start it with the _Neu starten_ button. |
 | The UI loads but stays disconnected | The WebSocket did not get through. `grep hmm /var/log/messages`, and check that `/usr/local/etc/config/lighttpd/hmm.conf` exists and lighttpd has read it (`/etc/init.d/S50lighttpd reload`). CCU3 firmware older than 3.61.5 does not read that directory at all. |
 | No devices, interfaces marked red | The interface processes answer on the CCU's loopback only (D-28). `netstat -tlnp` should show 32001 / 32010; a CCU in safe mode or with `HM_MODE` other than `NORMAL` starts neither them nor addons. |
 | Device pictures are missing | They come from the CCU's own `/config/img/devices/`; the app falls back to the pictures that ship in `app/data/icons/`. |
@@ -350,6 +350,12 @@ touched by it.
 
 Log lines are tagged `hmm` in `/var/log/messages`; the process's own output is
 `/usr/local/addons/hmm/var/hmm.log`, rotated at 1 MB.
+
+On openccu-lite there is no log file (task 41, following openccu-lite's rule that everything logs to
+the journal): the process's output goes to the journal under the unit's identifier `addon-hmm`. The
+box's Log page shows it with the unit `addon-hmm` chosen, `journalctl -t addon-hmm` on the box, and
+`service.cgi?…&cmd=log` sends the browser to that Log page. A `var/hmm.log` from an earlier version is
+removed at the first start. The log level (`HMM_LOG_LEVEL`) is the same on both.
 
 ## Building it
 

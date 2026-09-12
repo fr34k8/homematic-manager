@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# A systemd-cat stand-in for the container test, which runs no journald (task 41). Like the real one
+# it execs the command, so the pid start-stop-daemon recorded stays the command's own; what the real
+# one would send to the journal goes to /tmp/journal-<identifier>.log instead.
+
+tag=
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -t)
+            tag=$2
+            shift 2
+            ;;
+        --identifier=*)
+            tag=${1#--identifier=}
+            shift
+            ;;
+        -*) shift ;;
+        *) break ;;
+    esac
+done
+exec "$@" >> "/tmp/journal-${tag:-unknown}.log" 2>&1

@@ -6,6 +6,16 @@ component; the numbers in brackets are GitHub issues and pull requests.
 Versions before 3.0 are in the [releases](https://github.com/hobbyquaker/homematic-manager/releases);
 2.7.1 (2023-01-28) is the last 2.x release.
 
+## [Unreleased]
+
+### Changed
+
+- **On openccu-lite the CCU addon logs to the journal instead of a file.** This follows openccu-lite's rule that
+  everything logs to the journal. The backend's output goes there under `addon-hmm`: the box's Log page shows it
+  with that unit chosen, and `journalctl -t addon-hmm` on the box. The old `var/hmm.log` on the SD card is removed
+  at the first start. There, `service.cgi?…&cmd=log` and the addon's settings page lead to the Log page. On a CCU
+  and OpenCCU nothing changes: `var/hmm.log`, rotated at 1 MB.
+
 ## [3.0.0-beta.14] — 2026-09-12
 
 Herbert-Testmann's two requests on beta.13 (#157, #147), the addon's start that said OK when nothing
