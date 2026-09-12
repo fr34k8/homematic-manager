@@ -923,6 +923,43 @@ describe('the columns only a sub-grid has (task 42)', () => {
         expect(screen.getByTestId('grid-resize-name')).toBeTruthy();
     });
 
+    it('puts the same handle over the gap such a column leaves in the head, expanded or not (#157)', () => {
+        renderSubGrid({expanded: []});
+        const handle = screen.getByTestId('grid-resize-direction');
+        expect(handle.getAttribute('role')).toBe('separator');
+        expect(handle.getAttribute('aria-label')).toBe('Resize column DIRECTION');
+        expect(handle.closest('.hmm-table-head')).not.toBeNull();
+        // no column header: no row of the table has a cell there; and a fixed column gets no handle
+        expect(screen.queryByRole('columnheader', {name: 'DIRECTION'})).toBeNull();
+        expect(screen.queryByTestId('grid-resize-aes')).toBeNull();
+    });
+
+    it.skipIf(!hasLayout)(
+        "sizes such a column from the head under the sub-grid's id, and resets it from there (#157)",
+        async () => {
+            const store = new ColumnWidthsStore(new WidthStorage(), () => 'ccu');
+            renderSubGrid({}, {columnWidths: store});
+            const headCell = document.querySelector<HTMLElement>('.hmm-table-head [data-column-key="direction"]')!;
+            const designed = pixelWidth(subLabels('direction')[0]!);
+            expect(Math.abs(pixelWidth(headCell) - designed)).toBeLessThanOrEqual(1);
+
+            await dragBy(screen.getByTestId('grid-resize-direction'), 60);
+            for (const cell of [headCell, ...subLabels('direction'), ...channelCells('direction')]) {
+                expect(Math.abs(pixelWidth(cell) - (designed + 60))).toBeLessThanOrEqual(2);
+            }
+            expect(Object.keys(store.widths('devices-channels'))).toEqual(['direction']);
+            expect(store.widths('devices')).toEqual({});
+
+            const item = (name: string): HTMLElement =>
+                within(screen.getByTestId('grid-columns-menu')).getByRole('menuitem', {name});
+            await fireEvent.contextMenu(headCell);
+            expect(item('Fit column to content').hasAttribute('disabled')).toBe(false);
+            await fireEvent.click(item('Reset column widths'));
+            expect(store.widths('devices-channels')).toEqual({});
+            expect(pixelWidth(subLabels('direction')[0]!)).toBe(designed);
+        },
+    );
+
     it.skipIf(!hasLayout)(
         'resizes a sub-grid column in every expanded sub-grid and keeps it under its own id',
         async () => {

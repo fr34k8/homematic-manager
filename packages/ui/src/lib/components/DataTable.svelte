@@ -208,6 +208,14 @@
      */
     const subKeys = $derived(new Set(layout.subKeys));
     /**
+     * #157: those columns leave a gap in the head (the Funk tab's ← dBm / → dBm between ADDRESS and
+     * TYPE). The head gets their handle as well, over the gap, so they can be sized while no row is
+     * expanded; the width is the sub-grid's, whichever of the two handles set it.
+     */
+    const subOnlyColumns = $derived(
+        visibleSubColumns.filter((column) => subKeys.has(column.key) && isResizable(column)),
+    );
+    /**
      * The template with the user's widths in it. It is set once, as a custom property on the grid,
      * and every row reads it from CSS: a pointer move during a drag changes one style attribute,
      * not one per rendered row - a sub-grid's label row included.
@@ -694,7 +702,8 @@
         event.preventDefault();
         const cell = target.closest<HTMLElement>('[data-column-key]');
         headMenuKey = cell?.dataset['columnKey'];
-        headMenuScope = inHead ? 'table' : 'sub';
+        // #157: the head's cell over a sub-grid-only column is the sub-grid's
+        headMenuScope = inHead && (headMenuKey === undefined || !subKeys.has(headMenuKey)) ? 'table' : 'sub';
         headMenuX = event.clientX;
         headMenuY = event.clientY;
         headMenuOpen = true;
@@ -996,6 +1005,19 @@
                             testId === undefined ? undefined : `${testId}-resize-${column.key}`,
                         )}
                     {/if}
+                </div>
+            {/each}
+            <!--
+                #157: the gap a sub-grid-only column leaves in the head, with that column's handle. No
+                label and no column header role: no row of the table has a cell there.
+            -->
+            {#each subOnlyColumns as column (column.key)}
+                <div
+                    class="hmm-th hmm-th-sub-only"
+                    data-column-key={column.key}
+                    style:grid-column={layout.track[column.key]}
+                >
+                    {@render resizeHandle(column, testId === undefined ? undefined : `${testId}-resize-${column.key}`)}
                 </div>
             {/each}
         </div>

@@ -12,7 +12,7 @@
 
 import type {Locator, Page} from '@playwright/test';
 
-import {HMIP_BUTTON, HMIP_DIMMER, expect, simulatorReady, test} from './fixtures.js';
+import {BIDCOS_SWITCH, HMIP_BUTTON, HMIP_DIMMER, expect, simulatorReady, test} from './fixtures.js';
 
 test.beforeAll(async () => {
     test.skip(!(await simulatorReady()), 'hm-simulator is not installed');
@@ -168,6 +168,57 @@ test('a column only the channel sub-grid has is dragged, kept over a reload and 
     await page.getByTestId('devices-table-columns-menu').getByRole('menuitem', {name: 'Reset column widths'}).click();
     await expect.poll(() => widthOf(direction())).toBe(designed);
     expect(await widthOf(typeHeader())).toBe(typeWidth);
+});
+
+/**
+ * #157, Herbert-Testmann on beta.15 (macOS): "Die Breite der Spalte zwischen Adress und Type in BidCos / Funk lässt
+ * sich nicht anpassen. Dort stehen dBm Werte die erst sichtbar werden, wenn ein Gerät aufgeklappt wird." The peer
+ * columns of the Funk tab leave a gap in the head, and task 42 gave them a handle only in the expanded sub-grid.
+ */
+test('the Funk peer columns are sized from the gap they leave in the head and from the sub-grid (#157)', async ({
+    page,
+    host,
+}) => {
+    await page.goto(`${host.url}#/BidCos-RF/rssi`);
+    const table = page.getByTestId('radio-table');
+    const device = table.locator(`[data-row-id="${BIDCOS_SWITCH}"]`);
+    await expect(device).toBeVisible();
+    const peerRx = (): Locator => table.locator('.hmm-tr-subhead .hmm-td[data-column-key="rx"]');
+    const headRx = (): Locator => table.locator('.hmm-table-head [data-column-key="rx"]');
+
+    // collapsed: the head has a handle over the gap the peer columns leave between ADDRESS and TYPE
+    const designed = await widthOf(headRx());
+    expect(designed).toBeGreaterThan(0);
+    await drag(page, table.getByTestId('radio-table-resize-rx'), 80);
+    await expect.poll(() => widthOf(headRx())).toBeGreaterThanOrEqual(designed + 77);
+    const fromHead = await widthOf(headRx());
+
+    // expanded: the sub-grid's label stands at the width the head gave the column
+    await device.getByRole('button', {name: 'Expand row'}).click();
+    await expect(peerRx()).toHaveCount(1);
+    expect(Math.abs((await widthOf(peerRx())) - fromHead)).toBeLessThanOrEqual(1);
+
+    await drag(page, table.getByTestId('radio-table-sub-resize-rx'), 60);
+    await expect.poll(() => widthOf(peerRx())).toBeGreaterThanOrEqual(fromHead + 57);
+    const fromSub = await widthOf(peerRx());
+    expect(Math.abs((await widthOf(headRx())) - fromSub)).toBeLessThanOrEqual(1);
+
+    // one owner: both handles write the sub-grid's width, under its own table id
+    const stored = await page.evaluate(
+        () =>
+            JSON.parse(localStorage.getItem('hmm.columnWidths') ?? '{}') as Record<
+                string,
+                Record<string, Record<string, number>>
+            >,
+    );
+    const profiles = Object.values(stored);
+    expect(profiles[0]?.['radio-peers']).toEqual({rx: fromSub});
+    expect(profiles[0]?.['radio']).toBeUndefined();
+
+    // the right-click menu over the gap resets the sub-grid's columns
+    await headRx().click({button: 'right'});
+    await page.getByTestId('radio-table-columns-menu').getByRole('menuitem', {name: 'Reset column widths'}).click();
+    await expect.poll(() => widthOf(peerRx())).toBe(designed);
 });
 
 test.describe('on a touch screen (B-29)', () => {
